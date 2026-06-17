@@ -1,0 +1,30 @@
+# docker-compose.yml
+# 전체 서비스(backend, frontend, postgres)를 함께 실행하기 위한 구성 파일입니다.
+# TODO: 환경변수 연결, 볼륨 마운트, depends_on 등 세부 설정 보강
+
+version: "3.9"
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    ports:
+      - "8000:8000"
+    # TODO: env_file, depends_on(db) 추가
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+    ports:
+      - "5173:5173"
+    # TODO: depends_on(backend) 추가
+
+  db:
+    build:
+      context: .
+      dockerfile: docker/postgres.Dockerfile
+    ports:
+      - "5432:5432"
+    # TODO: 환경변수(POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB), 볼륨 추가
