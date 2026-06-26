@@ -9,19 +9,26 @@ const roleStyle = {
 
 function AdminSettings() {
   const [activeTab, setActiveTab] = useState('category');
-  const { users, approveUser, rejectUser } = useApp();
+  const { users, approveUser, rejectUser, updateUserDept } = useApp();
+  const DEPT_LIST = ['도로교통과', '환경위생과', '도시시설과', '교통행정과', '청소행정과', '공원녹지과', '상수도과', '사회복지과'];
   const [search, setSearch]           = useState('');
   const [toast, setToast]             = useState('');
   const [selectedUser, setSelectedUser] = useState(null);
+  const [roleFilter, setRoleFilter]   = useState('citizen');
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 2500); };
   const handleApprove = (user) => { approveUser(user.id); showToast(`${user.name}님의 담당자 가입을 승인했습니다.`); };
   const handleReject  = (user) => { rejectUser(user.id);  showToast(`${user.name}님의 가입 신청을 거절했습니다.`); };
 
   const pending = users.filter((u) => u.status === 'pending');
-  const active  = users.filter((u) => u.status === 'active' && (
-    u.name.includes(search) || u.email.includes(search)
-  ));
+  const active  = users.filter((u) => {
+    if (u.status !== 'active') return false;
+    if (u.role !== roleFilter) return false;
+    return u.name.includes(search) || (u.email || '').includes(search);
+  });
+
+  const citizenCount = users.filter((u) => u.role === 'citizen' && u.status === 'active').length;
+  const staffCount   = users.filter((u) => u.role === 'staff'   && u.status === 'active').length;
 
   const tabs = [
     { key: 'category', label: '민원 카테고리 설정' },
@@ -253,16 +260,8 @@ function AdminSettings() {
 
             {/* 전체 회원 */}
             <div>
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <h2 className="text-sm font-bold text-on-surface">전체 회원</h2>
-                  <span className="bg-blue-50 text-blue-600 font-bold px-2.5 py-0.5 rounded-full text-xs">
-                    일반 {users.filter((u) => u.role === 'citizen' && u.status === 'active').length}명
-                  </span>
-                  <span className="bg-emerald-50 text-emerald-600 font-bold px-2.5 py-0.5 rounded-full text-xs">
-                    담당자 {users.filter((u) => u.role === 'staff' && u.status === 'active').length}명
-                  </span>
-                </div>
+              <div className="flex items-center justify-between mb-1">
+                <h2 className="text-sm font-bold text-on-surface">전체 회원</h2>
                 <div className="relative w-52">
                   <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-base">search</span>
                   <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="이름 또는 이메일"
@@ -270,36 +269,89 @@ function AdminSettings() {
                 </div>
               </div>
 
+              {/* 역할 탭 */}
+              <div className="flex gap-6 border-b border-outline-variant mb-3">
+                {[
+                  { key: 'citizen', label: '일반',   count: citizenCount },
+                  { key: 'staff',   label: '담당자', count: staffCount },
+                ].map((f) => (
+                  <button
+                    key={f.key}
+                    onClick={() => { setRoleFilter(f.key); setSelectedUser(null); }}
+                    className={`flex items-center gap-1.5 pb-2.5 px-1 text-sm font-bold whitespace-nowrap border-b-2 -mb-px transition-colors ${
+                      roleFilter === f.key
+                        ? 'text-primary border-primary'
+                        : 'text-on-surface-variant border-transparent hover:text-on-surface'
+                    }`}
+                  >
+                    {f.label}
+                    <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none ${
+                      roleFilter === f.key ? 'bg-primary/10 text-primary' : 'bg-slate-100 text-slate-500'
+                    }`}>
+                      {f.count}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
               <div className="bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden">
-                <table className="w-full text-sm">
+                <table className="w-full text-sm table-fixed">
                   <thead className="bg-slate-50 border-b border-outline-variant">
                     <tr>
-                      {['이름','이메일','역할','담당 부서','가입일'].map((h) => (
-                        <th key={h} className="text-left px-5 py-3 text-xs font-bold text-on-surface-variant">{h}</th>
+                      {(roleFilter === 'staff'
+                        ? ['이름', '전화번호', '이메일', '담당 부서', '가입일시', '부서 변경']
+                        : ['이름', '전화번호', '이메일', '역할', '담당 부서', '가입일']
+                      ).map((h) => (
+                        <th key={h} className="text-center px-4 py-3 text-xs font-bold text-on-surface-variant">{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-outline-variant/40">
                     {active.length === 0 ? (
-                      <tr><td colSpan={5} className="text-center py-10 text-on-surface-variant text-sm">사용자가 없습니다.</td></tr>
+                      <tr><td colSpan={6} className="text-center py-10 text-on-surface-variant text-sm">사용자가 없습니다.</td></tr>
                     ) : active.map((user) => {
                       const r = roleStyle[user.role] ?? roleStyle.citizen;
                       const isSelected = selectedUser?.id === user.id;
+                      if (roleFilter === 'staff') {
+                        return (
+                          <tr
+                            key={user.id}
+                            onClick={() => setSelectedUser(isSelected ? null : user)}
+                            className={`cursor-pointer transition-colors ${isSelected ? 'bg-primary/5 border-l-4 border-l-primary' : 'hover:bg-slate-50'}`}
+                          >
+                            <td className="px-4 py-3.5 align-middle text-center font-bold text-on-surface truncate">{user.name}</td>
+                            <td className="px-4 py-3.5 align-middle text-center text-on-surface-variant text-xs truncate">{user.phone || '-'}</td>
+                            <td className="px-4 py-3.5 align-middle text-center text-on-surface-variant text-xs truncate">{user.email || '-'}</td>
+                            <td className="px-4 py-3.5 align-middle text-center text-on-surface-variant text-xs truncate">{user.dept || '-'}</td>
+                            <td className="px-4 py-3.5 align-middle text-center text-on-surface-variant text-xs truncate">{user.joinedAt}</td>
+                            <td className="px-4 py-3.5 align-middle text-center" onClick={(e) => e.stopPropagation()}>
+                              <select
+                                value={user.dept || ''}
+                                onChange={(e) => { updateUserDept(user.id, e.target.value); showToast(`${user.name}님의 부서가 '${e.target.value}'(으)로 변경되었습니다.`); }}
+                                className="h-7 px-2 rounded-lg border border-outline-variant text-xs text-on-surface bg-white outline-none focus:border-primary"
+                              >
+                                {DEPT_LIST.map((d) => <option key={d}>{d}</option>)}
+                              </select>
+                            </td>
+                          </tr>
+                        );
+                      }
                       return (
                         <tr
                           key={user.id}
                           onClick={() => setSelectedUser(isSelected ? null : user)}
                           className={`cursor-pointer transition-colors ${isSelected ? 'bg-primary/5 border-l-4 border-l-primary' : 'hover:bg-slate-50'}`}
                         >
-                          <td className="px-5 py-3.5 font-bold text-on-surface">{user.name}</td>
-                          <td className="px-5 py-3.5 text-on-surface-variant text-xs">{user.email || '-'}</td>
-                          <td className="px-5 py-3.5">
+                          <td className="px-4 py-3.5 align-middle text-center font-bold text-on-surface truncate">{user.name}</td>
+                          <td className="px-4 py-3.5 align-middle text-center text-on-surface-variant text-xs truncate">{user.phone || '-'}</td>
+                          <td className="px-4 py-3.5 align-middle text-center text-on-surface-variant text-xs truncate">{user.email || '-'}</td>
+                          <td className="px-4 py-3.5 align-middle text-center">
                             <span className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full ${r.bg} ${r.text}`}>
                               <span className="material-symbols-outlined text-xs">{r.icon}</span>{r.label}
                             </span>
                           </td>
-                          <td className="px-5 py-3.5 text-on-surface-variant text-xs">{user.dept || '-'}</td>
-                          <td className="px-5 py-3.5 text-on-surface-variant text-xs">{user.joinedAt}</td>
+                          <td className="px-4 py-3.5 align-middle text-center text-on-surface-variant text-xs truncate">{user.dept || '-'}</td>
+                          <td className="px-4 py-3.5 align-middle text-center text-on-surface-variant text-xs truncate">{user.joinedAt}</td>
                         </tr>
                       );
                     })}

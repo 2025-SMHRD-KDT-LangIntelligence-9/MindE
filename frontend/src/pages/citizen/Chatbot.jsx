@@ -1,6 +1,7 @@
 ﻿import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import CitizenLayout from '../../layouts/CitizenLayout';
+import { CATEGORY_STYLE } from '../../store/AppContext';
 
 const quickReplies = [
   { icon: 'description',         label: '필요 서류 안내' },
@@ -21,13 +22,6 @@ const statusConfig = {
   '민원 접수': { bg: 'bg-blue-50',    text: 'text-blue-600' },
 };
 
-const categoryColor = {
-  '도로/교통': 'bg-primary/10 text-primary',
-  '시설/환경': 'bg-emerald-50 text-emerald-600',
-  '교통/주차': 'bg-amber-50 text-amber-600',
-  '환경/위생': 'bg-teal-50 text-teal-600',
-  '교통/안전': 'bg-orange-50 text-orange-600',
-};
 
 const GREETING = {
   role: 'ai',
@@ -124,7 +118,7 @@ const getAIReply = (text) => {
 
 function MessageBubble({ msg, isSpeaking, onSpeak }) {
   const isAI = msg.role === 'ai';
-  const lines = msg.text.split('\n');
+  const lines = (msg.text || '').split('\n');
   return (
     <div className={`flex gap-3 ${isAI ? '' : 'flex-row-reverse'}`}>
       <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-1 shadow-sm ${isAI ? 'bg-primary' : 'bg-primary/15'}`}>
@@ -139,6 +133,20 @@ function MessageBubble({ msg, isSpeaking, onSpeak }) {
             ? 'bg-white border border-outline-variant/40 rounded-tl-sm text-on-surface'
             : 'bg-primary text-white rounded-tr-sm'
         }`}>
+          {msg.files && msg.files.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-2">
+              {msg.files.map((f, i) => (
+                f.isImage ? (
+                  <img key={i} src={f.url} alt={f.name} className="max-w-[160px] max-h-[120px] rounded-xl object-cover border border-white/30" />
+                ) : (
+                  <div key={i} className="flex items-center gap-2 bg-white/20 rounded-xl px-3 py-2 text-xs">
+                    <span className="material-symbols-outlined text-base">attach_file</span>
+                    <span className="max-w-[120px] truncate">{f.name}</span>
+                  </div>
+                )
+              ))}
+            </div>
+          )}
           {lines.map((line, i) => (
             <p key={i} className={line === '' ? 'h-2' : ''}>
               {line.replace(/\*\*(.*?)\*\*/g, '$1').split(/(\*\*.*?\*\*)/).map((part, j) =>
@@ -174,9 +182,13 @@ function Chatbot() {
   const [filterStatus, setFilterStatus]   = useState('전체');
   const [isListening, setIsListening]     = useState(false);
   const [isSpeaking, setIsSpeaking]       = useState(false);
+  const [attachedFiles, setAttachedFiles] = useState([]);
+  const [isDragging, setIsDragging]       = useState(false);
   const recognitionRef = useRef(null);
   const messagesEndRef = useRef(null);
   const textareaRef    = useRef(null);
+  const imageInputRef  = useRef(null);
+  const fileInputRef   = useRef(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -215,12 +227,52 @@ function Chatbot() {
     return `${ampm} ${h % 12 || 12}:${String(m).padStart(2, '0')}`;
   };
 
+  const processFiles = (fileList) => {
+    const files = Array.from(fileList).map(f => ({
+      name: f.name,
+      size: f.size,
+      type: f.type,
+      url: URL.createObjectURL(f),
+      isImage: f.type.startsWith('image/'),
+    }));
+    setAttachedFiles(prev => [...prev, ...files]);
+  };
+
+  const handleFileSelect = (e) => {
+    processFiles(e.target.files);
+    e.target.value = '';
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files.length > 0) processFiles(e.dataTransfer.files);
+  };
+
+  const removeFile = (idx) => {
+    setAttachedFiles(prev => {
+      URL.revokeObjectURL(prev[idx].url);
+      return prev.filter((_, i) => i !== idx);
+    });
+  };
+
   const handleSend = () => {
     const text = input.trim();
-    if (!text || isTyping || viewingHistory) return;
-    const userMsg = { role: 'user', time: now(), text };
+    if ((!text && attachedFiles.length === 0) || isTyping || viewingHistory) return;
+    const userMsg = { role: 'user', time: now(), text, files: attachedFiles };
     setMessages(prev => [...prev, userMsg]);
     setInput('');
+    setAttachedFiles([]);
     setIsTyping(true);
     setTimeout(() => {
       const aiMsg = { role: 'ai', time: now(), text: getAIReply(text) };
@@ -381,7 +433,43 @@ function Chatbot() {
                     <button onClick={startNewChat} className="text-sm font-bold text-primary hover:underline">새 상담 시작하기</button>
                   </div>
                 ) : (
-                  <div className="border border-outline-variant rounded-2xl overflow-hidden focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/10 transition-all">
+                  <>
+                  <input ref={imageInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFileSelect} />
+                  <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx,.txt,.hwp" multiple className="hidden" onChange={handleFileSelect} />
+                  <div
+                    className={`border rounded-2xl overflow-hidden transition-all focus-within:ring-2 focus-within:ring-primary/10 ${
+                      isDragging ? 'border-primary border-2 bg-primary/5' : 'border-outline-variant focus-within:border-primary'
+                    }`}
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                  >
+                    {isDragging && (
+                      <div className="flex items-center justify-center gap-2 py-3 text-sm font-bold text-primary pointer-events-none">
+                        <span className="material-symbols-outlined">upload_file</span>
+                        파일을 여기에 놓으세요
+                      </div>
+                    )}
+                    {attachedFiles.length > 0 && (
+                      <div className="flex flex-wrap gap-2 px-4 pt-3">
+                        {attachedFiles.map((f, i) => (
+                          <div key={i} className="relative group">
+                            {f.isImage ? (
+                              <img src={f.url} alt={f.name} className="w-14 h-14 rounded-xl object-cover border border-outline-variant" />
+                            ) : (
+                              <div className="flex items-center gap-1.5 bg-surface-container px-2.5 py-1.5 rounded-xl text-xs text-on-surface border border-outline-variant">
+                                <span className="material-symbols-outlined text-sm text-primary">attach_file</span>
+                                <span className="max-w-[100px] truncate">{f.name}</span>
+                              </div>
+                            )}
+                            <button
+                              onClick={() => removeFile(i)}
+                              className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-error text-white rounded-full text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                            >✕</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     <textarea
                       ref={textareaRef}
                       value={input}
@@ -403,16 +491,26 @@ function Chatbot() {
                           <span className="material-symbols-outlined text-[18px]">{isListening ? 'mic_off' : 'mic'}</span>
                           <span className="hidden sm:inline">{isListening ? '녹음 중...' : '음성'}</span>
                         </button>
-                        {[{ icon: 'image', label: '이미지' }, { icon: 'attach_file', label: '파일' }].map((t) => (
-                          <button key={t.label} className="flex items-center gap-1 text-[11px] text-on-surface-variant hover:text-primary px-2.5 py-1.5 rounded-xl hover:bg-primary/8 transition-colors">
-                            <span className="material-symbols-outlined text-[18px]">{t.icon}</span>
-                            <span className="hidden sm:inline">{t.label}</span>
-                          </button>
-                        ))}
+                        <button
+                          type="button"
+                          onClick={() => imageInputRef.current?.click()}
+                          className="flex items-center gap-1 text-[11px] text-on-surface-variant hover:text-primary px-2.5 py-1.5 rounded-xl hover:bg-primary/8 transition-colors"
+                        >
+                          <span className="material-symbols-outlined text-[18px]">image</span>
+                          <span className="hidden sm:inline">이미지</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="flex items-center gap-1 text-[11px] text-on-surface-variant hover:text-primary px-2.5 py-1.5 rounded-xl hover:bg-primary/8 transition-colors"
+                        >
+                          <span className="material-symbols-outlined text-[18px]">attach_file</span>
+                          <span className="hidden sm:inline">파일</span>
+                        </button>
                       </div>
                       <button
                         onClick={handleSend}
-                        disabled={!input.trim() || isTyping}
+                        disabled={(!input.trim() && attachedFiles.length === 0) || isTyping}
                         className="flex items-center gap-1.5 bg-primary text-white text-xs font-bold px-4 py-2 rounded-xl hover:brightness-95 transition-all shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         <span className="material-symbols-outlined text-base">send</span>
@@ -420,6 +518,7 @@ function Chatbot() {
                       </button>
                     </div>
                   </div>
+                  </>
                 )}
               </div>
             </>
@@ -456,7 +555,7 @@ function Chatbot() {
                   </div>
                 ) : filteredHistory.map((h) => {
                   const st  = statusConfig[h.status] ?? { bg: 'bg-surface-container', text: 'text-on-surface-variant' };
-                  const cat = categoryColor[h.category] ?? 'bg-surface-container text-on-surface-variant';
+                  const catS = CATEGORY_STYLE[h.category] ?? CATEGORY_STYLE['기타'];
                   return (
                     <button
                       key={h.id}
@@ -468,7 +567,7 @@ function Chatbot() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${cat}`}>{h.category}</span>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${catS.bg} ${catS.text}`}>{h.category}</span>
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${st.bg} ${st.text}`}>{h.status}</span>
                         </div>
                         <p className="text-sm font-bold text-on-surface truncate">{h.title}</p>

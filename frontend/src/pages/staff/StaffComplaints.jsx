@@ -1,8 +1,8 @@
 ﻿import { useState, useRef } from 'react';
 import StaffLayout from '../../layouts/StaffLayout';
-import { useApp } from '../../store/AppContext';
+import { useApp, CATEGORY_STYLE, URGENCY_STYLE } from '../../store/AppContext';
 
-const STATUS_OPTIONS = ['접수', '처리 중', '보완 요청', '완료', '반려'];
+const STATUS_OPTIONS = ['접수', '처리 중', '보완 요청', '반려', '완료'];
 
 const statusStyle = {
   '접수':     { bg: 'bg-blue-50',    text: 'text-blue-600' },
@@ -12,11 +12,6 @@ const statusStyle = {
   '반려':     { bg: 'bg-red-50',     text: 'text-red-600' },
 };
 
-const urgencyStyle = {
-  '긴급': { bg: 'bg-red-50',    text: 'text-red-600',    icon: 'priority_high' },
-  '보통': { bg: 'bg-amber-50',  text: 'text-amber-600',  icon: 'remove' },
-  '낮음': { bg: 'bg-slate-100', text: 'text-slate-500',  icon: 'arrow_downward' },
-};
 
 function StatusBadge({ status }) {
   const s = statusStyle[status] ?? { bg: 'bg-slate-100', text: 'text-slate-500' };
@@ -24,7 +19,7 @@ function StatusBadge({ status }) {
 }
 
 function UrgencyBadge({ urgency }) {
-  const u = urgencyStyle[urgency] ?? urgencyStyle['낮음'];
+  const u = URGENCY_STYLE[urgency] ?? URGENCY_STYLE['낮음'];
   return (
     <span className={`flex items-center gap-0.5 text-[11px] font-bold px-2 py-0.5 rounded-full ${u.bg} ${u.text}`}>
       <span className="material-symbols-outlined text-xs">{u.icon}</span>
@@ -308,7 +303,7 @@ function StaffComplaints() {
                   <div className="flex items-center gap-2 mb-1.5">
                     <UrgencyBadge urgency={selectedData.urgency} />
                     <span className="text-[11px] text-on-surface-variant">{selectedData.id}</span>
-                    <span className="text-[11px] text-on-surface-variant bg-surface-container-low px-2 py-0.5 rounded-full">{selectedData.category}</span>
+                    {(() => { const s = CATEGORY_STYLE[selectedData.category] ?? CATEGORY_STYLE['기타']; return <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${s.bg} ${s.text}`}>{selectedData.category}</span>; })()}
                   </div>
                   <h2 className="text-base font-bold text-on-surface">{selectedData.title}</h2>
                   <p className="text-xs text-on-surface-variant mt-1">접수: {selectedData.receivedAt} · 최종 수정: {selectedData.updatedAt}</p>

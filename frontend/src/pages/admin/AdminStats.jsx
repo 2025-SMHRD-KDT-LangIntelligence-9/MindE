@@ -33,11 +33,10 @@ function AdminStats() {
     <AdminLayout pageTitle="통계 및 인사이트" activeMenu="stats">
 
       {/* 요약 지표 카드 */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
         {[
           { label: '월 총 민원',      value: '1,248건', icon: 'article',     color: 'text-primary',     bg: 'bg-primary/10' },
           { label: '평균 처리 속도',  value: '1.8일',   icon: 'speed',       color: 'text-amber-600',   bg: 'bg-amber-50' },
-          { label: '시민 만족도',     value: '4.7/5',   icon: 'star',        color: 'text-emerald-600', bg: 'bg-emerald-50' },
           { label: '처리율',          value: '94.2%',   icon: 'task_alt',    color: 'text-navy',        bg: 'bg-navy/10' },
         ].map((s) => (
           <div key={s.label} className="bg-white rounded-2xl border border-outline-variant p-5 shadow-sm flex items-center gap-4">

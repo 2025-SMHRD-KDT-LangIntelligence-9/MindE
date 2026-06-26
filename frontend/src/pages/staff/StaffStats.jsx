@@ -27,9 +27,12 @@ function StaffStats() {
   const complaints = myDeptComplaints;
 
   const total      = complaints.length;
-  const done       = complaints.filter((c) => c.status === '완료').length;
-  const inProgress = complaints.filter((c) => c.status === '처리 중' || c.status === '보완 요청').length;
+  const received   = complaints.filter((c) => c.status === '접수').length;
   const urgent     = complaints.filter((c) => c.urgency === '긴급').length;
+  const inProgress = complaints.filter((c) => c.status === '처리 중').length;
+  const supplement = complaints.filter((c) => c.status === '보완 요청').length;
+  const rejected   = complaints.filter((c) => c.status === '반려').length;
+  const done       = complaints.filter((c) => c.status === '완료').length;
 
   // 유형별 분포
   const categoryData = CATEGORIES.map((cat) => {
@@ -52,21 +55,22 @@ function StaffStats() {
         </div>
 
         {/* 요약 카드 */}
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-7 gap-3">
           {[
-            { label: '총 민원',    value: total,      icon: 'assignment',  color: 'text-[#1e3a5f]', bg: 'bg-[#1e3a5f]/8' },
-            { label: '처리 완료',  value: done,       icon: 'check_circle', color: 'text-emerald-600', bg: 'bg-emerald-50' },
-            { label: '처리 중',    value: inProgress, icon: 'pending',      color: 'text-amber-600',   bg: 'bg-amber-50' },
-            { label: '긴급 민원',  value: urgent,     icon: 'priority_high',color: 'text-red-600',     bg: 'bg-red-50' },
+            { label: '총 민원', value: total,       icon: 'assignment',   color: 'text-[#1e3a5f]',  bg: 'bg-[#1e3a5f]/8' },
+            { label: '접수',    value: received,    icon: 'inbox',        color: 'text-blue-600',   bg: 'bg-blue-50' },
+            { label: '긴급',    value: urgent,      icon: 'priority_high',color: 'text-red-600',    bg: 'bg-red-50' },
+            { label: '처리 중', value: inProgress,  icon: 'pending',      color: 'text-amber-600',  bg: 'bg-amber-50' },
+            { label: '보완',    value: supplement,  icon: 'edit_note',    color: 'text-purple-600', bg: 'bg-purple-50' },
+            { label: '반려',    value: rejected,    icon: 'cancel',       color: 'text-rose-600',   bg: 'bg-rose-50' },
+            { label: '완료',    value: done,        icon: 'check_circle', color: 'text-emerald-600',bg: 'bg-emerald-50' },
           ].map((c) => (
-            <div key={c.label} className="bg-white rounded-2xl border border-outline-variant shadow-sm p-5 flex items-center gap-4">
-              <div className={`w-12 h-12 rounded-xl ${c.bg} flex items-center justify-center shrink-0`}>
-                <span className={`material-symbols-outlined text-2xl ${c.color}`}>{c.icon}</span>
+            <div key={c.label} className="bg-white rounded-2xl border border-outline-variant shadow-sm p-4 flex flex-col items-center gap-2">
+              <div className={`w-10 h-10 rounded-xl ${c.bg} flex items-center justify-center shrink-0`}>
+                <span className={`material-symbols-outlined text-xl ${c.color}`}>{c.icon}</span>
               </div>
-              <div>
-                <p className={`text-2xl font-bold ${c.color}`}>{c.value}</p>
-                <p className="text-xs text-on-surface-variant mt-0.5">{c.label}</p>
-              </div>
+              <p className={`text-xl font-bold ${c.color}`}>{c.value}</p>
+              <p className="text-xs text-on-surface-variant">{c.label}</p>
             </div>
           ))}
         </div>

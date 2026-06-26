@@ -1,8 +1,8 @@
 ﻿import { useState, useRef } from 'react';
 import StaffLayout from '../../layouts/StaffLayout';
-import { useApp } from '../../store/AppContext';
+import { useApp, CATEGORY_STYLE } from '../../store/AppContext';
 
-const STATUS_OPTIONS = ['접수', '처리 중', '보완 요청', '완료', '반려'];
+const STATUS_OPTIONS = ['접수', '처리 중', '보완 요청', '반려', '완료'];
 
 const statusStyle = {
   '접수':     { bg: 'bg-blue-50',    text: 'text-blue-600' },
@@ -303,7 +303,7 @@ function StaffUrgent() {
                   <div className="flex items-center gap-2 mb-1.5">
                     <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-red-100 text-red-600">긴급</span>
                     <span className="text-[11px] text-on-surface-variant">{selectedData.id}</span>
-                    <span className="text-[11px] text-on-surface-variant bg-white px-2 py-0.5 rounded-full border">{selectedData.category}</span>
+                    {(() => { const s = CATEGORY_STYLE[selectedData.category] ?? CATEGORY_STYLE['기타']; return <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${s.bg} ${s.text}`}>{selectedData.category}</span>; })()}
                   </div>
                   <h2 className="text-base font-bold text-on-surface">{selectedData.title}</h2>
                   <p className="text-xs text-red-600 font-medium mt-1">

@@ -93,9 +93,9 @@ function Home() {
           </div>
         </div>
 
-        <div className="lg:col-span-4 bg-white rounded-2xl p-6 border border-outline-variant">
+        <div className="lg:col-span-4 bg-white rounded-2xl p-6 border border-outline-variant flex flex-col">
           <h4 className="text-sm font-bold text-on-surface-variant uppercase mb-4">주요 서비스 바로가기</h4>
-          <div className="grid grid-cols-3 gap-1">
+          <div className="grid grid-cols-3 gap-3">
             {[
               { label: 'AI 민원상담',    icon: 'smart_toy',        path: '/chatbot' },
               { label: '서류 작성',      icon: 'document_scanner', path: '/document' },
@@ -104,13 +104,23 @@ function Home() {
               { label: '자주 묻는 질문', icon: 'contact_support',  path: '/faq' },
               { label: '설정',           icon: 'settings',         path: '/settings' },
             ].map((item) => (
-              <button key={item.label} onClick={() => navigate(item.path)} className="flex flex-col items-center gap-2 py-4 px-1 rounded-xl hover:bg-primary/5 transition-colors">
+              <button key={item.label} onClick={() => navigate(item.path)} className="flex flex-col items-center gap-2 py-4 rounded-xl hover:bg-primary/5 transition-colors">
                 <div className="w-11 h-11 rounded-full bg-primary/10 flex items-center justify-center text-primary">
                   <span className="material-symbols-outlined text-xl">{item.icon}</span>
                 </div>
                 <span className="text-[11px] font-bold text-on-surface text-center leading-tight">{item.label}</span>
               </button>
             ))}
+          </div>
+
+          <div className="mt-auto pt-5 border-t border-outline-variant/60">
+            <div className="flex items-start gap-3 bg-primary/5 rounded-2xl px-4 py-3.5">
+              <span className="material-symbols-outlined text-primary text-xl shrink-0 mt-0.5">volunteer_activism</span>
+              <div>
+                <p className="text-xs font-bold text-primary mb-0.5">시민의 목소리가 도시를 만듭니다</p>
+                <p className="text-[11px] text-on-surface-variant leading-relaxed">마음이는 여러분의 의견을 공감과 투명함으로 경청하겠습니다.</p>
+              </div>
+            </div>
           </div>
         </div>
       </section>

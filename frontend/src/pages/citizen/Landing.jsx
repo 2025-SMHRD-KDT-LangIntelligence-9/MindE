@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import logo from '../../assets/logo.png';
 
@@ -23,9 +23,22 @@ function Landing() {
   const stats = [
     { value: '12,400+', label: '누적 민원 처리' },
     { value: '1.8일', label: '평균 처리 속도' },
-    { value: '4.7점', label: '시민 만족도' },
-    { value: '98%', label: '처리 완료율' },
+    { value: '24시간', label: '언제든 접수 가능' },
   ];
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setFlowIndex((i) => (i + 1) % steps.length);
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [steps.length]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setFeatureIndex((i) => (i + 1) % features.length);
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [features.length]);
 
   const currentStep = steps[flowIndex];
   const currentFeature = features[featureIndex];
@@ -84,7 +97,8 @@ function Landing() {
                 <div className="flex items-center gap-2 mb-4">
                   <span className="material-symbols-outlined text-primary text-lg">linear_scale</span>
                   <span className="text-xs font-bold text-on-surface">민원 처리 흐름</span>
-                  <div className="ml-auto flex items-center gap-1">
+                  <div className="ml-auto flex items-center gap-2">
+                    <span className="text-[11px] font-bold text-outline">0{flowIndex + 1} / 0{steps.length}</span>
                     <button
                       onClick={() => setFlowIndex((i) => (i - 1 + steps.length) % steps.length)}
                       className="w-7 h-7 rounded-full border border-outline-variant flex items-center justify-center hover:bg-slate-50 transition-colors"
@@ -115,9 +129,6 @@ function Landing() {
                     </span>
                   </div>
                   <div>
-                    <p className={`text-[11px] font-bold mb-1 ${currentStep.highlight ? 'text-white/60' : 'text-outline'}`}>
-                      0{flowIndex + 1} / 0{steps.length}
-                    </p>
                     <p className={`font-bold text-base mb-1.5 ${currentStep.highlight ? 'text-white' : 'text-on-surface'}`}>
                       {currentStep.title}
                     </p>
@@ -146,7 +157,8 @@ function Landing() {
                 <div className="flex items-center gap-2 mb-4">
                   <span className="material-symbols-outlined text-primary text-lg">apps</span>
                   <span className="text-xs font-bold text-on-surface">주요 서비스</span>
-                  <div className="ml-auto flex items-center gap-1">
+                  <div className="ml-auto flex items-center gap-2">
+                    <span className="text-[11px] font-bold text-outline">0{featureIndex + 1} / 0{features.length}</span>
                     <button
                       onClick={() => setFeatureIndex((i) => (i - 1 + features.length) % features.length)}
                       className="w-7 h-7 rounded-full border border-outline-variant flex items-center justify-center hover:bg-slate-50 transition-colors"
@@ -171,9 +183,6 @@ function Landing() {
                     <span className="material-symbols-outlined text-3xl text-primary">{currentFeature.icon}</span>
                   </div>
                   <div>
-                    <p className="text-[11px] font-bold mb-1 text-outline">
-                      0{featureIndex + 1} / 0{features.length}
-                    </p>
                     <p className="font-bold text-base text-on-surface mb-1.5">{currentFeature.title}</p>
                     <p className="text-sm text-on-surface-variant leading-relaxed">{currentFeature.desc}</p>
                   </div>
@@ -199,7 +208,7 @@ function Landing() {
 
         {/* 통계 */}
         <section className="bg-primary py-14 px-6 md:px-12">
-          <div className="max-w-6xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-8">
+          <div className="max-w-6xl mx-auto grid grid-cols-3 gap-8">
             {stats.map((s) => (
               <div key={s.label} className="text-center">
                 <p className="text-3xl md:text-4xl font-bold mb-1 text-white">{s.value}</p>

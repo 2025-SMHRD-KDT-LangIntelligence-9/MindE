@@ -96,8 +96,8 @@ function Login() {
             <div className="relative z-10 grid grid-cols-3 gap-2">
               {[
                 { value: '12,400+', label: '누적 처리' },
-                { value: '4.7점',   label: '시민 만족도' },
-                { value: '98%',     label: '완료율' },
+                { value: '1.8일',   label: '평균 처리 속도' },
+                { value: '24시간',  label: '언제든 접수' },
               ].map((s) => (
                 <div key={s.label} className="bg-white/15 rounded-2xl py-3.5 text-center border border-white/20">
                   <p className="text-white font-bold text-base leading-tight">{s.value}</p>

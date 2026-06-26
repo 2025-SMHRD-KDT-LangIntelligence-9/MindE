@@ -1,6 +1,6 @@
 ﻿import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../../layouts/AdminLayout';
-import { useApp } from '../../store/AppContext';
+import { useApp, CATEGORY_STYLE, URGENCY_STYLE } from '../../store/AppContext';
 
 const Y_TICKS  = [0, 20, 40, 60, 80, 100];
 const PRIMARY  = '#6EAEFF';
@@ -76,11 +76,22 @@ function AdminDashboard() {
 
   const urgentRows = complaints.filter((c) => c.urgency === '긴급').slice(0, 5);
 
+  const total      = complaints.length;
+  const cReceived  = complaints.filter((c) => c.status === '접수').length;
+  const cUrgent    = complaints.filter((c) => c.urgency === '긴급').length;
+  const cProgress  = complaints.filter((c) => c.status === '처리 중').length;
+  const cSupplement= complaints.filter((c) => c.status === '보완 요청').length;
+  const cRejected  = complaints.filter((c) => c.status === '반려').length;
+  const cDone      = complaints.filter((c) => c.status === '완료').length;
+
   const summaryCards = [
-    { label: '신규 접수',      value: stats.received,    unit: '건', icon: 'add_task',       color: 'text-primary',     bg: 'bg-primary/10',      change: `+${stats.received}` },
-    { label: '처리 중',        value: stats.inProgress,  unit: '건', icon: 'pending_actions', color: 'text-amber-600',   bg: 'bg-amber-50',        change: `+${stats.inProgress}` },
-    { label: '처리 완료',      value: stats.done,        unit: '건', icon: 'task_alt',        color: 'text-emerald-600', bg: 'bg-emerald-50',      change: `+${stats.done}` },
-    { label: '긴급 대응 조치', value: stats.urgent,      unit: '건', icon: 'report',          color: 'text-error',       bg: 'bg-error-container', change: `+${stats.urgent}` },
+    { label: '총 민원',  value: total,       icon: 'assignment',   color: 'text-[#1e3a5f]',    bg: 'bg-[#1e3a5f]/8' },
+    { label: '접수',     value: cReceived,   icon: 'inbox',        color: 'text-blue-600',     bg: 'bg-blue-50' },
+    { label: '긴급',     value: cUrgent,     icon: 'priority_high',color: 'text-red-600',      bg: 'bg-red-50' },
+    { label: '처리 중',  value: cProgress,   icon: 'pending',      color: 'text-amber-600',    bg: 'bg-amber-50' },
+    { label: '보완',     value: cSupplement, icon: 'edit_note',    color: 'text-purple-600',   bg: 'bg-purple-50' },
+    { label: '반려',     value: cRejected,   icon: 'cancel',       color: 'text-rose-600',     bg: 'bg-rose-50' },
+    { label: '완료',     value: cDone,       icon: 'check_circle', color: 'text-emerald-600',  bg: 'bg-emerald-50' },
   ];
 
   const statusConfig = {
@@ -95,19 +106,14 @@ function AdminDashboard() {
     <AdminLayout pageTitle="오늘의 대시보드" activeMenu="dashboard">
 
       {/* 요약 카드 */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-7 gap-3 mb-6">
         {summaryCards.map((c) => (
-          <div key={c.label} className="bg-white rounded-2xl border border-outline-variant p-5 shadow-sm">
-            <div className="flex items-center justify-between mb-3">
-              <div className={`w-10 h-10 rounded-xl ${c.bg} flex items-center justify-center`}>
-                <span className={`material-symbols-outlined text-xl ${c.color}`}>{c.icon}</span>
-              </div>
-              <span className="text-[11px] font-bold text-emerald-500">↑ {c.change}</span>
+          <div key={c.label} className="bg-white rounded-2xl border border-outline-variant p-4 shadow-sm flex flex-col items-center gap-2">
+            <div className={`w-10 h-10 rounded-xl ${c.bg} flex items-center justify-center shrink-0`}>
+              <span className={`material-symbols-outlined text-xl ${c.color}`}>{c.icon}</span>
             </div>
-            <p className="text-xs text-on-surface-variant font-medium">{c.label}</p>
-            <p className={`text-2xl font-bold ${c.color} leading-tight`}>
-              {c.value}<span className="text-sm ml-0.5">{c.unit}</span>
-            </p>
+            <p className={`text-xl font-bold ${c.color}`}>{c.value}</p>
+            <p className="text-xs text-on-surface-variant">{c.label}</p>
           </div>
         ))}
       </div>
@@ -168,10 +174,10 @@ function AdminDashboard() {
           <div className="px-6 py-8 text-center text-on-surface-variant text-sm">긴급 민원이 없습니다.</div>
         ) : (
           <table className="w-full text-left">
-            <thead className="border-b border-outline-variant">
+            <thead className="border-b border-outline-variant bg-surface-container-low/60">
               <tr>
-                {['민원 번호','카테고리','민원 내용','시민','상태'].map((h) => (
-                  <th key={h} className="px-6 py-3 text-xs font-bold text-on-surface-variant">{h}</th>
+                {['민원번호','카테고리','민원내용','접수자','담당부서','긴급도','접수일자','진행상태'].map((h) => (
+                  <th key={h} className="px-5 py-3 text-xs font-bold text-on-surface-variant whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -180,14 +186,19 @@ function AdminDashboard() {
                 <tr key={r.id}
                   onClick={() => navigate('/admin/monitoring')}
                   className="hover:bg-surface-container-low/50 cursor-pointer transition-colors">
-                  <td className="px-6 py-4 text-xs font-bold text-primary">{r.id}</td>
-                  <td className="px-6 py-4">
-                    <span className="inline-block px-3 py-1 text-xs font-bold rounded-full bg-error-container text-error">{r.category}</span>
+                  <td className="px-5 py-3 text-xs font-bold text-primary whitespace-nowrap">{r.id}</td>
+                  <td className="px-5 py-3">
+                    {(() => { const s = CATEGORY_STYLE[r.category] ?? CATEGORY_STYLE['기타']; return <span className={`inline-block px-2.5 py-0.5 text-xs font-bold rounded-full ${s.bg} ${s.text}`}>{r.category}</span>; })()}
                   </td>
-                  <td className="px-6 py-4 text-sm text-on-surface max-w-[240px] truncate">{r.title}</td>
-                  <td className="px-6 py-4 text-sm text-on-surface-variant">{r.citizen}</td>
-                  <td className="px-6 py-4">
-                    <span className={`text-xs font-bold px-3 py-1 rounded-full ${statusConfig[r.status] ?? 'bg-surface-container text-on-surface-variant'}`}>
+                  <td className="px-5 py-3 text-sm text-on-surface max-w-[200px] truncate">{r.title}</td>
+                  <td className="px-5 py-3 text-sm text-on-surface-variant whitespace-nowrap">{r.citizen}</td>
+                  <td className="px-5 py-3 text-xs text-on-surface-variant whitespace-nowrap">{r.dept}</td>
+                  <td className="px-5 py-3 whitespace-nowrap">
+                    {(() => { const u = URGENCY_STYLE[r.urgency] ?? URGENCY_STYLE['낮음']; return <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${u.bg} ${u.text}`}>{r.urgency}</span>; })()}
+                  </td>
+                  <td className="px-5 py-3 text-xs text-on-surface-variant whitespace-nowrap">{r.receivedAt}</td>
+                  <td className="px-5 py-3 whitespace-nowrap">
+                    <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${statusConfig[r.status] ?? 'bg-surface-container text-on-surface-variant'}`}>
                       {r.status}
                     </span>
                   </td>

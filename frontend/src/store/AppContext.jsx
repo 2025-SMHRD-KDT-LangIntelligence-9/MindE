@@ -1,5 +1,23 @@
 import { createContext, useContext, useState } from 'react';
 
+/* 긴급도 공통 색상 */
+export const URGENCY_STYLE = {
+  '긴급': { bg: 'bg-red-50',     text: 'text-red-600',     icon: 'priority_high' },
+  '보통': { bg: 'bg-orange-50',  text: 'text-orange-600',  icon: 'remove' },
+  '낮음': { bg: 'bg-emerald-50', text: 'text-emerald-600', icon: 'arrow_downward' },
+};
+
+/* 카테고리 공통 색상 */
+export const CATEGORY_STYLE = {
+  '도로/교통': { bg: 'bg-blue-50',    text: 'text-blue-600' },
+  '시설/안전': { bg: 'bg-amber-50',   text: 'text-amber-600' },
+  '환경/위생': { bg: 'bg-teal-50',    text: 'text-teal-600' },
+  '시설/환경': { bg: 'bg-emerald-50', text: 'text-emerald-600' },
+  '교통/주차': { bg: 'bg-purple-50',  text: 'text-purple-600' },
+  '교통/안전': { bg: 'bg-orange-50',  text: 'text-orange-600' },
+  '기타':      { bg: 'bg-slate-100',  text: 'text-slate-500' },
+};
+
 /* 부서 목록 (AdminUsers에서 권한 부여 시 사용) */
 export const DEPT_OPTIONS = [
   { dept: '도로교통과', deptGroup: ['도로교통과', '교통행정과', '교통지도과'] },
@@ -332,6 +350,13 @@ export function AppProvider({ children }) {
     }
   };
 
+  // 담당 부서 변경
+  const updateComplaintDept = (id, newDept) => {
+    setComplaints((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, dept: newDept } : c))
+    );
+  };
+
   // 메모만 저장 (상태 변경 없이)
   const saveMemo = (id, memo) => {
     setComplaints((prev) =>
@@ -442,6 +467,13 @@ export function AppProvider({ children }) {
     setUsers((prev) => prev.filter((u) => u.id !== userId));
   };
 
+  // 담당자 부서 변경
+  const updateUserDept = (userId, newDept) => {
+    setUsers((prev) => prev.map((u) =>
+      u.id === userId ? { ...u, dept: newDept } : u
+    ));
+  };
+
   // 알림 읽음 처리
   const markAllRead = () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
@@ -476,6 +508,7 @@ export function AppProvider({ children }) {
       login,
       logout,
       updateComplaintStatus,
+      updateComplaintDept,
       saveMemo,
       saveReply,
       addComplaint,
@@ -483,6 +516,7 @@ export function AppProvider({ children }) {
       registerUser,
       approveUser,
       rejectUser,
+      updateUserDept,
     }}>
       {children}
     </AppContext.Provider>

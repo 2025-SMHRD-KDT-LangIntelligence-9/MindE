@@ -27,10 +27,9 @@ function OptionA() {
       </div>
 
       {/* 통계 숫자 */}
-      <div className="relative z-10 grid grid-cols-3 gap-3">
+      <div className="relative z-10 grid grid-cols-2 gap-3">
         {[
           { value: '12,400+', label: '누적 처리' },
-          { value: '4.7점',   label: '시민 만족도' },
           { value: '98%',     label: '완료율' },
         ].map((s) => (
           <div key={s.label} className="bg-white/15 backdrop-blur rounded-2xl px-3 py-3 text-center">
@@ -130,13 +129,6 @@ function OptionC() {
           <div>
             <p className="text-[10px] text-on-surface-variant">평균 처리</p>
             <p className="font-bold text-xs text-on-surface">1.8일</p>
-          </div>
-        </div>
-        <div className="absolute bottom-0 right-0 bg-white rounded-xl px-3 py-2 shadow-lg flex items-center gap-2">
-          <span className="material-symbols-outlined text-purple-500 text-base">thumb_up</span>
-          <div>
-            <p className="text-[10px] text-on-surface-variant">만족도</p>
-            <p className="font-bold text-xs text-on-surface">4.7점</p>
           </div>
         </div>
       </div>

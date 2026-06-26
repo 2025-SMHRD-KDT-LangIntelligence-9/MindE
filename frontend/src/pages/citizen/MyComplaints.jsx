@@ -1,7 +1,7 @@
 ﻿import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import CitizenLayout from '../../layouts/CitizenLayout';
-import { useApp } from '../../store/AppContext';
+import { useApp, CATEGORY_STYLE } from '../../store/AppContext';
 
 const steps = ['접수', '검토', '처리', '완료'];
 
@@ -227,7 +227,7 @@ function MyComplaints() {
                     <tr key={c.id} onClick={() => setSelected(c)} className="hover:bg-surface-container-low/50 cursor-pointer transition-colors">
                       <td className="px-5 py-3 text-xs font-bold text-primary">{c.id}</td>
                       <td className="px-5 py-3 text-sm text-on-surface">{c.title}</td>
-                      <td className="px-5 py-3 text-xs text-on-surface-variant">{c.category}</td>
+                      <td className="px-5 py-3">{(() => { const s = CATEGORY_STYLE[c.category] ?? CATEGORY_STYLE['기타']; return <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${s.bg} ${s.text}`}>{c.category}</span>; })()}</td>
                       <td className="px-5 py-3 text-xs text-on-surface-variant">{c.dept}</td>
                       <td className="px-5 py-3">
                         <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${cfg.bg} ${cfg.text}`}>

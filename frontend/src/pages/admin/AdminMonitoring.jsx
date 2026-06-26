@@ -1,6 +1,6 @@
 ﻿import { useState } from 'react';
 import AdminLayout from '../../layouts/AdminLayout';
-import { useApp } from '../../store/AppContext';
+import { useApp, CATEGORY_STYLE, URGENCY_STYLE } from '../../store/AppContext';
 
 const statusStyle = {
   '접수':     { bg: 'bg-blue-50',    text: 'text-blue-600' },
@@ -11,7 +11,8 @@ const statusStyle = {
 };
 
 function AdminMonitoring() {
-  const { complaints, stats, updateComplaintStatus } = useApp();
+  const { complaints, stats, updateComplaintStatus, updateComplaintDept } = useApp();
+  const DEPT_LIST = ['도로교통과', '환경위생과', '도시시설과', '교통행정과', '청소행정과', '공원녹지과', '상수도과', '사회복지과'];
   const [search,       setSearch]       = useState('');
   const [filterStatus, setFilterStatus] = useState('전체');
   const [filterUrgent, setFilterUrgent] = useState('전체');
@@ -125,10 +126,10 @@ function AdminMonitoring() {
         </div>
 
         <table className="w-full text-left">
-          <thead className="border-b border-outline-variant">
+          <thead className="border-b border-outline-variant bg-surface-container-low/60">
             <tr>
-              {['번호','민원 제목','시민','담당 부서','상태','긴급도','접수일','상태 변경'].map((h) => (
-                <th key={h} className="px-4 py-3 text-xs font-bold text-on-surface-variant">{h}</th>
+              {['민원번호','카테고리','민원내용','접수자','담당부서','긴급도','접수일자','진행상태','담당부서 변경'].map((h) => (
+                <th key={h} className="px-4 py-3 text-xs font-bold text-on-surface-variant whitespace-nowrap">{h}</th>
               ))}
             </tr>
           </thead>
@@ -137,26 +138,27 @@ function AdminMonitoring() {
               const cfg = statusStyle[r.status] ?? { bg: 'bg-slate-100', text: 'text-slate-500' };
               return (
                 <tr key={r.id} className="hover:bg-surface-container-low/50 transition-colors">
-                  <td className="px-4 py-3 text-xs font-bold text-primary">{r.id}</td>
-                  <td className="px-4 py-3 text-sm font-medium text-on-surface max-w-[200px] truncate">{r.title}</td>
-                  <td className="px-4 py-3 text-sm text-on-surface-variant">{r.citizen}</td>
-                  <td className="px-4 py-3 text-sm text-on-surface-variant">{r.dept}</td>
+                  <td className="px-4 py-3 text-xs font-bold text-primary whitespace-nowrap">{r.id}</td>
                   <td className="px-4 py-3">
-                    <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${cfg.bg} ${cfg.text}`}>{r.status}</span>
+                    {(() => { const s = CATEGORY_STYLE[r.category] ?? CATEGORY_STYLE['기타']; return <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${s.bg} ${s.text}`}>{r.category}</span>; })()}
                   </td>
-                  <td className="px-4 py-3">
-                    <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${r.urgency === '긴급' ? 'bg-error-container text-error' : 'bg-surface-container text-on-surface-variant'}`}>
-                      {r.urgency}
-                    </span>
+                  <td className="px-4 py-3 text-sm text-on-surface max-w-[180px] truncate">{r.title}</td>
+                  <td className="px-4 py-3 text-sm text-on-surface-variant whitespace-nowrap">{r.citizen}</td>
+                  <td className="px-4 py-3 text-xs text-on-surface-variant whitespace-nowrap">{r.dept}</td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    {(() => { const u = URGENCY_STYLE[r.urgency] ?? URGENCY_STYLE['낮음']; return <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${u.bg} ${u.text}`}>{r.urgency}</span>; })()}
                   </td>
-                  <td className="px-4 py-3 text-xs text-on-surface-variant">{r.receivedAt}</td>
+                  <td className="px-4 py-3 text-xs text-on-surface-variant whitespace-nowrap">{r.receivedAt}</td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${cfg.bg} ${cfg.text}`}>{r.status}</span>
+                  </td>
                   <td className="px-4 py-3">
                     <select
-                      value={r.status}
-                      onChange={(e) => handleStatusChange(r.id, e.target.value)}
+                      value={r.dept}
+                      onChange={(e) => { updateComplaintDept(r.id, e.target.value); showToast(`담당부서가 '${e.target.value}'(으)로 변경되었습니다.`); }}
                       className="h-7 px-2 rounded-lg border border-outline-variant text-xs text-on-surface bg-white outline-none focus:border-primary"
                     >
-                      {['접수', '처리 중', '보완 요청', '완료', '반려'].map((o) => <option key={o}>{o}</option>)}
+                      {DEPT_LIST.map((d) => <option key={d}>{d}</option>)}
                     </select>
                   </td>
                 </tr>
