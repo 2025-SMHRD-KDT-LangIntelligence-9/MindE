@@ -2,6 +2,7 @@
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import CitizenLayout from '../../layouts/CitizenLayout';
 import { useApp, CATEGORY_STYLE } from '../../store/AppContext';
+import EmptyState from '../../components/EmptyState';
 
 const steps = ['접수', '검토', '처리', '완료'];
 
@@ -220,7 +221,15 @@ function MyComplaints() {
               </thead>
               <tbody className="divide-y divide-outline-variant/50">
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={6} className="px-5 py-10 text-center text-sm text-on-surface-variant">해당하는 민원이 없습니다.</td></tr>
+                  <tr>
+                    <td colSpan={6}>
+                      <EmptyState
+                        icon="search_off"
+                        title="검색 결과가 없습니다"
+                        desc="필터나 검색어를 변경해 보세요."
+                      />
+                    </td>
+                  </tr>
                 ) : filtered.map((c) => {
                   const cfg = statusConfig[c.status] ?? statusConfig['접수'];
                   return (

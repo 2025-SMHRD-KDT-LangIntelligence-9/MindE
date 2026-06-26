@@ -1,6 +1,7 @@
 ﻿import { useState, useRef } from 'react';
 import StaffLayout from '../../layouts/StaffLayout';
 import { useApp, CATEGORY_STYLE, URGENCY_STYLE } from '../../store/AppContext';
+import EmptyState from '../../components/EmptyState';
 
 const STATUS_OPTIONS = ['접수', '처리 중', '보완 요청', '반려', '완료'];
 
@@ -267,10 +268,11 @@ function StaffComplaints() {
 
             <div className="flex-1 overflow-y-auto divide-y divide-outline-variant/40">
               {filtered.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full gap-2 text-on-surface-variant">
-                  <span className="material-symbols-outlined text-4xl opacity-30">inbox</span>
-                  <p className="text-sm">해당하는 민원이 없습니다.</p>
-                </div>
+                <EmptyState
+                  icon="search_off"
+                  title="민원이 없습니다"
+                  desc="검색어나 필터를 변경해 보세요."
+                />
               ) : filtered.map((c) => (
                 <button
                   key={c.id}
@@ -512,10 +514,11 @@ function StaffComplaints() {
             </section>
           ) : (
             <section className="flex-1 flex items-center justify-center bg-white rounded-2xl border border-outline-variant shadow-sm">
-              <div className="text-center text-on-surface-variant space-y-2">
-                <span className="material-symbols-outlined text-5xl opacity-20">assignment</span>
-                <p className="text-sm">왼쪽 목록에서 민원을 선택하세요.</p>
-              </div>
+              <EmptyState
+                icon="assignment"
+                title="민원을 선택하세요"
+                desc="왼쪽 목록에서 확인할 민원을 선택해 주세요."
+              />
             </section>
           )}
         </div>

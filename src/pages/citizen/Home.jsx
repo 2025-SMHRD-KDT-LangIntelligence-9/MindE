@@ -2,6 +2,7 @@
 import CitizenLayout from '../../layouts/CitizenLayout';
 import { useApp } from '../../store/AppContext';
 import logo from '../../assets/logo.png';
+import EmptyState from '../../components/EmptyState';
 
 const statusConfig = {
   '접수':     { bg: 'bg-blue-50',    text: 'text-blue-600',    dot: 'bg-blue-400' },
@@ -61,7 +62,12 @@ function Home() {
           </div>
           <div className="space-y-3">
             {recentComplaints.length === 0 ? (
-              <p className="text-sm text-on-surface-variant text-center py-8">접수된 민원이 없습니다.</p>
+              <EmptyState
+                icon="inbox"
+                title="접수된 민원이 없습니다"
+                desc="AI 챗봇으로 첫 번째 민원을 접수해보세요."
+                action={{ label: '민원 신청하기', icon: 'add_circle', onClick: () => navigate('/chatbot') }}
+              />
             ) : recentComplaints.map((c) => {
               const cfg = statusConfig[c.status] ?? statusConfig['접수'];
               return (
