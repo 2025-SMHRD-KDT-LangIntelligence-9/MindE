@@ -1,0 +1,57 @@
+# ===== 비밀값 =====
+.env
+.env.local
+.env.*.local
+*.bak
+
+# ===== Python =====
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# ===== IDE/OS =====
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ===== 모델 weight (별도 스토리지) =====
+models/*/
+!models/README.md
+
+# ===== 대용량 데이터 (커밋 X) =====
+*.safetensors
+*.bin
+*.npy
+*.pt
+*.pth
+labeled_dataset*.jsonl
+train.jsonl
+val.jsonl
+test.jsonl
+edu_dataset.jsonl
+cluster_*.jsonl
+noise_candidates.jsonl
+embeddings.npy
+texts_meta.json
+moe_faq.json
+*.zip
+
+# ===== 크롤링 결과 =====
+crawl_*/
+crawler_*.log
+
+# ===== 로그 =====
+*.log
+
+# ===== 학습 산출물 =====
+training_report*.json
+checkpoint-*/
+bert-v*/
+urgency-bert/
+kobert-complaint/
+koelectra-complaint/
+roberta-complaint/
