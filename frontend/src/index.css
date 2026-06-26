@@ -1,0 +1,67 @@
+/* Google Fonts: Stitch 디자인에서 쓰인 폰트와 아이콘 (CSS 규칙상 @import는 항상 맨 위에 있어야 함) */
+@import url('https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap');
+
+/* Tailwind CSS v4를 불러옵니다 (v3의 @tailwind base/components/utilities 대신 이 한 줄로 대체됨) */
+@import "tailwindcss";
+
+/*
+  @theme: Tailwind v4의 디자인 토큰 정의 방식.
+  여기서 정의한 이름은 bg-primary, text-on-primary 같은 클래스로 바로 쓸 수 있어요.
+  값은 Stitch에서 가장 자주 등장한 "마음결" 브랜드 컬러(#6EAEFF)를 기준으로 통일했습니다.
+*/
+@theme {
+  --color-primary: #6EAEFF;
+  --color-on-primary: #ffffff;
+  --color-primary-container: #e0eeff;
+  --color-on-primary-container: #001d36;
+
+  --color-secondary: #585f66;
+  --color-secondary-container: #dce3eb;
+  --color-on-secondary-container: #5e656c;
+
+  --color-background: #f8f9ff;
+  --color-on-background: #0b1c30;
+
+  --color-surface: #ffffff;
+  --color-on-surface: #0b1c30;
+  --color-surface-variant: #d3e4fe;
+  --color-on-surface-variant: #414751;
+
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #eff4ff;
+  --color-surface-container: #e5eeff;
+  --color-surface-container-high: #dce9ff;
+  --color-surface-container-highest: #d3e4fe;
+
+  --color-outline: #717783;
+  --color-outline-variant: #c1c7d3;
+
+  --color-error: #ba1a1a;
+  --color-error-container: #ffdad6;
+  --color-on-error: #ffffff;
+  --color-on-error-container: #93000a;
+
+  --color-navy: #001c39;
+
+  --font-sans: 'Public Sans', sans-serif;
+}
+
+body {
+  font-family: 'Public Sans', sans-serif;
+  background-color: #f8f9ff;
+}
+
+/* Material Symbols 아이콘 폰트 공통 설정 (Stitch 디자인에서 쓰던 설정 그대로) */
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  vertical-align: middle;
+}
+
+@keyframes fadein {
+  from { opacity: 0; transform: translateX(12px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.animate-fadein {
+  animation: fadein 0.25s ease-out both;
+}
