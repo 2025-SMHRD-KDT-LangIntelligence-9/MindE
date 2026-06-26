@@ -110,6 +110,23 @@ async def list_tools() -> list[types.Tool]:
             },
         ),
         types.Tool(
+            name='search_dept',
+            description=(
+                '부서 의미 검색 (담당업무 description 기반). '
+                '카테고리에 매핑되지 않은 부서(소방본부/여순사건지원단/기획홍보담당관 등)도 검색됨. '
+                '"주차 위반 신고", "소방 안전점검", "여순사건 신고" 같은 질문에 유용. '
+                '결과에 부서명/담당업무/전화번호 모두 포함.'
+            ),
+            inputSchema={
+                'type': 'object',
+                'properties': {
+                    'query': {'type': 'string'},
+                    'limit': {'type': 'integer', 'default': 5},
+                },
+                'required': ['query'],
+            },
+        ),
+        types.Tool(
             name='lookup_dept_by_category',
             description='카테고리 → 처리 부서 (priority 순).',
             inputSchema={
@@ -149,6 +166,8 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
             ))
         elif name == 'search_faq':
             return reply(svc.search_faq(arguments.get('query', ''), int(arguments.get('limit', 5))))
+        elif name == 'search_dept':
+            return reply(svc.search_dept(arguments.get('query', ''), int(arguments.get('limit', 5))))
         elif name == 'lookup_dept_by_category':
             return reply(svc.lookup_dept_by_category(int(arguments.get('category_id', 0))))
         elif name == 'get_categories':

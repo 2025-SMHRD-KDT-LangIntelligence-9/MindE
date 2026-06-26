@@ -338,6 +338,34 @@ def search_faq(query: str, limit: int = 5) -> list[dict]:
     return _search_rag(query, 'faq', None, limit)
 
 
+def search_dept(query: str, limit: int = 5) -> list[dict]:
+    """부서 의미 검색 (담당업무 기반).
+
+    사용자 질문을 부서 description과 매칭. 카테고리 매핑이 없는 부서
+    (소방본부/특수기관)까지 포함해서 검색되므로 일반 응대에 유용.
+
+    예시 질문:
+        '주차 위반 어디다 신고?', '소방 안전점검 문의', '여순사건 신고'
+
+    Args:
+        query: 자연어 질의
+        limit: 1~20, 기본 5
+
+    Returns:
+        [
+          {
+            'document_id': 5500,
+            'title': '교통행정과',
+            'content': '교통행정과\\n담당업무: 교통기획, 교통관리, 물류정책 ...\\n전화번호: 061-286-7450',
+            'category_id': 1,           # 매핑된 카테고리 (없으면 None)
+            'similarity': 0.612,
+          },
+          ...
+        ]
+    """
+    return _search_rag(query, 'dept', None, limit)
+
+
 def lookup_dept_by_category(category_id: int) -> list[dict]:
     """카테고리에 매핑된 처리 부서를 priority 순으로 반환.
 
