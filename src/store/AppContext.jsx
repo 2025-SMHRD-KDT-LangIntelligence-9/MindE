@@ -424,6 +424,7 @@ export function AppProvider({ children }) {
       memo: '',
       reply: null,
       replyDate: null,
+      citizenFiles: [],
     };
     setComplaints((prev) => [newComplaint, ...prev]);
     setNotifications((prev) => [
@@ -469,8 +470,22 @@ export function AppProvider({ children }) {
 
   // 담당자 부서 변경
   const updateUserDept = (userId, newDept) => {
+    const deptGroupMap = {
+      '도로교통과': ['도로교통과', '교통행정과', '교통지도과'],
+      '교통행정과': ['도로교통과', '교통행정과', '교통지도과'],
+      '교통지도과': ['도로교통과', '교통행정과', '교통지도과'],
+      '환경위생과': ['도시환경과', '청소행정과', '도시녹지과', '환경위생과'],
+      '도시환경과': ['도시환경과', '청소행정과', '도시녹지과', '환경위생과'],
+      '청소행정과': ['도시환경과', '청소행정과', '도시녹지과', '환경위생과'],
+      '도시녹지과': ['도시환경과', '청소행정과', '도시녹지과', '환경위생과'],
+      '도시시설과': ['도시시설과', '공원녹지과', '상수도과'],
+      '공원녹지과': ['도시시설과', '공원녹지과', '상수도과'],
+      '상수도과':   ['도시시설과', '공원녹지과', '상수도과'],
+    };
     setUsers((prev) => prev.map((u) =>
-      u.id === userId ? { ...u, dept: newDept } : u
+      u.id === userId
+        ? { ...u, dept: newDept, deptGroup: deptGroupMap[newDept] ?? [newDept] }
+        : u
     ));
   };
 
