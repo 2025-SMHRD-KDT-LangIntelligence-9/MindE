@@ -60,7 +60,7 @@ function AdminSettings() {
       )}
 
       {/* 탭 */}
-      <div className="mb-6 border-b border-outline-variant flex gap-8 overflow-x-auto">
+      <div className="mb-6 border-b border-outline-variant flex gap-8">
         {tabs.map((tab) => (
           <button
             key={tab.key}

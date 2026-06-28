@@ -50,6 +50,8 @@ function DocumentOCR() {
   });
   const [activeTab, setActiveTab] = useState('ocr');
   const [centerPage, setCenterPage] = useState(0);
+  const [zoom, setZoom] = useState(100);
+  const [fullscreenPage, setFullscreenPage] = useState(null);
 
   return (
     <CitizenLayout pageTitle="민원 서류 작성" activeMenu="document">
@@ -566,6 +568,8 @@ function DocumentOCR() {
                             style={{
                               padding: isCenter ? '24px' : '14px',
                               boxShadow: isCenter ? '0 20px 40px -8px rgba(0,0,0,0.18)' : '0 2px 8px rgba(0,0,0,0.08)',
+                              transform: isCenter ? `scale(${zoom / 100})` : 'none',
+                              transformOrigin: 'top center',
                             }}
                           >
                             {page.content(isCenter)}
@@ -607,14 +611,25 @@ function DocumentOCR() {
 
               {/* 줌 컨트롤 */}
               <div className="px-5 py-3 border-t border-outline-variant/50 flex items-center justify-center gap-4 shrink-0">
-                <button className="w-7 h-7 rounded-lg border border-outline-variant flex items-center justify-center hover:bg-surface-container-low transition-colors">
+                <button
+                  onClick={() => setZoom((z) => Math.max(50, z - 25))}
+                  className="w-7 h-7 rounded-lg border border-outline-variant flex items-center justify-center hover:bg-surface-container-low transition-colors disabled:opacity-30"
+                  disabled={zoom <= 50}
+                >
                   <span className="material-symbols-outlined text-base text-on-surface-variant">zoom_out</span>
                 </button>
-                <span className="text-xs text-on-surface-variant font-medium">100%</span>
-                <button className="w-7 h-7 rounded-lg border border-outline-variant flex items-center justify-center hover:bg-surface-container-low transition-colors">
+                <span className="text-xs text-on-surface-variant font-medium w-10 text-center">{zoom}%</span>
+                <button
+                  onClick={() => setZoom((z) => Math.min(200, z + 25))}
+                  className="w-7 h-7 rounded-lg border border-outline-variant flex items-center justify-center hover:bg-surface-container-low transition-colors disabled:opacity-30"
+                  disabled={zoom >= 200}
+                >
                   <span className="material-symbols-outlined text-base text-on-surface-variant">zoom_in</span>
                 </button>
-                <button className="w-7 h-7 rounded-lg border border-outline-variant flex items-center justify-center hover:bg-surface-container-low transition-colors ml-2">
+                <button
+                  onClick={() => setFullscreenPage(centerPage)}
+                  className="w-7 h-7 rounded-lg border border-outline-variant flex items-center justify-center hover:bg-surface-container-low transition-colors ml-2"
+                >
                   <span className="material-symbols-outlined text-base text-on-surface-variant">fullscreen</span>
                 </button>
               </div>
@@ -659,6 +674,73 @@ function DocumentOCR() {
           </div>
         </div>
       </div>
+      {/* 전체보기 모달 */}
+      {fullscreenPage !== null && (() => {
+        const b = '1px solid #000';
+        const th = (s, extra={}) => ({ border:b, background:'#f0f0f0', padding: s?'3px 6px':'2px 4px', fontWeight:700, textAlign:'center', fontSize:s?9:7, verticalAlign:'middle', whiteSpace:'nowrap', ...extra });
+        const td = (s, extra={}) => ({ border:b, padding: s?'3px 6px':'2px 4px', fontSize:s?9:7, verticalAlign:'middle', ...extra });
+        const pages = [
+          { content: (s) => (
+            <div style={{ fontFamily:"'Malgun Gothic','Noto Sans KR',sans-serif", color:'#000' }}>
+              <p style={{ fontSize:s?7:5, color:'#555', marginBottom:s?4:2, borderBottom:'1px solid #ccc', paddingBottom:s?3:2 }}>□ 서울교통법원 사용고지 &nbsp;[별지 제44호 서식]</p>
+              <table style={{ width:'100%', borderCollapse:'collapse', marginBottom:s?6:4 }}><tbody><tr>
+                <td style={{ border:b, padding: s?'6px 10px':'4px 6px', width:'65%' }}><p style={{ fontSize:s?18:13, fontWeight:900, letterSpacing:'2px', textAlign:'center', margin:0 }}>교통사고사실확인원</p></td>
+                <td style={{ border:b, padding: s?'4px 6px':'2px 4px', verticalAlign:'top' }}><p style={{ fontSize:s?7:5, fontWeight:700, marginBottom:s?10:6 }}>교통사고</p><p style={{ fontSize:s?7:5, fontWeight:700 }}>접수번호</p></td>
+              </tr></tbody></table>
+              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:s?9:7 }}><tbody>
+                <tr><td style={th(s,{width:'12%'})}>명</td><td style={td(s,{width:'38%'})}>{fieldValues.name}</td><td style={th(s,{width:'20%'})}>주민등록번호</td><td style={td(s)}>{fieldValues.rrn}</td></tr>
+                <tr><td style={th(s)}>발생일시</td><td colSpan={3} style={td(s)}>{fieldValues.date}</td></tr>
+                <tr><td style={th(s)}>발생장소</td><td colSpan={3} style={td(s)}>{fieldValues.location}</td></tr>
+                <tr><td style={th(s)}>사고개요</td><td colSpan={3} style={td(s)}>{fieldValues.summary}</td></tr>
+              </tbody></table>
+            </div>
+          )},
+          { content: (s) => (
+            <div style={{ fontFamily:"'Malgun Gothic','Noto Sans KR',sans-serif", color:'#000' }}>
+              <p style={{ fontSize:s?7:5, color:'#555', marginBottom:s?4:2, borderBottom:'1px solid #ccc', paddingBottom:s?3:2 }}>□ 서울교통법원 사용고지 &nbsp;[별지 제44호 서식] — 사고개요</p>
+              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:s?9:7 }}><tbody>
+                <tr><td style={th(s,{width:'14%'})}>사고일시</td><td style={td(s)}>{fieldValues.date}</td></tr>
+                <tr><td style={th(s)}>발생장소</td><td style={td(s)}>{fieldValues.location}</td></tr>
+                <tr><td style={th(s)}>사고내용</td><td style={{ border:b, height:s?80:55, padding:s?'4px 6px':'2px 4px', verticalAlign:'top', fontSize:s?9:7 }}><p style={{ margin:0, lineHeight:1.7 }}>{fieldValues.summary}</p></td></tr>
+              </tbody></table>
+            </div>
+          )},
+          { content: (s) => (
+            <div style={{ fontFamily:"'Malgun Gothic','Noto Sans KR',sans-serif", color:'#000' }}>
+              <p style={{ fontSize:s?7:5, color:'#555', marginBottom:s?4:2, borderBottom:'1px solid #ccc', paddingBottom:s?3:2 }}>□ 서울교통법원 사용고지 &nbsp;[별지 제44호 서식] — 확인 및 서명</p>
+              <div style={{ border:b, padding:s?'8px 10px':'5px 6px', marginBottom:s?10:7, fontSize:s?9:7, lineHeight:1.8 }}>위와 같이 교통사고를 확인한 사실이 있음을 확인합니다.</div>
+              <div style={{ fontSize:s?9:7, marginBottom:s?10:7, textAlign:'right' }}>2024년 &nbsp; 05월 &nbsp; 20일</div>
+              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:s?9:7 }}><tbody>
+                <tr><td style={th(s,{width:'20%'})}>신 청 인</td><td style={td(s)}>{fieldValues.name}</td><td style={{ border:b, width:s?50:34, height:s?50:34, textAlign:'center', fontSize:s?7:5, color:'#aaa', verticalAlign:'middle' }}>서명<br/>날인</td></tr>
+              </tbody></table>
+            </div>
+          )},
+        ];
+        return (
+          <div className="fixed inset-0 bg-black/70 z-50 flex flex-col items-center justify-center" onClick={() => setFullscreenPage(null)}>
+            <div className="bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col" style={{ width: '600px', maxHeight: '90vh' }} onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between px-5 py-3.5 border-b border-outline-variant shrink-0">
+                <p className="text-sm font-bold text-on-surface">페이지 {fullscreenPage + 1} / {pages.length}</p>
+                <button onClick={() => setFullscreenPage(null)} className="w-8 h-8 rounded-full hover:bg-surface-container flex items-center justify-center transition-colors">
+                  <span className="material-symbols-outlined text-on-surface-variant">close</span>
+                </button>
+              </div>
+              <div className="overflow-y-auto p-8">
+                <div className="bg-white border border-slate-200 rounded p-8 shadow-md">
+                  {pages[fullscreenPage]?.content(true)}
+                </div>
+              </div>
+              <div className="flex items-center justify-center gap-3 px-5 py-3 border-t border-outline-variant shrink-0">
+                <button onClick={() => setFullscreenPage((p) => Math.max(0, p - 1))} disabled={fullscreenPage === 0} className="px-4 py-1.5 text-xs font-bold border border-outline-variant rounded-lg hover:bg-surface-container disabled:opacity-30 transition-colors">이전</button>
+                {pages.map((_, i) => (
+                  <button key={i} onClick={() => setFullscreenPage(i)} className={`w-6 h-6 rounded-full text-xs font-bold transition-colors ${i === fullscreenPage ? 'bg-primary text-white' : 'bg-surface-container text-on-surface-variant hover:bg-primary/10'}`}>{i + 1}</button>
+                ))}
+                <button onClick={() => setFullscreenPage((p) => Math.min(pages.length - 1, p + 1))} disabled={fullscreenPage === pages.length - 1} className="px-4 py-1.5 text-xs font-bold border border-outline-variant rounded-lg hover:bg-surface-container disabled:opacity-30 transition-colors">다음</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </CitizenLayout>
   );
 }
