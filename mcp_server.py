@@ -3,12 +3,15 @@
 chatbot_service의 함수들을 MCP 프로토콜로 노출.
 백엔드는 chatbot_service를 직접 import하면 되며 이 파일은 호출하지 않음.
 
-도구 7개:
-  - classify_complaint
-  - check_urgency
-  - search_laws / search_cases / search_faq
-  - lookup_dept_by_category
-  - get_categories
+도구 8개:
+  - classify_complaint              민원 텍스트 → 11 카테고리 분류
+  - check_urgency                   긴급 여부 판정
+  - search_laws                     법령 조항 벡터 검색
+  - search_cases                    유사 사례 검색 (적재 시)
+  - search_dept                     부서 의미 검색 (category_id 필터 가능)
+  - match_or_create_cluster         유사 민원 그룹화 + urgency_bonus
+  - lookup_dept_by_category         카테고리 → 부서 priority 순
+  - get_categories                  11 카테고리 메타
 
 Claude Desktop 등록 (~/AppData/Roaming/Claude/claude_desktop_config.json):
   {
@@ -98,18 +101,6 @@ async def list_tools() -> list[types.Tool]:
             },
         ),
         types.Tool(
-            name='search_faq',
-            description='교육부 FAQ 검색 (교육 카테고리 민원 답변용).',
-            inputSchema={
-                'type': 'object',
-                'properties': {
-                    'query': {'type': 'string'},
-                    'limit': {'type': 'integer', 'default': 5},
-                },
-                'required': ['query'],
-            },
-        ),
-        types.Tool(
             name='search_dept',
             description=(
                 '부서 의미 검색 (담당업무 description 기반). '
@@ -181,8 +172,6 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
                 arguments.get('category_id'),
                 int(arguments.get('limit', 5)),
             ))
-        elif name == 'search_faq':
-            return reply(svc.search_faq(arguments.get('query', ''), int(arguments.get('limit', 5))))
         elif name == 'search_dept':
             cat = arguments.get('category_id')
             return reply(svc.search_dept(

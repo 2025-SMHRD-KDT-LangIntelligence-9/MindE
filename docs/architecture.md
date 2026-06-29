@@ -16,8 +16,7 @@
    │      ├─ check_urgency(text)             → is_urgent
    │      ├─ match_or_create_cluster(text)   → cluster_id + urgency_bonus
    │      ├─ search_laws(text)               → 관련 법령 (cat 필터 옵션)
-   │      ├─ search_cases(text)              → 유사 사례
-   │      └─ search_faq(text)                → 교육 FAQ
+   │      └─ search_cases(text)              → 유사 사례
    │
    │  ─── [2단계] classify 결과 도착 후 ───
    │      ├─ lookup_dept_by_category(category_id) → 매핑된 부서들 priority 순
@@ -27,7 +26,7 @@
    ▼
 [OpenAI gpt-4o-mini]
    │  system: "민원 챗봇. 위 정보로 친절하게 답변"
-   │  context: 분류 + 긴급 + 클러스터 + 법령 + 사례 + FAQ + 부서
+   │  context: 분류 + 긴급 + 클러스터 + 법령 + 사례 + 부서
    │  ↓
    │  자연어 답변 생성
    ▼
@@ -48,7 +47,7 @@
 ## 핵심 의존 관계
 
 - **`category_id` 결정 필수** → `lookup_dept_by_category`, `search_dept`는 직렬 의존
-- 그 외 도구(긴급/클러스터/법령/사례/FAQ)는 카테고리 무관, 1단계 병렬 가능
+- 그 외 도구(긴급/클러스터/법령/사례)는 카테고리 무관, 1단계 병렬 가능
 - 챗봇 질의(/chat/ask) — 답변만, DB 저장 X
 - 정식 민원(/complaints) — DB 저장 + 알림 발동
 
@@ -68,8 +67,8 @@
 | source_type | 건수 | 출처 |
 |---|---:|---|
 | `law` | 5,441 조항 | 26개 핵심 법령 (도로교통법, 건축법, 세무법, 민원처리법 등) |
-| `case` | ~21,000 (적재 예정) | 국민신문고(epeople) 유사 사례 + 공식 답변 |
-| `faq` | 416 (적재 예정) | 교육부 FAQ |
+| `case` | ~25,000 (적재 예정) | 국민신문고(epeople) 유사 사례 + 공식 답변 |
+| `dept` | 39 | 전남도청 부서 description |
 
 모두 `rag_documents` 한 테이블에 통합. KoSimCSE 768차원 임베딩으로 cosine 유사도 검색.
 
@@ -89,7 +88,7 @@
 | 10 | 상하수도 | 0.921 | 수자원관리과, 환경정책과 |
 | 11 | 경제 | 0.874 | 기반산업과 |
 
-교육(학교/저작권/입시)은 분류기 외부. 분류기 confidence 낮고 `search_faq` 결과가 강하면 라우팅.
+교육(학교/저작권/입시) 카테고리는 별도 미운영. 필요 시 향후 추가.
 
 ## 책임 경계
 

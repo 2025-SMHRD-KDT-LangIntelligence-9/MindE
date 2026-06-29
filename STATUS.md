@@ -22,7 +22,6 @@
 | law (법령 조항) | 5,441 | ✅ |
 | dept (부서 description) | 39 | ✅ |
 | case (epeople 사례) | **0** | ⏳ 미적재 |
-| faq (moe FAQ) | **0** | ⏳ 미적재 |
 
 ### chatbot_service (백엔드 import용)
 | 함수 | 용도 |
@@ -31,14 +30,13 @@
 | `check_urgency(text)` | 긴급 + DB 키워드 매칭 |
 | `search_laws(query, category_id?, limit)` | 법령 RAG |
 | `search_cases(query, category_id?, limit)` | 사례 RAG (데이터 없음) |
-| `search_faq(query, limit)` | FAQ RAG (데이터 없음) |
 | `search_dept(query, category_id?, limit)` | 부서 의미 검색 |
 | `lookup_dept_by_category(category_id)` | 카테고리 → 부서 priority 순 |
 | `match_or_create_cluster(text, threshold=0.75)` | 클러스터링 + urgency_bonus |
 | `get_categories()` | 11 카테고리 메타 |
 
 ### MCP 서버 (Claude Desktop용)
-- 도구 10개 (chatbot_service의 함수들 + lookup_dept_intro/phone CSV)
+- 도구 9개 (chatbot_service 함수들 그대로 노출)
 
 ### AI 인계 패키지 (GitHub `ai` 브랜치)
 - 최신 커밋: `f9f6821` (match_or_create_cluster + search_dept category filter)
@@ -52,7 +50,6 @@
 
 ### 데이터 적재 (기능 자체는 됨, 데이터만 비어있음)
 - **epeople 사례** — 크롤링 `25,919건 unique` 완료, DB 적재 대기
-- **moe FAQ 416건** — `edu_dataset.jsonl`에서 적재 대기
 
 ### 백엔드 통보 필요
 - 오늘 추가/변경된 것 백엔드한테 안 알림:
@@ -96,7 +93,6 @@ print(cur.fetchall())
 
 1. **백엔드 통보** — 오늘 변경사항 슬랙/대면 전달
 2. **epeople 사례 적재 + 임베딩** (30분) — search_cases 활성화
-3. **moe FAQ 적재** (5분) — search_faq 활성화
 4. (선택) search_dept 정밀도 개선
 5. (선택) 클러스터 답변 재활용 기능
 

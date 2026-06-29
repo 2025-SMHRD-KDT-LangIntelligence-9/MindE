@@ -119,19 +119,25 @@ results = await asyncio.gather(
 
 ---
 
-## 5. `search_faq(query, limit=5) → list[dict]`
+## 5. `search_dept(query, category_id=None, limit=5) → list[dict]`
 
-교육부 FAQ 검색 (416건, 교육 카테고리 전용).
+부서 의미 검색 (39개 부서 description 기반).
 
 **Args**
-- `query` (str)
-- `limit` (int)
+- `query` (str): 자연어 질의
+- `category_id` (int|None): 주면 그 카테고리 매핑 부서 안에서만 검색
+- `limit` (int): 1~20, 기본 5
 
-**Returns**: `search_laws`와 동일 구조 (단 `category_id` 인자 없음 — FAQ는 전부 교육)
+**Returns**
+```json
+[{"document_id": ..., "title": "교통행정과",
+  "content": "교통행정과\n담당업무: ...\n전화번호: 061-286-7450",
+  "category_id": 1, "similarity": 0.41}]
+```
 
 **Notes**
-- 분류기가 "교육"으로 잡지 않으면 사용 안 함 (교육은 분류기 11카테고리 외부, 별도 라우팅)
-- 학교/저작권/입시/학사 관련
+- `category_id=None`이면 39개 전체 (소방본부/특수기관 포함)
+- 분류 결과와 조합 시 정확도 ↑
 
 ---
 
@@ -187,13 +193,12 @@ results = await asyncio.gather(
 ```python
 async def handle_complaint(text: str):
     # ─── 1단계: 카테고리 의존 없는 도구 병렬 ───
-    cls, urg, cluster, laws, cases, faq = await asyncio.gather(
+    cls, urg, cluster, laws, cases = await asyncio.gather(
         asyncio.to_thread(svc.classify_complaint, text),
         asyncio.to_thread(svc.check_urgency, text),
         asyncio.to_thread(svc.match_or_create_cluster, text),
         asyncio.to_thread(svc.search_laws, text, None, 5),
         asyncio.to_thread(svc.search_cases, text, None, 5),
-        asyncio.to_thread(svc.search_faq, text, 5),
     )
     cat_id = cls['category_id']
 
@@ -210,7 +215,6 @@ async def handle_complaint(text: str):
         'cluster': cluster,         # cluster_id, urgency_bonus 포함
         'laws': laws,
         'cases': cases,
-        'faq': faq,
         'departments_priority': depts,
         'departments_semantic': dept_search,
     }

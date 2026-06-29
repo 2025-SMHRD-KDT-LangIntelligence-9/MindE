@@ -89,7 +89,6 @@ ai/
 | `check_urgency(text)` | 긴급 여부 + 매칭 키워드 |
 | `search_laws(query, category_id?, limit)` | 법령 조항 벡터 검색 |
 | `search_cases(query, category_id?, limit)` | 유사 사례 벡터 검색 |
-| `search_faq(query, limit)` | 교육 FAQ 벡터 검색 |
 | `lookup_dept_by_category(category_id)` | 카테고리 → 부서 (priority 순) |
 | `get_categories()` | 11 카테고리 메타 정보 |
 
@@ -105,13 +104,12 @@ import chatbot_service as svc
 
 async def handle_complaint(text: str):
     # 1단계: 카테고리 의존 없는 도구 병렬
-    cls, urg, cluster, laws, cases, faq = await asyncio.gather(
+    cls, urg, cluster, laws, cases = await asyncio.gather(
         asyncio.to_thread(svc.classify_complaint, text),
         asyncio.to_thread(svc.check_urgency, text),
         asyncio.to_thread(svc.match_or_create_cluster, text),
         asyncio.to_thread(svc.search_laws, text, None, 5),
         asyncio.to_thread(svc.search_cases, text, None, 5),
-        asyncio.to_thread(svc.search_faq, text, 5),
     )
     cat_id = cls['category_id']
 
@@ -139,7 +137,7 @@ async def handle_complaint(text: str):
 - `categories` (11) / `departments` (20) / `category_department_mapping`
 - `complaints` / `complaint_responses` / `complaint_status_history`
 - `urgency_keywords` (29, 동적 로드)
-- `rag_documents` ← 법령/사례/FAQ 통합 RAG 저장소
+- `rag_documents` ← 법령/사례/부서 통합 RAG 저장소
 - `users` / `notifications` / `complaint_attachments` / `complaint_clusters`
 
 `db/schema.sql`에 전체 DDL + 시드.

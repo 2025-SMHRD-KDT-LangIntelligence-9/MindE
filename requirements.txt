@@ -24,6 +24,9 @@ pgvector>=0.2
 # ===== MCP (Claude Desktop용, 선택) =====
 mcp>=1.0
 
+# ===== OpenAI (answer_chatbot LLM 호출) =====
+openai>=1.0
+
 # ===== 환경변수 =====
 python-dotenv>=1.0
 

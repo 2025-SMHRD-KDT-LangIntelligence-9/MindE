@@ -3,16 +3,19 @@
 백엔드(FastAPI 등)에서 import해서 바로 호출하는 비즈니스 로직.
 MCP 서버(mcp_server.py)도 이 모듈을 import해서 같은 함수를 노출.
 
-함수 7개:
-  - classify_complaint(text, top_k=3)            → 카테고리 분류
-  - check_urgency(text)                          → 긴급 여부
-  - search_laws(query, category_id=None, limit=5)→ 법령 RAG
-  - search_cases(query, category_id=None, limit=5)→ 사례 RAG
-  - search_faq(query, limit=5)                   → FAQ RAG
-  - lookup_dept_by_category(category_id)         → 카테고리 → 부서 매핑
-  - get_categories()                             → 11 카테고리 메타 정보
+함수:
+  - classify_complaint(text, top_k=3)              → 카테고리 분류
+  - check_urgency(text)                            → 긴급 여부
+  - match_or_create_cluster(text, threshold=0.75)  → 클러스터 매칭/생성
+  - search_laws(query, category_id=None, limit=5)  → 법령 RAG
+  - search_cases(query, category_id=None, limit=5) → 사례 RAG
+  - search_dept(query, category_id=None, limit=5)  → 부서 의미 검색
+  - lookup_dept_by_category(category_id)           → 카테고리 → 부서 매핑
+  - get_categories()                               → 11 카테고리 메타
+  - answer_chatbot(text)  [async]                  → LLM 답변 생성 (메인 진입점)
 
-모두 sync 함수. async 사용 시 asyncio.to_thread()로 감싸면 됨.
+위 함수는 sync (answer_chatbot만 async).
+async 환경에서는 asyncio.to_thread()로 sync 함수 감쌈.
 모든 반환은 plain dict/list (JSON-safe).
 
 환경변수:
@@ -66,12 +69,14 @@ _URGENCY_EXCLUDE_RE = re.compile(
 
 
 # ===== 싱글톤 캐시 =====
+import threading
 _classifier = None
 _urgency = None
 _db_conn = None
 _embed_model = None
 _urgent_keywords = None
 _category_map = None
+_loader_lock = threading.Lock()  # 모델 lazy load race condition 방지
 
 
 def _normalize_text(text: str) -> str:
@@ -83,21 +88,25 @@ def _normalize_text(text: str) -> str:
 def _get_classifier():
     global _classifier
     if _classifier is None:
-        from classifier import ComplaintClassifier
-        _classifier = ComplaintClassifier(model_dir=str(CLASSIFIER_DIR))
+        with _loader_lock:
+            if _classifier is None:  # double-checked locking
+                from classifier import ComplaintClassifier
+                _classifier = ComplaintClassifier(model_dir=str(CLASSIFIER_DIR))
     return _classifier
 
 
 def _get_urgency():
     global _urgency
     if _urgency is None:
-        import torch
-        from transformers import AutoTokenizer, AutoModelForSequenceClassification
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        tokenizer = AutoTokenizer.from_pretrained(str(URGENCY_DIR))
-        model = AutoModelForSequenceClassification.from_pretrained(str(URGENCY_DIR))
-        model.to(device).eval()
-        _urgency = {'tokenizer': tokenizer, 'model': model, 'device': device}
+        with _loader_lock:
+            if _urgency is None:
+                import torch
+                from transformers import AutoTokenizer, AutoModelForSequenceClassification
+                device = 'cuda' if torch.cuda.is_available() else 'cpu'
+                tokenizer = AutoTokenizer.from_pretrained(str(URGENCY_DIR))
+                model = AutoModelForSequenceClassification.from_pretrained(str(URGENCY_DIR))
+                model.to(device).eval()
+                _urgency = {'tokenizer': tokenizer, 'model': model, 'device': device}
     return _urgency
 
 
@@ -123,11 +132,23 @@ def _get_db():
 def _get_embed():
     global _embed_model
     if _embed_model is None:
-        import torch
-        from sentence_transformers import SentenceTransformer
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        _embed_model = SentenceTransformer(EMBED_MODEL_NAME, device=device)
+        with _loader_lock:
+            if _embed_model is None:
+                import torch
+                from sentence_transformers import SentenceTransformer
+                device = 'cuda' if torch.cuda.is_available() else 'cpu'
+                _embed_model = SentenceTransformer(EMBED_MODEL_NAME, device=device)
     return _embed_model
+
+
+def preload_models():
+    """모듈 시작 시 모델 미리 로딩 (서버 startup에서 호출 권장).
+
+    답변 첫 요청에서 race condition 방지 + 응답 지연 제거.
+    """
+    _get_classifier()
+    _get_urgency()
+    _get_embed()
 
 
 def _get_category_map() -> dict:
@@ -328,16 +349,6 @@ def search_cases(query: str, category_id: Optional[int] = None, limit: int = 5) 
     return _search_rag(query, 'case', category_id, limit)
 
 
-def search_faq(query: str, limit: int = 5) -> list[dict]:
-    """교육부 FAQ 검색.
-
-    교육 카테고리 민원(학교/저작권/입시 등) 답변용. category_id 필터 없음.
-
-    Args, Returns: search_laws와 동일 구조 (단 category_id 인자 없음).
-    """
-    return _search_rag(query, 'faq', None, limit)
-
-
 def search_dept(query: str, category_id: Optional[int] = None, limit: int = 5) -> list[dict]:
     """부서 의미 검색 (담당업무 기반).
 
@@ -369,23 +380,23 @@ def search_dept(query: str, category_id: Optional[int] = None, limit: int = 5) -
     return _search_rag(query, 'dept', category_id, limit)
 
 
-def match_or_create_cluster(text: str, similarity_threshold: float = 0.75) -> dict:
+def match_or_create_cluster(text: str, keywords: Optional[list] = None,
+                            similarity_threshold: float = 0.75) -> dict:
     """비슷한 민원 그룹(클러스터)을 찾거나 새로 생성.
 
     동작:
-      1. 입력 텍스트를 KoSimCSE로 임베딩 (벡터)
+      1. keywords 주어지면 ' '.join(keywords)를 임베딩, 아니면 text를 임베딩
       2. 기존 complaint_clusters의 centroid와 cosine 유사도 비교
       3. similarity_threshold 이상이면 기존 클러스터에 매칭:
          - complaint_count++
          - last_seen_at 갱신
          - centroid를 EMA(0.9) 가중 평균으로 업데이트
-      4. 미만이면 신규 클러스터 INSERT:
-         - representative_content = text
-         - centroid = 새 벡터
-         - count = 1
+      4. 미만이면 신규 클러스터 INSERT
 
     Args:
-        text: 민원 본문
+        text: 민원 본문 (representative_content용)
+        keywords: 핵심 키워드 리스트 (선택). 주어지면 매칭 정확도 ↑.
+                  LLM이 사전 추출한 키워드 권장 (extract_keywords 함수 사용).
         similarity_threshold: 매칭 임계값 (기본 0.75)
 
     Returns:
@@ -410,7 +421,11 @@ def match_or_create_cluster(text: str, similarity_threshold: float = 0.75) -> di
         return {'cluster_id': None, 'similarity': 0.0, 'is_new': False,
                 'complaint_count': 0, 'representative_content': '', 'urgency_bonus': 0.0}
 
-    vec = _get_embed().encode(text, normalize_embeddings=True).astype(np.float32)
+    # 임베딩 대상: 키워드 있으면 키워드 우선 (의도 명확, 매칭 정확도 ↑)
+    embed_target = ' '.join(keywords).strip() if keywords else text
+    if not embed_target:
+        embed_target = text
+    vec = _get_embed().encode(embed_target, normalize_embeddings=True).astype(np.float32)
     conn = _get_db()
     with conn.cursor() as c:
         # 1) 기존 클러스터 중 가장 가까운 것 (centroid 있는 것만)
@@ -501,6 +516,372 @@ def lookup_dept_by_category(category_id: int) -> list[dict]:
             {'department_id': int(r[0]), 'name': r[1], 'email': r[2], 'phone': r[3], 'priority': int(r[4])}
             for r in c.fetchall()
         ]
+
+
+# ============================================================
+# OpenAI Function Calling — 도구 스키마
+# ============================================================
+# answer_chatbot 함수가 OpenAI에 노출하는 도구 정의.
+# 각 description은 LLM이 호출 여부 판단하는 핵심 — 명확하고 구체적으로.
+OPENAI_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "classify_complaint",
+            "description": (
+                "민원 텍스트를 11개 카테고리 중 가장 적합한 것 top-K로 분류. "
+                "카테고리: 교통(1), 건축(2), 행정(3), 보건위생(4), 환경(5), 문화_여가(6), "
+                "농축산(7), 복지(8), 세무(9), 상하수도(10), 경제(11). "
+                "각 카테고리의 confidence(0~1) + category_id 반환."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string", "description": "민원 본문"},
+                    "top_k": {"type": "integer", "default": 3, "description": "반환할 후보 수 (1~11)"},
+                },
+                "required": ["text"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "check_urgency",
+            "description": (
+                "민원의 긴급 여부 판정. KLUE BERT 이진 분류 + DB 키워드(가스누출/화재/붕괴 등) 매칭. "
+                "is_urgent=true이면 119/112/안전신문고 우선 안내 권장."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {"text": {"type": "string", "description": "민원 본문"}},
+                "required": ["text"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_laws",
+            "description": (
+                "관련 법령 조항 벡터 검색 (5,441 조항). 도로교통법/건축법/세무법/주민등록법/민원처리법 등. "
+                "답변에 근거 법령으로 인용. category_id 필터 가능 (분류 결과 활용)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "검색 질의"},
+                    "category_id": {"type": "integer", "description": "카테고리 필터 1~11 (선택)"},
+                    "limit": {"type": "integer", "default": 5},
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_cases",
+            "description": (
+                "국민신문고 유사 사례 검색 (질문+공식 답변). 비슷한 민원이 어떻게 처리됐는지 참고용. "
+                "category_id 필터 가능."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "category_id": {"type": "integer"},
+                    "limit": {"type": "integer", "default": 5},
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_dept",
+            "description": (
+                "부서 의미 검색 (39개 부서 담당업무 description 기반). "
+                "category_id 주면 그 카테고리 매핑 부서 안에서만 검색 (정밀도 ↑). "
+                "카테고리에 매핑되지 않은 부서(소방본부/여순사건지원단 등)도 None이면 포함."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "category_id": {"type": "integer", "description": "카테고리 필터 1~11 (선택)"},
+                    "limit": {"type": "integer", "default": 5},
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "lookup_dept_by_category",
+            "description": (
+                "카테고리에 매핑된 처리 부서를 priority 순으로 반환. "
+                "분류 결과의 category_id로 호출. 부서명/전화번호/우선순위 포함."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "category_id": {"type": "integer", "description": "1~11"},
+                },
+                "required": ["category_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "match_or_create_cluster",
+            "description": (
+                "비슷한 민원 그룹을 찾거나 신규 생성. complaint_count가 높을수록 동일 민원이 자주 접수됨. "
+                "답변에 '이 민원 N건째 접수' 같은 정보 활용 가능. urgency_bonus는 긴급도 자동 가산점."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string", "description": "민원 본문"},
+                    "similarity_threshold": {"type": "number", "default": 0.75},
+                },
+                "required": ["text"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_categories",
+            "description": "11개 카테고리 메타 (category_id, name). 카테고리 ID와 이름 매핑 확인용.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+]
+
+# 도구 이름 → 실제 함수 매핑 (answer_chatbot이 사용)
+_TOOL_DISPATCH = {
+    "classify_complaint": lambda **kw: classify_complaint(**kw),
+    "check_urgency": lambda **kw: check_urgency(**kw),
+    "search_laws": lambda **kw: search_laws(**kw),
+    "search_cases": lambda **kw: search_cases(**kw),
+    "search_dept": lambda **kw: search_dept(**kw),
+    "lookup_dept_by_category": lambda **kw: lookup_dept_by_category(**kw),
+    "match_or_create_cluster": lambda **kw: match_or_create_cluster(**kw),
+    "get_categories": lambda **kw: get_categories(**kw),
+}
+
+
+# ============================================================
+# Chatbot LLM (OpenAI Function Calling)
+# ============================================================
+OPENAI_MODEL = os.environ.get('OPENAI_MODEL', 'gpt-4o-mini')
+OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
+
+SYSTEM_PROMPT = """\
+당신은 "마음결" 공공 민원 상담 챗봇입니다. 사용자의 민원 관련 질문에 친절하고 정확하게 답변하세요.
+
+## 입력 형식
+사용자 메시지에는 다음 두 부분이 포함됩니다:
+1. <context> ... </context> — 시스템이 미리 수집한 정보 (JSON)
+   - classification: 카테고리 분류 결과 (category, category_id, confidence)
+   - urgency: 긴급 여부 (is_urgent, matched_keyword)
+   - cluster: 유사 민원 그룹 (complaint_count, urgency_bonus)
+   - keywords: 사용자 텍스트에서 추출한 핵심 키워드
+   - laws: 관련 법령 조항 리스트 (title, content, similarity)
+   - cases: 유사 사례 리스트 (있을 수도, 빈 리스트일 수도)
+   - departments: 카테고리 매핑 부서 (name, phone, priority)
+   - similar_depts: 부서 의미 검색 결과
+2. 사용자 질문 (자연어)
+
+## 답변 규칙
+- 어떤 카테고리의 민원인지 한 줄로 명시 (예: "교통 관련 민원이군요.")
+- departments에서 priority=1 부서를 우선 안내, 부서명 + 전화번호 포함
+- 친절한 존댓말, 3~5문장 정도로 간결하게
+
+## 🚫 절대 금지 (할루시네이션 방지)
+
+다음을 절대 만들어내지 마세요. **반드시 context에 명시된 값만 사용**:
+
+1. **부서명/전화번호**: context.departments 또는 context.similar_depts에 있는 정확한 name·phone만 사용. 없는 부서나 임의 번호(예: 1234-5678) 생성 금지.
+
+2. **법령 조항**: context.laws 배열에 있는 title의 글자 그대로만 인용.
+   - ✅ 올바른 예: context.laws[0].title이 "도로교통법 제33조(주차금지의 장소)"이면 → "도로교통법 제33조에 따르면..." 또는 그대로 인용
+   - ❌ 금지: context.laws에 없는 조항 인용 (예: 임의로 "형법 제172조의2" 같은 조항 만들어내기)
+   - context.laws가 빈 배열이거나 모든 similarity가 0.4 미만이면 **법령 인용 자체를 생략**하세요.
+
+3. **사례/통계**: cases 배열이나 cluster.complaint_count 없으면 "사례 N건" 같은 표현 금지.
+
+## 조건부
+- urgency.is_urgent=true 이면 답변 첫 줄에 "긴급한 상황이라면 즉시 119/112로 신고해주세요" 추가.
+- cluster.complaint_count >= 10 이면 "동일 민원이 N건 접수되어 우선 처리 중입니다" 한 줄 추가.
+- classification.confidence < 0.6 이면 카테고리 확정 표현 피하고 "관련 문의로 보입니다" 정도로 완곡하게.
+- cases가 비어있거나 sim이 매우 낮으면 그 항목 언급하지 마세요.
+
+## 모르면 모른다고
+정확하지 않은 정보는 추측하지 말고 "정확한 정보는 담당 부서에 직접 문의해주세요"로 안내.
+"""
+
+_openai_client = None
+
+
+def _get_openai():
+    """AsyncOpenAI 클라이언트 (싱글톤)."""
+    global _openai_client
+    if _openai_client is None:
+        from openai import AsyncOpenAI
+        if not OPENAI_API_KEY:
+            raise RuntimeError("OPENAI_API_KEY 환경변수 없음. .env 확인.")
+        _openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+    return _openai_client
+
+
+def _summarize(result):
+    """긴 결과를 짧게 요약 (도구 호출 로그용)."""
+    import json as _json
+    if isinstance(result, list):
+        return f'list({len(result)})'
+    if isinstance(result, dict):
+        return 'dict(' + ', '.join(list(result.keys())[:5]) + ')'
+    s = str(result)
+    return s[:80]
+
+
+async def extract_keywords(text: str, max_keywords: int = 5) -> list[str]:
+    """사용자 텍스트에서 핵심 키워드 추출 (OpenAI 호출).
+
+    클러스터링 매칭 정확도를 위해 사용. 본문 전체 임베딩보다 핵심 단어 임베딩이
+    같은 의미의 다른 표현을 더 잘 묶음.
+
+    Args:
+        text: 민원 본문
+        max_keywords: 추출할 키워드 최대 개수 (기본 5)
+
+    Returns:
+        ["불법주차", "단속", "횡단보도"] 같은 키워드 리스트.
+        실패 시 빈 리스트 반환 (호출자가 fallback).
+
+    Notes:
+        - 짧은 호출 (응답 토큰 30개 정도). 비용/지연 미미.
+        - 호출 실패해도 match_or_create_cluster는 text fallback으로 동작.
+    """
+    text = (text or '').strip()
+    if not text:
+        return []
+    try:
+        client = _get_openai()
+        resp = await client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[
+                {"role": "system", "content":
+                 "사용자 민원 텍스트에서 핵심 키워드를 추출하세요. "
+                 f"명사 위주, 최대 {max_keywords}개. "
+                 "답변은 쉼표로 구분한 키워드만 출력. 다른 말 절대 추가하지 마세요. "
+                 "예: 불법주차, 단속, 횡단보도"},
+                {"role": "user", "content": text},
+            ],
+            temperature=0.0,
+            max_tokens=60,
+        )
+        raw = (resp.choices[0].message.content or '').strip()
+        # 쉼표/세미콜론 split
+        keywords = [k.strip() for k in re.split(r'[,;、]', raw) if k.strip()]
+        return keywords[:max_keywords]
+    except Exception:
+        return []
+
+
+async def answer_chatbot(text: str) -> dict:
+    """챗봇 답변 생성 (백엔드 오케스트레이션 패턴 A).
+
+    흐름:
+      1단계 — 카테고리 의존 없는 도구 병렬 호출:
+        classify, urgency, cluster, search_laws, search_cases
+      2단계 — category_id 결정 후 부서 도구 병렬:
+        lookup_dept_by_category, search_dept
+      3단계 — 모든 결과를 컨텍스트로 OpenAI(gpt-4o-mini) 호출 → 답변 생성
+
+    Args:
+        text: 사용자 질문 (민원 관련 자연어)
+
+    Returns:
+        {
+            'answer': '...',           # 자연어 답변
+            'metadata': {
+                'classification': {...},   # category, category_id, confidence, top_k
+                'urgency': {...},          # is_urgent, probability_urgent, matched_keyword
+                'cluster': {...},          # cluster_id, complaint_count, urgency_bonus
+                'laws': [...],             # 법령 조항 list
+                'cases': [...],            # 사례 list (적재 시)
+                'departments': [...],      # priority 순 부서
+                'similar_depts': [...],    # 의미 검색 부서
+            }
+        }
+
+    환경변수 필수:
+        OPENAI_API_KEY  — OpenAI API 키
+        OPENAI_MODEL    — (선택, 기본 'gpt-4o-mini')
+    """
+    import asyncio
+    import json as _json
+
+    text = (text or '').strip()
+    if not text:
+        return {'answer': '', 'metadata': {}}
+
+    # ─── 1단계: 키워드 추출(LLM)을 먼저 시작, 나머지 도구는 키워드 없이 병렬 시작 ───
+    keywords_task = asyncio.create_task(extract_keywords(text))
+
+    cls, urg, laws, cases = await asyncio.gather(
+        asyncio.to_thread(classify_complaint, text, 3),
+        asyncio.to_thread(check_urgency, text),
+        asyncio.to_thread(search_laws, text, None, 5),
+        asyncio.to_thread(search_cases, text, None, 5),
+    )
+    cat_id = cls.get('category_id')
+
+    # 키워드 추출 완료 대기 후 클러스터 매칭
+    keywords = await keywords_task
+    cluster = await asyncio.to_thread(match_or_create_cluster, text, keywords)
+
+    # ─── 2단계: category_id 결정 후 부서 도구 병렬 ───
+    if cat_id:
+        depts, dept_search = await asyncio.gather(
+            asyncio.to_thread(lookup_dept_by_category, cat_id),
+            asyncio.to_thread(search_dept, text, cat_id, 5),
+        )
+    else:
+        depts, dept_search = [], []
+
+    metadata = {
+        'classification': cls,
+        'urgency': urg,
+        'cluster': cluster,
+        'keywords': keywords,
+        'laws': laws,
+        'cases': cases,
+        'departments': depts,
+        'similar_depts': dept_search,
+    }
+
+    # ─── 3단계: 컨텍스트를 LLM에 한 번 전달 ───
+    context_json = _json.dumps(metadata, ensure_ascii=False, default=str)
+    user_message = f"<context>\n{context_json}\n</context>\n\n질문: {text}"
+
+    client = _get_openai()
+    resp = await client.chat.completions.create(
+        model=OPENAI_MODEL,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_message},
+        ],
+    )
+    answer = resp.choices[0].message.content or ''
+
+    return {'answer': answer, 'metadata': metadata}
 
 
 # ============================================================
