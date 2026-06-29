@@ -1,24 +1,82 @@
 # chatbot_service API 명세
 
-백엔드가 `import chatbot_service as svc`로 사용. 모든 함수는 sync. async 환경(FastAPI 등)에서는 `asyncio.to_thread()`로 감싸서 호출.
+백엔드가 `import chatbot_service as svc`로 사용.
+- **권장 진입점**: `answer_chatbot(text, history=None)` 한 줄 (게이트 + 도구 + LLM 답변 통합)
+- 개별 도구는 sync. async 환경에서는 `asyncio.to_thread()`로 감싸서 호출.
 
 ```python
 import chatbot_service as svc
 import asyncio
 
-# sync 호출
+# 권장 — 메인 진입점
+result = await svc.answer_chatbot("도로 포트홀 신고합니다", history=None)
+
+# 개별 도구 (sync)
 r = svc.classify_complaint("도로 포트홀 신고합니다")
-
-# async 환경
 r = await asyncio.to_thread(svc.classify_complaint, "도로 포트홀 신고합니다")
-
-# 병렬 호출 (Agent 패턴)
-results = await asyncio.gather(
-    asyncio.to_thread(svc.classify_complaint, text),
-    asyncio.to_thread(svc.check_urgency, text),
-    asyncio.to_thread(svc.search_laws, text, None, 5),
-)
 ```
+
+---
+
+## 0. `answer_chatbot(text, history=None) → dict`  ⭐ 메인 진입점
+
+게이트(잡담/민원 판정) → 도구 7개 병렬 호출 → 답변 LLM. 멀티턴 지원.
+
+**Args**
+- `text` (str): 사용자의 이번 turn 발언
+- `history` (list[dict] | None): 이전 대화 누적. OpenAI messages 포맷 그대로.
+  - `[{"role": "user"|"assistant", "content": "..."}, ...]`
+  - 최근 10개(=5턴)까지만 LLM에 전달. 저장/관리는 백엔드 책임 (AI 모듈 stateless).
+  - None 또는 빈 리스트면 단일턴.
+
+**Returns**
+```json
+{
+  "answer": "교통 관련 민원이군요. 안전신문고 또는 ... 교통행정과(061-286-7450)...",
+  "metadata": {
+    "tool_used": true,
+    "classification": {
+      "category": "교통", "category_id": 1, "confidence": 0.97,
+      "top_k": [
+        {"category": "교통", "category_id": 1, "confidence": 0.97,
+         "departments": [{"department_id": 1, "name": "교통행정과", "phone": "061-286-7450", "priority": 1}, ...]},
+        {"category": "건축", "category_id": 2, "confidence": 0.02,
+         "departments": [...]},
+        ...
+      ]
+    },
+    "urgency": {...},
+    "cluster": {...},
+    "keywords": [...],
+    "laws": [...],
+    "cases": [...],
+    "departments": [...],         // 백워드 호환: top-1 카테고리 부서
+    "similar_depts": [...]
+  }
+}
+```
+
+**잡담 케이스** (`tool_used=False`):
+```json
+{
+  "answer": "안녕하세요! 무엇을 도와드릴까요?",
+  "metadata": {
+    "tool_used": false,
+    "classification": null, "urgency": null, "cluster": null,
+    "keywords": [], "laws": [], "cases": [], "departments": [], "similar_depts": []
+  }
+}
+```
+
+**환경변수 필수**: `OPENAI_API_KEY`, `OPENAI_MODEL` (기본 gpt-4o)
+
+**내부 흐름**
+1. 게이트 LLM (gpt-4o) — 잡담이면 즉답, 민원이면 [TOOL]
+2. tool_query 생성 (history 직전 user 발언 2개 + 현재 text)
+3. 1단계 5개 도구 병렬: extract_keywords / classify_complaint / check_urgency / search_laws / search_cases
+4. match_or_create_cluster (keywords 사용)
+5. 2단계: top-3 각 카테고리 부서 병렬 조회 + search_dept(top-1 cat_id)
+6. 답변 LLM (gpt-4o) — system + history + (context+질문)
 
 ---
 
@@ -186,9 +244,36 @@ results = await asyncio.gather(
 
 ---
 
-## 추천 호출 흐름 (2단계 병렬)
+## 추천 호출 흐름
 
-핵심 의존: `category_id`가 결정돼야 부서 조회 가능. 두 단계로 나눠서 단계 내 병렬.
+### 방법 A: `answer_chatbot` 한 줄 (권장)
+
+```python
+async def handle(req):
+    history = SESSIONS.get(req.session_id, [])
+    result = await svc.answer_chatbot(req.text, history=history)
+    SESSIONS[req.session_id] = history + [
+        {"role": "user", "content": req.text},
+        {"role": "assistant", "content": result["answer"]},
+    ]
+
+    m = result['metadata']
+    if m['tool_used'] and is_official_complaint(req):
+        # 정식 민원 접수 시 DB 저장
+        complaints.insert(
+            ...,
+            category_id = m['classification']['category_id'],
+            assigned_department_id = m['departments'][0]['department_id'] if m['departments'] else None,
+            cluster_id = m['cluster']['cluster_id'],
+            urgency_score = m['urgency']['probability_urgent'] + m['cluster']['urgency_bonus'],
+        )
+        complaint_responses.insert(content=result['answer'], ...)
+    return result
+```
+
+### 방법 B: 개별 도구 직접 호출 (커스텀)
+
+게이트/LLM 직접 제어가 필요하면 도구만 골라서 호출. 이 경우 OpenAI 호출도 백엔드 책임.
 
 ```python
 async def handle_complaint(text: str):
@@ -207,32 +292,8 @@ async def handle_complaint(text: str):
         asyncio.to_thread(svc.lookup_dept_by_category, cat_id),
         asyncio.to_thread(svc.search_dept, text, cat_id, 5),
     )
-
-    # ─── 3단계: 결과 합쳐서 OpenAI 호출 ───
-    context = {
-        'classification': cls,
-        'urgency': urg,
-        'cluster': cluster,         # cluster_id, urgency_bonus 포함
-        'laws': laws,
-        'cases': cases,
-        'departments_priority': depts,
-        'departments_semantic': dept_search,
-    }
-    answer = await openai_generate(text, context)
-
-    # ─── 4단계: (정식 민원 접수면) DB 저장 ───
-    complaints.insert(
-        ...,
-        category_id = cat_id,
-        assigned_department_id = depts[0]['department_id'] if depts else None,
-        cluster_id = cluster['cluster_id'],
-        urgency_score = urg['probability_urgent'] + cluster['urgency_bonus'],
-    )
-    complaint_responses.insert(complaint_id=..., content=answer, ...)
-
-    # 4) DB 저장 (complaints/complaint_responses)
+    # 백엔드가 OpenAI 직접 호출 (context 조립 + 프롬프트 직접 관리)
     ...
-    return answer
 ```
 
 ## 에러 처리

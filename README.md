@@ -43,16 +43,26 @@ python scripts/embed_rag_documents.py    # KoSimCSE 임베딩 생성
 ```python
 import chatbot_service as svc
 
-# 메인 진입점 — 분류/긴급/법령/부서/클러스터/LLM 답변까지 한 번에
-result = await svc.answer_chatbot("도로 포트홀 신고하고 싶어요")
+# 메인 진입점 — 게이트(잡담/민원)/분류/긴급/법령/부서/클러스터/LLM 답변까지 한 번에
+# history는 백엔드가 세션별로 보관하다가 호출 시 그대로 전달 (None이면 단일턴)
+result = await svc.answer_chatbot("도로 포트홀 신고하고 싶어요", history=None)
 # {
-#   "answer": "교통 관련 민원이군요. 도로교통법 제33조 ... 교통행정과(061-286-7450)...",
+#   "answer": "교통 관련 민원이군요. 안전신문고 또는 ... 교통행정과(061-286-7450)...",
 #   "metadata": {
-#     "classification": {...}, "urgency": {...}, "cluster": {...},
+#     "tool_used": True,            # 잡담이면 False
+#     "classification": {...},      # category, category_id, confidence, top_k(각 후보 + departments)
+#     "urgency": {...}, "cluster": {...},
 #     "keywords": [...], "laws": [...], "cases": [...],
 #     "departments": [...], "similar_depts": [...]
 #   }
 # }
+
+# 멀티턴 — 후속 질문은 백엔드가 history 누적해서 전달
+history = [
+    {"role": "user", "content": "도로 포트홀 신고하고 싶어요"},
+    {"role": "assistant", "content": result["answer"]},
+]
+result2 = await svc.answer_chatbot("그럼 어떻게 신고해요?", history=history)
 ```
 
 개별 도구 직접 호출도 가능:
@@ -103,7 +113,7 @@ ai/
 ### 메인 (async)
 | 함수 | 용도 |
 |---|---|
-| **`answer_chatbot(text)`** ⭐ | 모든 도구 + LLM 호출 → 자연어 답변 + metadata |
+| **`answer_chatbot(text, history=None)`** ⭐ | 게이트 + 모든 도구 + LLM 호출 → 자연어 답변 + metadata. 멀티턴은 history 인자로. |
 | `extract_keywords(text)` | LLM으로 키워드 추출 (클러스터링 input용) |
 
 ### 도구 함수 (sync — `asyncio.to_thread`로 감쌀 것)
@@ -131,11 +141,24 @@ ai/
 ```python
 import chatbot_service as svc
 
+# 세션별 history는 백엔드가 관리 (in-memory dict / Redis / DB 자유)
+SESSIONS: dict[str, list] = {}
+
 @router.post("/chat/ask")
 async def chat(req):
-    result = await svc.answer_chatbot(req.text)
-    return result  # {answer, metadata}
+    history = SESSIONS.get(req.session_id, [])
+    result = await svc.answer_chatbot(req.text, history=history)
+    # 다음 turn용으로 누적
+    SESSIONS[req.session_id] = history + [
+        {"role": "user", "content": req.text},
+        {"role": "assistant", "content": result["answer"]},
+    ]
+    return result  # {answer, metadata: {tool_used, classification, ...}}
 ```
+
+`metadata.tool_used`:
+- `False` — 잡담(인사/감사 등). 게이트가 즉답 → 도구 호출 0회. classification/urgency 등은 None/빈값.
+- `True` — 민원으로 판정 → 모든 도구 호출 후 답변.
 
 정식 민원 접수 시 metadata에서 DB 저장값 추출:
 ```python
@@ -213,3 +236,10 @@ async def handle(text):
 - 2026-06: answer_chatbot (메인 진입점) + extract_keywords LLM 통합
 - 2026-06: 시스템 프롬프트 강화 (할루시네이션 방지), preload_models 추가
 - 2026-06: search_faq 제거 (교육 카테고리 데이터 부족)
+- 2026-06: **멀티턴 + 게이트 + Top-3 LLM 선택**
+  - `answer_chatbot(text, history=None)` — history 받아 멀티턴 지원 (백엔드가 세션 관리)
+  - **게이트 LLM**: 잡담/민원 1차 판정, 잡담은 LLM 1회만 호출 (latency ↓ 비용 ↓)
+  - **A안**: 후속 질문 시 도구 호출용 query를 직전 user 발언과 합쳐 컨텍스트 유지
+  - **Top-3 카테고리×부서 통합**: classification.top_k 각 후보에 departments 동봉 → LLM이 의미 보고 분류기 헛바람 보정
+  - 시스템 프롬프트 유연화: 안전신문고/국민신문고/정부24 등 공공 채널 자유 안내, 후속 turn 부서 반복 금지
+  - `OPENAI_MODEL` 기본값 `gpt-4o-mini` → `gpt-4o` (분류기 헛바람 보정 안정성 ↑)

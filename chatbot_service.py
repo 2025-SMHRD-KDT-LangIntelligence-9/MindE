@@ -12,7 +12,7 @@ MCP 서버(mcp_server.py)도 이 모듈을 import해서 같은 함수를 노출.
   - search_dept(query, category_id=None, limit=5)  → 부서 의미 검색
   - lookup_dept_by_category(category_id)           → 카테고리 → 부서 매핑
   - get_categories()                               → 11 카테고리 메타
-  - answer_chatbot(text)  [async]                  → LLM 답변 생성 (메인 진입점)
+  - answer_chatbot(text, history=None)  [async]    → LLM 답변 생성 (메인 진입점)
 
 위 함수는 sync (answer_chatbot만 async).
 async 환경에서는 asyncio.to_thread()로 sync 함수 감쌈.
@@ -678,8 +678,26 @@ _TOOL_DISPATCH = {
 # ============================================================
 # Chatbot LLM (OpenAI Function Calling)
 # ============================================================
-OPENAI_MODEL = os.environ.get('OPENAI_MODEL', 'gpt-4o-mini')
+OPENAI_MODEL = os.environ.get('OPENAI_MODEL', 'gpt-4o')
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
+
+GATE_PROMPT = """\
+당신은 "마음결" 공공 민원 상담 챗봇입니다. 사용자 메시지가 민원 관련 질문인지 판단하세요.
+
+## 민원 카테고리 (11개)
+교통, 건축, 행정, 보건위생, 환경, 문화/여가, 농축산, 복지, 세무, 상하수도, 경제
+위 카테고리에 해당하는 신고/문의/요청이면 민원입니다.
+이전 대화가 민원 상담이었고 그에 대한 후속 질문(예: "그럼 어떻게 신고해요?")도 민원입니다.
+
+## 출력 규칙
+- 민원이면: 정확히 "[TOOL]" 다섯 글자만 출력. 다른 말 절대 금지.
+- 민원이 아니면 (인사/감사/잡담/챗봇 소개 질문 등): 친절히 2~3문장으로 답변.
+  - 인사 → 인사로 받고 도움드릴 수 있다고 안내
+  - "고마워요" → "도움이 되어 다행입니다" 식
+  - "너 뭐 할 수 있어?" → 11개 카테고리 민원 상담을 도와준다고 안내
+  - 욕설/도발/관련 없는 잡담 → "민원 관련 도움만 드릴 수 있습니다" 정도로 정중히 거절
+"""
+
 
 SYSTEM_PROMPT = """\
 당신은 "마음결" 공공 민원 상담 챗봇입니다. 사용자의 민원 관련 질문에 친절하고 정확하게 답변하세요.
@@ -697,23 +715,49 @@ SYSTEM_PROMPT = """\
    - similar_depts: 부서 의미 검색 결과
 2. 사용자 질문 (자연어)
 
+## 카테고리 선택 (LLM이 최종 결정자)
+classification.top_k에는 분류기가 뽑은 3개 후보가 들어있고, 각 후보에 매핑된 departments도 함께 들어있습니다.
+**confidence는 분류기 점수일 뿐, 결정의 절대 기준이 아닙니다.** 분류기는 마스킹 학습된 모델이라 표면 키워드에 끌릴 수 있습니다.
+
+- **사용자 질문(질문 텍스트와 keywords)을 직접 읽고, top-3 후보 중 의미적으로 가장 맞는 카테고리를 LLM 본인이 고르세요.**
+- confidence가 0.99여도 의미가 안 맞으면 다른 후보를 채택. confidence는 참고 정보일 뿐.
+  예시: "도로 포트홀 신고" → 분류기 top-1이 '건축(0.96)' top-2가 '교통(0.03)'이어도,
+       도로 위 포트홀은 명백히 교통 영역이므로 **top-2(교통)을 채택**하고 교통 부서를 안내.
+- top-3 안에 적절한 카테고리가 없으면 가장 가까운 걸 고르고 "정확한 분류가 어려워 보이니 담당 부서에 직접 문의 권장" 한 줄 추가.
+- 선택한 후보의 departments에서 priority=1 부서를 우선 안내 (부서명 + 전화번호).
+
 ## 답변 규칙
 - 어떤 카테고리의 민원인지 한 줄로 명시 (예: "교통 관련 민원이군요.")
-- departments에서 priority=1 부서를 우선 안내, 부서명 + 전화번호 포함
 - 친절한 존댓말, 3~5문장 정도로 간결하게
 
 ## 🚫 절대 금지 (할루시네이션 방지)
 
-다음을 절대 만들어내지 마세요. **반드시 context에 명시된 값만 사용**:
+다음 세 항목만 **반드시 context에 명시된 값만 사용**하세요. 가짜 만들면 사용자 신뢰가 깨집니다.
 
 1. **부서명/전화번호**: context.departments 또는 context.similar_depts에 있는 정확한 name·phone만 사용. 없는 부서나 임의 번호(예: 1234-5678) 생성 금지.
 
 2. **법령 조항**: context.laws 배열에 있는 title의 글자 그대로만 인용.
-   - ✅ 올바른 예: context.laws[0].title이 "도로교통법 제33조(주차금지의 장소)"이면 → "도로교통법 제33조에 따르면..." 또는 그대로 인용
-   - ❌ 금지: context.laws에 없는 조항 인용 (예: 임의로 "형법 제172조의2" 같은 조항 만들어내기)
+   - ✅ 올바른 예: context.laws[0].title이 "도로교통법 제33조(주차금지의 장소)"이면 → "도로교통법 제33조에 따르면..."
+   - ❌ 금지: context.laws에 없는 조항 만들어내기 (예: 임의로 "형법 제172조의2")
    - context.laws가 빈 배열이거나 모든 similarity가 0.4 미만이면 **법령 인용 자체를 생략**하세요.
 
-3. **사례/통계**: cases 배열이나 cluster.complaint_count 없으면 "사례 N건" 같은 표현 금지.
+3. **사례/통계 수치**: cases 배열이나 cluster.complaint_count 없으면 "사례 N건" 같은 표현 금지.
+
+## ✅ 자유롭게 안내해도 되는 것 (위 3가지 외)
+
+다음은 누구나 아는 공공 정보이므로 자신 있게 안내하세요:
+- **공공 민원 신고 채널**: 안전신문고(safetyreport.go.kr / 앱), 국민신문고(epeople.go.kr), 정부24(www.gov.kr), 다산콜 120(서울)·110(전국 정부민원안내)
+- **신고 시 일반적 첨부 자료**: 사진, 위치(도로명/지번), 발생 시각 등
+- **민원 처리 일반 절차**: 접수 → 담당 부서 배정 → 처리 → 회신 흐름
+- **카테고리별 상식 수준 안내**: 교통 신호 위반 신고는 스마트국민제보, 도로 시설물(포트홀 등)은 안전신문고 등
+
+## 후속 질문 처리 (멀티턴)
+
+history에 직전 turn 답변이 있으면 **그 답변에서 이미 말한 내용은 반복하지 마세요**.
+- 직전에 부서 안내(이름+전화)를 했으면, 후속 turn에서는 부서 다시 안내하지 말고 사용자가 새로 물은 것에 집중.
+- "어떻게 신고해요?" 같은 절차 질문에는 → 채널(안전신문고/국민신문고 등) + 필요 자료 + 처리 흐름 위주로.
+- "얼마나 걸려요?" 같은 기간 질문에는 → 일반적 민원 처리 기한(보통 7~14일) 안내 + 정확한 건 담당 부서 문의 권장.
+- 사용자가 분명히 다른 주제로 옮긴 경우에만 카테고리 변경, 아니면 직전 카테고리 유지.
 
 ## 조건부
 - urgency.is_urgent=true 이면 답변 첫 줄에 "긴급한 상황이라면 즉시 119/112로 신고해주세요" 추가.
@@ -722,7 +766,7 @@ SYSTEM_PROMPT = """\
 - cases가 비어있거나 sim이 매우 낮으면 그 항목 언급하지 마세요.
 
 ## 모르면 모른다고
-정확하지 않은 정보는 추측하지 말고 "정확한 정보는 담당 부서에 직접 문의해주세요"로 안내.
+세부 행정 사항(접수번호, 정확한 처리일, 특정 담당자명 등)은 추측하지 말고 "정확한 정보는 담당 부서에 직접 문의해주세요"로 안내.
 """
 
 _openai_client = None
@@ -794,18 +838,39 @@ async def extract_keywords(text: str, max_keywords: int = 5) -> list[str]:
         return []
 
 
-async def answer_chatbot(text: str) -> dict:
-    """챗봇 답변 생성 (백엔드 오케스트레이션 패턴 A).
+def _build_tool_query(text: str, history: Optional[list[dict]] = None) -> str:
+    """도구 호출용 query 생성. history 있으면 직전 user 발언 2개와 합쳐 컨텍스트 유지.
+
+    후속 질문(예: "그럼 어떻게 신고해요?")만으론 분류기/벡터검색이 헛바람 분류하는 문제 해결.
+    """
+    if not history:
+        return text
+    user_msgs = [m.get('content', '') for m in history
+                 if m.get('role') == 'user' and m.get('content')]
+    recent = user_msgs[-2:]
+    parts = recent + [text]
+    return '\n'.join(p for p in parts if p)
+
+
+async def answer_chatbot(text: str, history: Optional[list[dict]] = None) -> dict:
+    """챗봇 답변 생성 (백엔드 오케스트레이션 패턴 A + 게이트).
 
     흐름:
+      0단계 — 게이트 LLM: 민원 여부 판단.
+        민원 아니면 (인사/잡담/감사 등) 그 자리에서 답변 생성하고 종료.
+        민원이면 [TOOL] 신호 → 아래 단계 진행.
       1단계 — 카테고리 의존 없는 도구 병렬 호출:
         classify, urgency, cluster, search_laws, search_cases
       2단계 — category_id 결정 후 부서 도구 병렬:
         lookup_dept_by_category, search_dept
-      3단계 — 모든 결과를 컨텍스트로 OpenAI(gpt-4o-mini) 호출 → 답변 생성
+      3단계 — 모든 결과 + 대화 히스토리를 컨텍스트로 OpenAI 호출 → 답변 생성
 
     Args:
-        text: 사용자 질문 (민원 관련 자연어)
+        text: 사용자 질문 (이번 턴의 마지막 user 메시지)
+        history: 이전 대화 히스토리. OpenAI messages 포맷 그대로.
+                 [{"role": "user"|"assistant", "content": "..."}, ...]
+                 최근 10개(약 5턴)까지만 LLM에 전달. None이면 단발성 대화.
+                 저장/관리는 백엔드 책임 — AI 모듈은 stateless.
 
     Returns:
         {
@@ -832,31 +897,85 @@ async def answer_chatbot(text: str) -> dict:
     if not text:
         return {'answer': '', 'metadata': {}}
 
+    client = _get_openai()
+
+    # ─── 0단계: 게이트 (민원 여부 판단) ───
+    # 민원이면 LLM이 "[TOOL]"만 출력, 아니면 잡담 답변을 그 자리에서 생성.
+    gate_messages = [{"role": "system", "content": GATE_PROMPT}]
+    if history:
+        for m in history[-10:]:
+            role = m.get("role")
+            content = m.get("content", "")
+            if role in ("user", "assistant") and content:
+                gate_messages.append({"role": role, "content": content})
+    gate_messages.append({"role": "user", "content": text})
+
+    gate_resp = await client.chat.completions.create(
+        model=OPENAI_MODEL,
+        messages=gate_messages,
+    )
+    gate_out = (gate_resp.choices[0].message.content or '').strip()
+
+    if "[TOOL]" not in gate_out:
+        # 잡담 — 게이트 응답이 곧 최종 답변. metadata 스키마는 민원 케이스와 동일하게 유지.
+        return {
+            'answer': gate_out,
+            'metadata': {
+                'tool_used': False,
+                'classification': None,
+                'urgency': None,
+                'cluster': None,
+                'keywords': [],
+                'laws': [],
+                'cases': [],
+                'departments': [],
+                'similar_depts': [],
+            },
+        }
+
+    # 도구 호출용 query: 후속 질문이면 직전 turn과 합쳐 컨텍스트 유지
+    tool_query = _build_tool_query(text, history)
+
     # ─── 1단계: 키워드 추출(LLM)을 먼저 시작, 나머지 도구는 키워드 없이 병렬 시작 ───
-    keywords_task = asyncio.create_task(extract_keywords(text))
+    keywords_task = asyncio.create_task(extract_keywords(tool_query))
 
     cls, urg, laws, cases = await asyncio.gather(
-        asyncio.to_thread(classify_complaint, text, 3),
-        asyncio.to_thread(check_urgency, text),
-        asyncio.to_thread(search_laws, text, None, 5),
-        asyncio.to_thread(search_cases, text, None, 5),
+        asyncio.to_thread(classify_complaint, tool_query, 3),
+        asyncio.to_thread(check_urgency, tool_query),
+        asyncio.to_thread(search_laws, tool_query, None, 5),
+        asyncio.to_thread(search_cases, tool_query, None, 5),
     )
     cat_id = cls.get('category_id')
 
     # 키워드 추출 완료 대기 후 클러스터 매칭
     keywords = await keywords_task
-    cluster = await asyncio.to_thread(match_or_create_cluster, text, keywords)
+    cluster = await asyncio.to_thread(match_or_create_cluster, tool_query, keywords)
 
-    # ─── 2단계: category_id 결정 후 부서 도구 병렬 ───
-    if cat_id:
-        depts, dept_search = await asyncio.gather(
-            asyncio.to_thread(lookup_dept_by_category, cat_id),
-            asyncio.to_thread(search_dept, text, cat_id, 5),
-        )
-    else:
-        depts, dept_search = [], []
+    # ─── 2단계: top-3 카테고리 각각의 부서를 병렬 조회 + top-1 의미 검색 ───
+    # LLM이 top-3 후보 중 사용자 의도에 가장 맞는 걸 골라 답할 수 있도록 부서 정보까지 묶어 전달.
+    top_k_items = cls.get('top_k') or []
+
+    async def _fetch_top_depts(item):
+        cid = item.get('category_id')
+        if cid:
+            d = await asyncio.to_thread(lookup_dept_by_category, cid)
+            return {**item, 'departments': d}
+        return {**item, 'departments': []}
+
+    dept_search_task = (
+        asyncio.to_thread(search_dept, tool_query, cat_id, 5)
+        if cat_id else asyncio.sleep(0, result=[])
+    )
+    top_k_with_depts, dept_search = await asyncio.gather(
+        asyncio.gather(*[_fetch_top_depts(it) for it in top_k_items]),
+        dept_search_task,
+    )
+    cls['top_k'] = list(top_k_with_depts)
+    # 백워드 호환: 기존 'departments' 키는 top-1 카테고리 부서 유지
+    depts = top_k_with_depts[0]['departments'] if top_k_with_depts else []
 
     metadata = {
+        'tool_used': True,
         'classification': cls,
         'urgency': urg,
         'cluster': cluster,
@@ -871,13 +990,18 @@ async def answer_chatbot(text: str) -> dict:
     context_json = _json.dumps(metadata, ensure_ascii=False, default=str)
     user_message = f"<context>\n{context_json}\n</context>\n\n질문: {text}"
 
-    client = _get_openai()
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    if history:
+        for m in history[-10:]:
+            role = m.get("role")
+            content = m.get("content", "")
+            if role in ("user", "assistant") and content:
+                messages.append({"role": role, "content": content})
+    messages.append({"role": "user", "content": user_message})
+
     resp = await client.chat.completions.create(
         model=OPENAI_MODEL,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_message},
-        ],
+        messages=messages,
     )
     answer = resp.choices[0].message.content or ''
 

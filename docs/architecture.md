@@ -4,31 +4,45 @@
 
 ```
 [사용자]
-   │  "도로 포트홀 신고하고 싶어요"
+   │  "도로 포트홀 신고하고 싶어요" (+ 백엔드가 누적해온 history)
    ▼
 [프론트엔드]
    │  POST /complaints  (또는 /chat/ask)
    ▼
 [백엔드 FastAPI]
+   │  session_id별 history 보관 → answer_chatbot(text, history) 한 줄 호출
    │
-   │  ─── [1단계] 카테고리 의존 없는 도구 병렬 실행 ───
-   │      ├─ classify_complaint(text)        → category_id  ★ (다음 단계 필수)
-   │      ├─ check_urgency(text)             → is_urgent
-   │      ├─ match_or_create_cluster(text)   → cluster_id + urgency_bonus
-   │      ├─ search_laws(text)               → 관련 법령 (cat 필터 옵션)
-   │      └─ search_cases(text)              → 유사 사례
-   │
-   │  ─── [2단계] classify 결과 도착 후 ───
-   │      ├─ lookup_dept_by_category(category_id) → 매핑된 부서들 priority 순
-   │      └─ search_dept(text, category_id)       → 부서 의미 검색 (카테고리 좁힘)
-   │
-   │  ─── [3단계] 모든 결과 합쳐서 ───
    ▼
-[OpenAI gpt-4o-mini]
-   │  system: "민원 챗봇. 위 정보로 친절하게 답변"
-   │  context: 분류 + 긴급 + 클러스터 + 법령 + 사례 + 부서
+[chatbot_service.answer_chatbot]
+   │
+   │  ─── [0단계] 게이트 LLM (gpt-4o) ───
+   │      입력: GATE_PROMPT + history + 현재 text
+   │      잡담이면 → 즉답 반환 (tool_used=False, 도구 호출 0회)
+   │      민원이면 → "[TOOL]" 신호, 아래 단계 진행
+   │
+   │  ─── [tool_query 생성] history 직전 user 발언 2개 + 현재 text 합침 ───
+   │      → 후속 질문에서 컨텍스트 유지 (A안)
+   │
+   │  ─── [1단계] 5개 도구 병렬 (asyncio.gather) ───
+   │      ├─ classify_complaint(tool_query, top_k=3) → top-3 카테고리
+   │      ├─ check_urgency(tool_query)               → is_urgent
+   │      ├─ search_laws(tool_query)                 → 관련 법령
+   │      ├─ search_cases(tool_query)                → 유사 사례
+   │      └─ extract_keywords(tool_query)            → 키워드 (LLM)
+   │      그 후: match_or_create_cluster(tool_query, keywords)
+   │
+   │  ─── [2단계] top-3 카테고리 부서 병렬 조회 ───
+   │      ├─ lookup_dept_by_category × 3 (top-3 각각)
+   │      │   → classification.top_k 각 후보에 departments 동봉
+   │      └─ search_dept(tool_query, top-1 cat_id)
+   │
+   │  ─── [3단계] 답변 LLM (gpt-4o) ───
+   ▼
+[OpenAI gpt-4o]
+   │  system: SYSTEM_PROMPT (top-3 중 의미 보고 카테고리 선택 + 공공 채널 안내 허용)
+   │  messages: system + history(최근 5턴) + (context+질문)
    │  ↓
-   │  자연어 답변 생성
+   │  자연어 답변 (LLM이 분류기 헛바람 보정 — top-2/3 채택 가능)
    ▼
 [백엔드]
    │  (정식 민원 접수면) DB 저장:
@@ -46,10 +60,23 @@
 
 ## 핵심 의존 관계
 
+- **0단계 게이트** 통과해야 1단계 이후 실행. 잡담은 0단계에서 즉시 종료.
 - **`category_id` 결정 필수** → `lookup_dept_by_category`, `search_dept`는 직렬 의존
 - 그 외 도구(긴급/클러스터/법령/사례)는 카테고리 무관, 1단계 병렬 가능
 - 챗봇 질의(/chat/ask) — 답변만, DB 저장 X
 - 정식 민원(/complaints) — DB 저장 + 알림 발동
+- **멀티턴**: history는 백엔드가 session_id별 보관. AI 모듈은 stateless.
+
+## LLM 호출 위치 (총 최대 3회)
+
+| 단계 | 호출 | history 받음? | 비고 |
+|---|---|---|---|
+| 0 (게이트) | gpt-4o | ✅ | 잡담/민원 1차 판정 |
+| 1 (extract_keywords) | gpt-4o | ❌ | tool_query 받음, 키워드 추출 |
+| 3 (답변 LLM) | gpt-4o | ✅ | 최종 답변 생성 |
+
+잡담이면 0단계만 호출 → 1회.
+민원이면 0+1+3 → 3회.
 
 ## 모델/데이터 스택
 
