@@ -7,7 +7,7 @@ import logo from '../../assets/logo.png';
 
 function Home() {
   const navigate = useNavigate();
-  const { stats } = useApp();
+  const { stats, currentUser } = useApp();
   const myComplaints = stats.myComplaints;
   const recentComplaints = myComplaints.slice(0, 3);
   const cReceived   = myComplaints.filter((c) => c.status === '접수').length;
@@ -19,9 +19,11 @@ function Home() {
       {/* 환영 히어로 영역 */}
       <section className="bg-primary/10 rounded-3xl p-10 flex flex-col md:flex-row items-center justify-between gap-6 mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-on-surface mb-2">좋은 아침입니다, 철수님.</h1>
+          <h1 className="text-3xl font-bold text-on-surface mb-2">
+            {currentUser.name ? `좋은 아침입니다, ${currentUser.name}님.` : '안녕하세요, 마음이입니다.'}
+          </h1>
           <p className="text-on-surface-variant max-w-md">
-            철수님의 목소리가 우리 도시를 더 살기 좋게 만듭니다. 마음결은 시민 여러분의 의견을 공감과 투명함으로 경청하겠습니다.
+            시민 여러분의 목소리가 우리 도시를 더 살기 좋게 만듭니다. 마음결은 시민 여러분의 의견을 공감과 투명함으로 경청하겠습니다.
           </p>
           <button onClick={() => navigate('/chatbot')} className="mt-6 bg-primary text-on-primary font-bold py-3 px-8 rounded-xl shadow-md flex items-center gap-2">
             <span className="material-symbols-outlined">add_circle</span>

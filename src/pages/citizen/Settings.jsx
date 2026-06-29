@@ -149,15 +149,15 @@ function Settings() {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1.5">
-                  <p className="font-bold text-on-surface">김철수</p>
+                  <p className="font-bold text-on-surface">-</p>
                   <span className="bg-blue-50 text-blue-600 text-[11px] font-bold px-2 py-0.5 rounded-full">일반 시민</span>
                   <span className="bg-emerald-50 text-emerald-600 text-[11px] font-bold px-2 py-0.5 rounded-full">활성</span>
                 </div>
                 <div className="flex flex-col gap-1">
                   {[
-                    { icon: 'mail',           value: 'chulsoo@maumgyeol.kr' },
-                    { icon: 'phone',          value: '연락처 미등록' },
-                    { icon: 'calendar_today', value: '2024-03-15 가입' },
+                    { icon: 'mail',           value: '-' },
+                    { icon: 'phone',          value: '-' },
+                    { icon: 'calendar_today', value: '-' },
                   ].map((row) => (
                     <div key={row.icon} className="flex items-center gap-1.5 text-xs text-on-surface-variant">
                       <span className="material-symbols-outlined text-sm">{row.icon}</span>
@@ -177,7 +177,7 @@ function Settings() {
                 <label className="text-xs font-bold text-on-surface-variant block mb-1">성명</label>
                 <div className="relative">
                   <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[18px]">person</span>
-                  <input defaultValue="김철수" className="w-full h-10 pl-10 pr-4 rounded-xl border border-outline-variant focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-sm" />
+                  <input defaultValue="" placeholder="이름을 입력하세요" className="w-full h-10 pl-10 pr-4 rounded-xl border border-outline-variant focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-sm" />
                 </div>
               </div>
               <div>
@@ -191,7 +191,7 @@ function Settings() {
                 <label className="text-xs font-bold text-on-surface-variant block mb-1">이메일 주소</label>
                 <div className="relative">
                   <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[18px]">mail</span>
-                  <input defaultValue="chulsoo@maumgyeol.kr" className="w-full h-10 pl-10 pr-4 rounded-xl border border-outline-variant focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-sm" />
+                  <input defaultValue="" placeholder="이메일 주소를 입력하세요" className="w-full h-10 pl-10 pr-4 rounded-xl border border-outline-variant focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-sm" />
                 </div>
               </div>
             </div>
