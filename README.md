@@ -39,18 +39,35 @@ python scripts/load_laws.py              # 법령 26개 → 5,441 조항
 python scripts/embed_rag_documents.py    # KoSimCSE 임베딩 생성
 ```
 
-### 7. 사용
+### 7. 사용 (한 줄 통합)
 ```python
 import chatbot_service as svc
 
+# 메인 진입점 — 분류/긴급/법령/부서/클러스터/LLM 답변까지 한 번에
+result = await svc.answer_chatbot("도로 포트홀 신고하고 싶어요")
+# {
+#   "answer": "교통 관련 민원이군요. 도로교통법 제33조 ... 교통행정과(061-286-7450)...",
+#   "metadata": {
+#     "classification": {...}, "urgency": {...}, "cluster": {...},
+#     "keywords": [...], "laws": [...], "cases": [...],
+#     "departments": [...], "similar_depts": [...]
+#   }
+# }
+```
+
+개별 도구 직접 호출도 가능:
+```python
 r = svc.classify_complaint("도로 포트홀 신고합니다")
 # {'category': '교통', 'category_id': 1, 'confidence': 0.97, 'top_k': [...]}
 
-r = svc.check_urgency("아파트에서 가스누출!")
-# {'is_urgent': True, 'probability_urgent': 0.99, 'matched_keyword': '가스누출', ...}
-
 laws = svc.search_laws("주차금지 어디까지", category_id=1, limit=5)
-# [{'title': '도로교통법 제33조(...)', 'content': '...', 'similarity': 0.587}, ...]
+```
+
+### 8. FastAPI startup에 preload (필수)
+```python
+@app.on_event("startup")
+async def startup():
+    svc.preload_models()   # 첫 호출 race condition + 응답 지연 제거
 ```
 
 ## 디렉토리 구조
@@ -83,44 +100,73 @@ ai/
 
 ## 핵심 API (요약)
 
+### 메인 (async)
+| 함수 | 용도 |
+|---|---|
+| **`answer_chatbot(text)`** ⭐ | 모든 도구 + LLM 호출 → 자연어 답변 + metadata |
+| `extract_keywords(text)` | LLM으로 키워드 추출 (클러스터링 input용) |
+
+### 도구 함수 (sync — `asyncio.to_thread`로 감쌀 것)
 | 함수 | 용도 |
 |---|---|
 | `classify_complaint(text, top_k)` | 11 카테고리 분류 + top_k confidence |
 | `check_urgency(text)` | 긴급 여부 + 매칭 키워드 |
-| `search_laws(query, category_id?, limit)` | 법령 조항 벡터 검색 |
-| `search_cases(query, category_id?, limit)` | 유사 사례 벡터 검색 |
+| `match_or_create_cluster(text, keywords?)` | 유사 민원 클러스터 매칭/생성 + urgency_bonus |
+| `search_laws(query, category_id?, limit)` | 법령 조항 벡터 검색 (5,441 조항) |
+| `search_cases(query, category_id?, limit)` | 유사 사례 검색 (적재 대기) |
+| `search_dept(query, category_id?, limit)` | 부서 의미 검색 (39개) |
 | `lookup_dept_by_category(category_id)` | 카테고리 → 부서 (priority 순) |
 | `get_categories()` | 11 카테고리 메타 정보 |
+
+### 유틸
+| 함수 | 용도 |
+|---|---|
+| `preload_models()` | 서버 startup에서 호출 (race condition 방지) |
 
 상세는 `docs/api_spec.md`.
 
 ## 백엔드 통합 패턴 (권장)
 
-`category_id`가 결정돼야 부서 조회 가능 → 2단계로 나눠서 단계 내 병렬.
-
+### 패턴 1: 한 줄 호출 (대부분의 경우)
 ```python
-import asyncio
 import chatbot_service as svc
 
-async def handle_complaint(text: str):
-    # 1단계: 카테고리 의존 없는 도구 병렬
-    cls, urg, cluster, laws, cases = await asyncio.gather(
-        asyncio.to_thread(svc.classify_complaint, text),
-        asyncio.to_thread(svc.check_urgency, text),
-        asyncio.to_thread(svc.match_or_create_cluster, text),
-        asyncio.to_thread(svc.search_laws, text, None, 5),
-        asyncio.to_thread(svc.search_cases, text, None, 5),
-    )
+@router.post("/chat/ask")
+async def chat(req):
+    result = await svc.answer_chatbot(req.text)
+    return result  # {answer, metadata}
+```
+
+정식 민원 접수 시 metadata에서 DB 저장값 추출:
+```python
+@router.post("/complaints")
+async def submit(req):
+    result = await svc.answer_chatbot(req.content)
+    m = result['metadata']
+
+    complaint_id = db.insert("complaints", {
+        "user_id": req.user_id,
+        "title": req.title,
+        "content": req.content,
+        "category_id": m['classification']['category_id'],
+        "assigned_department_id": m['departments'][0]['department_id'] if m['departments'] else None,
+        "cluster_id": m['cluster']['cluster_id'],
+        "urgency_score": m['urgency']['probability_urgent'] + m['cluster']['urgency_bonus'],
+        "status": "received",
+    })
+    db.insert("complaint_responses", {"complaint_id": complaint_id,
+                                       "content": result['answer']})
+```
+
+### 패턴 2: 도구만 개별 호출 (커스텀)
+필요시 도구만 골라서 직접 호출. 이 경우 LLM(OpenAI)은 백엔드가 직접 처리.
+
+```python
+async def handle(text):
+    cls = await asyncio.to_thread(svc.classify_complaint, text)
     cat_id = cls['category_id']
-
-    # 2단계: 카테고리 결정 후 부서 조회 병렬
-    depts, dept_search = await asyncio.gather(
-        asyncio.to_thread(svc.lookup_dept_by_category, cat_id),
-        asyncio.to_thread(svc.search_dept, text, cat_id, 5),
-    )
-
-    # 3단계: 결과 합쳐서 OpenAI 호출
-    # 4단계: (정식 민원이면) DB 저장 — cluster_id + (urgency + cluster.urgency_bonus)
+    depts = await asyncio.to_thread(svc.lookup_dept_by_category, cat_id)
+    # 백엔드가 OpenAI 직접 호출 ...
 ```
 
 `docs/api_spec.md`에 상세 예시.
@@ -134,11 +180,12 @@ async def handle_complaint(text: str):
 ## DB 스키마
 
 12 테이블, PostgreSQL + pgvector. 핵심:
-- `categories` (11) / `departments` (20) / `category_department_mapping`
+- `categories` (11) / `departments` (**39** — description 컬럼 포함) / `category_department_mapping` (32)
 - `complaints` / `complaint_responses` / `complaint_status_history`
 - `urgency_keywords` (29, 동적 로드)
-- `rag_documents` ← 법령/사례/부서 통합 RAG 저장소
-- `users` / `notifications` / `complaint_attachments` / `complaint_clusters`
+- `rag_documents` ← 법령/부서/사례 통합 RAG (vector(768))
+- `complaint_clusters` (centroid vector(768) 포함)
+- `users` / `notifications` / `complaint_attachments`
 
 `db/schema.sql`에 전체 DDL + 시드.
 
@@ -161,3 +208,8 @@ async def handle_complaint(text: str):
 ## 변경 이력
 
 - 2026-06: 초기 릴리스 — 분류기 v9, urgency, 법령 RAG 5,441 조항
+- 2026-06: 부서 확장 — 39 부서 (전화/description), 매핑 32개, search_dept 추가
+- 2026-06: 클러스터링 통합 — match_or_create_cluster + centroid 컬럼
+- 2026-06: answer_chatbot (메인 진입점) + extract_keywords LLM 통합
+- 2026-06: 시스템 프롬프트 강화 (할루시네이션 방지), preload_models 추가
+- 2026-06: search_faq 제거 (교육 카테고리 데이터 부족)
