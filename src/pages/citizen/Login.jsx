@@ -2,50 +2,56 @@
 import { useNavigate } from 'react-router-dom';
 import logo from '../../assets/logo.png';
 import { useApp } from '../../store/AppContext';
-import { STAFF_ACCOUNTS } from '../../store/AppContext';
+import { loginApi, getMeApi } from '../../api/auth';
 
 function Login() {
   const navigate = useNavigate();
-  const { login, users } = useApp();
+  const { login, stats } = useApp();
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw]     = useState(false);
   const [error, setError]       = useState('');
+  const [loading, setLoading]   = useState(false);
   const [showForgot, setShowForgot] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotSent, setForgotSent] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setLoading(true);
+    setError('');
+    try {
+      const data = await loginApi(email, password);
+      localStorage.setItem('token', data.access_token);
+      const me = await getMeApi();
+      const type = me.user_type;
 
-    if (email === 'admin@test.com') {
-      login('admin');
-      navigate('/admin');
-      return;
+      if (type === 'pending_staff') {
+        localStorage.removeItem('token');
+        setError('pending');
+        return;
+      }
+      if (type === 'admin') {
+        login('admin', { name: me.name });
+        navigate('/admin');
+      } else if (type === 'staff') {
+        login('staff', { name: me.name, dept: me.dept ?? '', deptGroup: me.deptGroup ?? [] });
+        navigate('/staff');
+      } else {
+        login('citizen', { id: String(me.user_id), name: me.name, email: me.email, phone: me.phone ?? '' });
+        navigate('/chatbot');
+      }
+    } catch (err) {
+      if (err.response?.status === 401) {
+        setError('이메일 또는 비밀번호가 올바르지 않습니다.');
+      } else if (err.code === 'ERR_NETWORK') {
+        setError('서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.');
+      } else {
+        setError('로그인 중 오류가 발생했습니다.');
+      }
+    } finally {
+      setLoading(false);
     }
-
-    const staffAccount = STAFF_ACCOUNTS.find((a) => a.email === email);
-    if (staffAccount) {
-      login('staff', staffAccount);
-      navigate('/staff');
-      return;
-    }
-
-    const pendingUser = users.find((u) => u.role === 'staff' && u.status === 'pending' && u.email === email);
-    if (pendingUser) {
-      setError('pending');
-      return;
-    }
-
-    const activeStaff = users.find((u) => u.role === 'staff' && u.status === 'active' && u.email === email);
-    if (activeStaff) {
-      login('staff', activeStaff);
-      navigate('/staff');
-      return;
-    }
-
-    login('citizen');
-    navigate('/chatbot');
   };
 
   return (
@@ -77,8 +83,8 @@ function Login() {
             {/* 통계 */}
             <div className="relative z-10 grid grid-cols-3 gap-2">
               {[
-                { value: '12,400+', label: '누적 처리' },
-                { value: '1.8일',   label: '평균 처리 속도' },
+                { value: `${stats.done}건`, label: '누적 처리' },
+                { value: `${stats.total}건`, label: '총 접수' },
                 { value: '24시간',  label: '언제든 접수' },
               ].map((s) => (
                 <div key={s.label} className="bg-white/15 rounded-2xl py-3.5 text-center border border-white/20">
@@ -209,10 +215,11 @@ function Login() {
                   <button
                     type="submit"
                     onClick={handleSubmit}
-                    className="w-full py-3.5 font-bold rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-base bg-primary text-white hover:brightness-105 shadow-lg shadow-primary/25"
+                    disabled={loading}
+                    className="w-full py-3.5 font-bold rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-base bg-primary text-white hover:brightness-105 shadow-lg shadow-primary/25 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    로그인
-                    <span className="material-symbols-outlined">login</span>
+                    {loading ? '로그인 중...' : '로그인'}
+                    <span className="material-symbols-outlined">{loading ? 'hourglass_empty' : 'login'}</span>
                   </button>
 
                   <p className="text-center text-sm text-on-surface-variant">

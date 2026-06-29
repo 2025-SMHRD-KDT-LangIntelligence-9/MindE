@@ -1,4 +1,7 @@
-import { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useState, useEffect } from 'react';
+import { getMeApi } from '../api/auth';
+import { getComplaintsApi, addComplaintApi, updateComplaintStatusApi } from '../api/complaints';
+import { getNotificationsApi } from '../api/notifications';
 
 /* 긴급도 공통 색상 */
 export const URGENCY_STYLE = {
@@ -26,14 +29,7 @@ export const DEPT_OPTIONS = [
 ];
 
 /* 담당자 계정 목록 (Login에서도 import해서 사용) */
-export const STAFF_ACCOUNTS = [
-  { email: 'road@test.com',  name: '김도로', dept: '도로교통과',
-    deptGroup: ['도로교통과', '교통행정과', '교통지도과'] },
-  { email: 'env@test.com',   name: '이환경', dept: '환경위생과',
-    deptGroup: ['도시환경과', '청소행정과', '도시녹지과', '환경위생과'] },
-  { email: 'infra@test.com', name: '박시설', dept: '도시시설과',
-    deptGroup: ['도시시설과', '공원녹지과', '상수도과', '도시시설과'] },
-];
+export const STAFF_ACCOUNTS = [];
 
 const AppContext = createContext(null);
 
@@ -44,38 +40,68 @@ const INITIAL_COMPLAINTS = [];
 
 const INITIAL_NOTIFICATIONS = [];
 
+const INITIAL_CHAT_SESSIONS = [];
+
 /* ──────────────────────────────────────────────
    Provider
 ────────────────────────────────────────────── */
-const INITIAL_USERS = [
-  { id: 'u1', name: '홍길동',  email: 'user@test.com',  phone: '010-1234-5678', role: 'citizen', status: 'active',  dept: '',        deptGroup: [],                                                   joinedAt: '2025-01-15' },
-  { id: 'u2', name: '김도로',  email: 'road@test.com',  phone: '010-2222-1111', role: 'staff',   status: 'active',  dept: '도로교통과', deptGroup: ['도로교통과', '교통행정과', '교통지도과'],            joinedAt: '2024-11-01' },
-  { id: 'u3', name: '이환경',  email: 'env@test.com',   phone: '010-3333-2222', role: 'staff',   status: 'active',  dept: '환경위생과', deptGroup: ['도시환경과', '청소행정과', '도시녹지과', '환경위생과'], joinedAt: '2024-11-01' },
-  { id: 'u4', name: '박시설',  email: 'infra@test.com', phone: '010-4444-3333', role: 'staff',   status: 'active',  dept: '도시시설과', deptGroup: ['도시시설과', '공원녹지과', '상수도과'],              joinedAt: '2024-11-01' },
-  { id: 'u5', name: '최대기',  email: 'wait@test.com',  phone: '010-5555-4444', role: 'staff',   status: 'pending', dept: '도로교통과', deptGroup: ['도로교통과', '교통행정과', '교통지도과'],            joinedAt: '2025-06-25' },
-];
+const INITIAL_USERS = [];
 
 export function AppProvider({ children }) {
   const [complaints, setComplaints] = useState(INITIAL_COMPLAINTS);
   const [notifications, setNotifications] = useState(INITIAL_NOTIFICATIONS);
+  const [chatSessions, setChatSessions] = useState(INITIAL_CHAT_SESSIONS);
   const [users, setUsers] = useState(INITIAL_USERS);
   const [staffFiles, setStaffFiles] = useState({});
   const [currentUser, setCurrentUser] = useState({
     role: 'guest', name: '', dept: '', deptGroup: [],
   });
 
-  const login = (role, staffAccount = null) => {
-    if (role === 'citizen') setCurrentUser({ role: 'citizen', name: '', dept: '', deptGroup: [] });
-    else if (role === 'admin')  setCurrentUser({ role: 'admin',   name: '시스템 관리자', dept: '', deptGroup: [] });
-    else if (role === 'staff' && staffAccount) {
-      setCurrentUser({ role: 'staff', name: staffAccount.name, dept: staffAccount.dept, deptGroup: staffAccount.deptGroup });
+  // 앱 시작 시 토큰 있으면 세션 복원
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    getMeApi()
+      .then((me) => {
+        const type = me.user_type;
+        if (type === 'citizen') {
+          setCurrentUser({ role: 'citizen', id: String(me.user_id), name: me.name, email: me.email, phone: me.phone ?? '', dept: '', deptGroup: [] });
+        } else if (type === 'admin') {
+          setCurrentUser({ role: 'admin', name: me.name, dept: '', deptGroup: [] });
+        } else if (type === 'staff') {
+          setCurrentUser({ role: 'staff', name: me.name, dept: me.dept ?? '', deptGroup: me.deptGroup ?? [] });
+        }
+      })
+      .catch(() => localStorage.removeItem('token'));
+  }, []);
+
+  // 로그인 후 민원·알림 API에서 로드
+  useEffect(() => {
+    if (currentUser.role === 'guest') return;
+    getComplaintsApi().then(setComplaints).catch(() => {});
+    getNotificationsApi().then(setNotifications).catch(() => {});
+  }, [currentUser.role]);
+
+  const login = (role, userInfo = null) => {
+    if (role === 'citizen') setCurrentUser({ role: 'citizen', id: userInfo?.id || '', name: userInfo?.name || '', email: userInfo?.email || '', phone: userInfo?.phone || '', dept: '', deptGroup: [] });
+    else if (role === 'admin')  setCurrentUser({ role: 'admin', name: userInfo?.name || '시스템 관리자', dept: '', deptGroup: [] });
+    else if (role === 'staff' && userInfo) {
+      setCurrentUser({ role: 'staff', name: userInfo.name, dept: userInfo.dept, deptGroup: userInfo.deptGroup ?? [] });
     }
   };
 
-  const logout = () => setCurrentUser({ role: 'guest', name: '', dept: '', deptGroup: [] });
+  const logout = () => {
+    localStorage.removeItem('token');
+    setCurrentUser({ role: 'guest', name: '', dept: '', deptGroup: [] });
+  };
 
   // 상태 변경 + 알림 생성
-  const updateComplaintStatus = (id, newStatus, memo) => {
+  const updateComplaintStatus = async (id, newStatus, memo) => {
+    try {
+      await updateComplaintStatusApi(id, newStatus);
+    } catch {
+      // 백엔드 실패해도 로컬 상태는 업데이트
+    }
     const target = complaints.find((c) => c.id === id);
     setComplaints((prev) =>
       prev.map((c) =>
@@ -85,14 +111,13 @@ export function AppProvider({ children }) {
               status: newStatus,
               memo: memo !== undefined ? memo : c.memo,
               updatedAt: new Date().toLocaleString('ko-KR'),
-              ...(newStatus === '완료' ? {} : {}),
             }
           : c
       )
     );
     if (target) {
-      const iconMap = { '완료': 'check_circle', '처리 중': 'swap_horiz', '반려': 'cancel', '보완 요청': 'edit_note' };
-      const colorMap = { '완료': 'text-emerald-500', '처리 중': 'text-amber-500', '반려': 'text-red-500', '보완 요청': 'text-purple-500' };
+      const iconMap = { '완료': 'check_circle', '처리 중': 'swap_horiz', '반려': 'cancel', '보완 요청': 'edit_note', '배정': 'person_add', '답변완료': 'mark_email_read' };
+      const colorMap = { '완료': 'text-emerald-500', '처리 중': 'text-amber-500', '반려': 'text-red-500', '보완 요청': 'text-purple-500', '배정': 'text-indigo-500', '답변완료': 'text-teal-500' };
       setNotifications((prev) => [
         {
           id: `N${Date.now()}`,
@@ -158,49 +183,44 @@ export function AppProvider({ children }) {
   };
 
   // 새 민원 접수 (시민이 챗봇/OCR로 제출)
-  const addComplaint = ({ title, content, category }) => {
-    const deptMap = {
-      '도로/교통': '도로교통과',
-      '시설/안전': '도시시설과',
-      '환경/위생': '청소행정과',
-      '시설/환경': '공원녹지과',
-      '교통/주차': '교통지도과',
-      '교통/안전': '교통행정과',
-    };
-    const newId = `C-2025-${String(Date.now()).slice(-4)}`;
-    const newComplaint = {
-      id: newId,
-      title,
-      content,
-      category: category || '기타',
-      dept: deptMap[category] ?? '민원처리과',
-      citizen: '홍길동',
-      citizenId: 'citizen',
-      status: '접수',
-      urgency: '보통',
-      receivedAt: new Date().toLocaleString('ko-KR'),
-      updatedAt: new Date().toLocaleString('ko-KR'),
-      memo: '',
-      reply: null,
-      replyDate: null,
-      citizenFiles: [],
-    };
-    setComplaints((prev) => [newComplaint, ...prev]);
-    setNotifications((prev) => [
-      {
-        id: `N${Date.now()}`,
-        complaintId: newId,
-        title: '접수 완료',
-        desc: `"${title}" 민원이 정상적으로 접수되었습니다.`,
-        icon: 'inbox',
-        color: 'text-primary',
-        tag: '접수',
-        time: '방금 전',
-        read: false,
-      },
-      ...prev,
-    ]);
-    return newId;
+  const addComplaint = async ({ title, content, category }) => {
+    try {
+      const result = await addComplaintApi({ title, content, category });
+      setComplaints((prev) => [result, ...prev]);
+      setNotifications((prev) => [
+        {
+          id: `N${Date.now()}`,
+          complaintId: result.id,
+          title: '접수 완료',
+          desc: `"${title}" 민원이 정상적으로 접수되었습니다.`,
+          icon: 'inbox',
+          color: 'text-primary',
+          tag: '접수',
+          time: '방금 전',
+          read: false,
+        },
+        ...prev,
+      ]);
+      return result.id;
+    } catch {
+      // 백엔드 연결 실패 시 로컬 폴백
+      const deptMap = { '도로/교통': '도로교통과', '시설/안전': '도시시설과', '환경/위생': '청소행정과', '시설/환경': '공원녹지과', '교통/주차': '교통지도과', '교통/안전': '교통행정과' };
+      const newId = `C-2025-${String(Date.now()).slice(-4)}`;
+      const newComplaint = {
+        id: newId, title, content,
+        category: category || '기타',
+        dept: deptMap[category] ?? '민원처리과',
+        citizen: currentUser.name || '익명',
+        citizenId: currentUser.id || 'citizen',
+        status: '접수', urgency: '보통',
+        receivedAt: new Date().toLocaleString('ko-KR'),
+        updatedAt: new Date().toLocaleString('ko-KR'),
+        memo: '', reply: null, replyDate: null, citizenFiles: [],
+      };
+      setComplaints((prev) => [newComplaint, ...prev]);
+      setNotifications((prev) => [{ id: `N${Date.now()}`, complaintId: newId, title: '접수 완료', desc: `"${title}" 민원이 정상적으로 접수되었습니다.`, icon: 'inbox', color: 'text-primary', tag: '접수', time: '방금 전', read: false }, ...prev]);
+      return newId;
+    }
   };
 
   // 회원가입 (시민: 즉시 active / 담당자: pending 대기)
@@ -272,6 +292,11 @@ export function AppProvider({ children }) {
     });
   };
 
+  // 상담 세션 저장 (챗봇)
+  const saveChatSession = (session) => {
+    setChatSessions((prev) => [session, ...prev.filter((s) => s.id !== session.id)]);
+  };
+
   // 알림 읽음 처리
   const markAllRead = () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
@@ -286,11 +311,12 @@ export function AppProvider({ children }) {
   const stats = {
     total:      complaints.length,
     received:   complaints.filter((c) => c.status === '접수').length,
-    inProgress: complaints.filter((c) => c.status === '처리 중' || c.status === '보완 요청').length,
+    assigned:   complaints.filter((c) => c.status === '배정').length,
+    inProgress: complaints.filter((c) => ['배정', '처리 중', '보완 요청', '답변완료'].includes(c.status)).length,
     done:       complaints.filter((c) => c.status === '완료').length,
     rejected:   complaints.filter((c) => c.status === '반려').length,
     urgent:     complaints.filter((c) => c.urgency === '긴급').length,
-    myComplaints:   complaints.filter((c) => c.citizenId === 'citizen'),
+    myComplaints:   complaints.filter((c) => c.citizenId === (currentUser.id || 'citizen')),
     urgentList:     complaints.filter((c) => c.urgency === '긴급'),
     unreadCount:    notifications.filter((n) => !n.read).length,
   };
@@ -299,6 +325,7 @@ export function AppProvider({ children }) {
     <AppContext.Provider value={{
       complaints,
       notifications,
+      chatSessions,
       users,
       staffFiles,
       stats,
@@ -311,6 +338,7 @@ export function AppProvider({ children }) {
       saveMemo,
       saveReply,
       addComplaint,
+      saveChatSession,
       markAllRead,
       registerUser,
       approveUser,

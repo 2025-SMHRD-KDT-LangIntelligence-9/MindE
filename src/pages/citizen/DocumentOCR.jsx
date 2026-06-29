@@ -11,24 +11,24 @@ const steps = [
 
 const ocrFields = [
   { section: '신청인 정보', icon: 'person', fields: [
-    { label: '성명',         value: '홍길동',                    key: 'name' },
-    { label: '주민등록번호', value: '900101-1******',             key: 'rrn' },
-    { label: '연락처',       value: '010-1234-5678',             key: 'phone' },
+    { label: '성명',         value: '', key: 'name' },
+    { label: '주민등록번호', value: '', key: 'rrn' },
+    { label: '연락처',       value: '', key: 'phone' },
   ]},
   { section: '민원 종류', icon: 'category', fields: [
-    { label: '민원 유형',  value: '교통사고 사실 확인',           key: 'type' },
-    { label: '발생 일시',  value: '2024-05-20 14:30',            key: 'date' },
+    { label: '민원 유형',  value: '', key: 'type' },
+    { label: '발생 일시',  value: '', key: 'date' },
   ]},
   { section: '발생 내용', icon: 'description', fields: [
-    { label: '사고 장소',  value: '서울특별시 강남구 테헤란로 1길 12', key: 'location' },
-    { label: '사고 개요',  value: '직진 중 신호위반 차량과 충돌',      key: 'summary' },
+    { label: '사고 장소',  value: '', key: 'location' },
+    { label: '사고 개요',  value: '', key: 'summary' },
   ]},
   { section: '주소 / 위치', icon: 'location_on', fields: [
-    { label: '주소', value: '서울특별시 강남구 테헤란로 1길 12', key: 'address' },
+    { label: '주소', value: '', key: 'address' },
   ]},
   { section: '첨부 정보', icon: 'attach_file', fields: [
-    { label: '문서명',   value: '교통사고_사실확인서.jpg', key: 'docname' },
-    { label: '파일 크기', value: '1.2 MB',               key: 'size' },
+    { label: '문서명',   value: '', key: 'docname' },
+    { label: '파일 크기', value: '', key: 'size' },
   ]},
 ];
 
@@ -58,7 +58,7 @@ function DocumentOCR() {
   const [step2Page, setStep2Page] = useState(3);
   const [step2Fullscreen, setStep2Fullscreen] = useState(false);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
-  const [saveFileName, setSaveFileName] = useState('교통사고_사실확인서_작성완료.pdf');
+  const [saveFileName, setSaveFileName] = useState('민원서류_작성완료.pdf');
   const [toast, setToast] = useState('');
   const fileInputRef1 = useRef(null);
   const fileInputRef2 = useRef(null);
@@ -268,7 +268,7 @@ function DocumentOCR() {
                   </button>
                 </div>
                 <div className="px-5 py-2.5 border-b border-outline-variant/50 shrink-0">
-                  <p className="text-xs text-on-surface-variant">{uploadedFile ? uploadedFile.name : '교통사고_사실확인서.jpg'}</p>
+                  <p className="text-xs text-on-surface-variant">{uploadedFile ? uploadedFile.name : '업로드된 문서'}</p>
                 </div>
                 <div
                   className={`flex-1 flex items-center justify-center p-4 overflow-hidden transition-colors ${dragOverStep2 ? 'bg-primary/5 border-2 border-dashed border-primary' : 'bg-surface-container-low/40'}`}
@@ -292,7 +292,7 @@ function DocumentOCR() {
                           <div key={i} className="h-2 bg-surface-container rounded-full" style={{ width: `${w}%` }} />
                         ))}
                       </div>
-                      <p className="text-xs text-on-surface-variant text-center mt-2">교통사고 사실확인서 · {step2Page + 1}페이지</p>
+                      <p className="text-xs text-on-surface-variant text-center mt-2">{uploadedFile ? uploadedFile.name : '문서'} · {step2Page + 1}페이지</p>
                       <div className="w-16 h-16 border-2 border-outline-variant rounded flex items-center justify-center">
                         <span className="material-symbols-outlined text-on-surface-variant/30">qr_code_2</span>
                       </div>
@@ -438,7 +438,7 @@ function DocumentOCR() {
                   <p className="text-sm font-bold text-on-surface">PDF 미리보기</p>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="text-xs text-on-surface-variant bg-surface-container-low px-2.5 py-1 rounded-lg">교통사고_사실확인서_작성완료.pdf</span>
+                  <span className="text-xs text-on-surface-variant bg-surface-container-low px-2.5 py-1 rounded-lg">{saveFileName}</span>
                   <span className="text-xs text-on-surface-variant">총 3페이지</span>
                 </div>
               </div>
@@ -494,7 +494,7 @@ function DocumentOCR() {
                             <tr>
                               <td style={th(s)}>사고차량</td>
                               <td style={td(s)}><span style={{marginRight:s?8:4}}>종별</span><span style={{borderBottom:'1px solid #000', display:'inline-block', width:s?30:20}}></span></td>
-                              <td style={td(s)}>번호&nbsp;{fieldValues.docname?.split('_')[0] ?? '12가3456'}</td>
+                              <td style={td(s)}>번호&nbsp;{fieldValues.docname?.split('_')[0] ?? ''}</td>
                               <td style={td(s,{fontSize:s?7:5, color:'#555'})}>(소유자)</td>
                             </tr>
                           </tbody>
@@ -506,8 +506,8 @@ function DocumentOCR() {
                               ['발생일시', fieldValues.date],
                               ['발생장소', fieldValues.location],
                               ['사고유형', fieldValues.type],
-                              ['사고원인', '신호위반 차량 직진 중 측면 충돌'],
-                              ['피해내용', '차량 전면부 파손 / 탑승자 경상 2주'],
+                              ['사고원인', fieldValues.summary],
+                              ['피해내용', ''],
                             ].map(([label, val]) => (
                               <tr key={label}>
                                 <td style={th(s,{width:'18%'})}>{label}</td>
@@ -541,9 +541,7 @@ function DocumentOCR() {
                               <td style={th(s,{fontSize:s?10:8})}></td>
                               <td colSpan={2} style={{ border:b, height:s?70:45, padding:s?'4px 6px':'2px 4px', verticalAlign:'top', fontSize:s?9:7 }}>
                                 <p style={{margin:0, lineHeight:1.7}}>
-                                  {fieldValues.summary}<br/>
-                                  차량은 서울 12가 3456호 승용차이며, 신호 대기 중<br/>
-                                  후방 차량의 추돌로 전면부 파손 및 탑승자 경상 발생.
+                                  {fieldValues.summary}
                                 </p>
                               </td>
                             </tr>
@@ -556,10 +554,7 @@ function DocumentOCR() {
                               <td style={th(s,{width:'14%', fontSize:s?10:8})}>사<br/>고<br/>내<br/>용</td>
                               <td style={{ border:b, height:s?80:55, padding:s?'4px 6px':'2px 4px', verticalAlign:'top', fontSize:s?9:7 }}>
                                 <p style={{ margin:0, lineHeight:1.7 }}>
-                                  2024년 5월 20일 오후 2시 30분경, 서울특별시 강남구<br/>
-                                  테헤란로 1길 12 교차로에서 직진 신호에 따라 진행 중<br/>
-                                  신호위반 차량과 충돌하여 사고가 발생하였음.<br/>
-                                  현장 출동 경찰관에 의해 사실 확인 후 접수 처리됨.
+                                  {fieldValues.summary}
                                 </p>
                               </td>
                             </tr>
@@ -598,7 +593,7 @@ function DocumentOCR() {
                         </div>
                         {/* 날짜 + 서명 */}
                         <div style={{ fontSize:s?9:7, marginBottom:s?10:7, textAlign:'right' }}>
-                          2024년 &nbsp; 05월 &nbsp; 20일
+                          {fieldValues.date || ' '}
                         </div>
                         <table style={{ width:'100%', borderCollapse:'collapse', marginBottom:s?10:7, fontSize:s?9:7 }}>
                           <tbody>
@@ -946,7 +941,7 @@ function DocumentOCR() {
                   <div key={i} className="h-2 bg-surface-container rounded-full" style={{ width: `${w}%` }} />
                 ))}
               </div>
-              <p className="text-sm text-on-surface-variant text-center mt-2">교통사고 사실확인서 · {step2Page + 1}페이지</p>
+              <p className="text-sm text-on-surface-variant text-center mt-2">{uploadedFile ? uploadedFile.name : '문서'} · {step2Page + 1}페이지</p>
             </div>
           </div>
           <div className="flex items-center justify-center gap-2 pb-5 shrink-0" onClick={(e) => e.stopPropagation()}>

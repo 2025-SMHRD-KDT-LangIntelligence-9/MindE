@@ -1,12 +1,12 @@
 ﻿import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import logo from '../../assets/logo.png';
-import { useApp } from '../../store/AppContext';
-import { DEPT_OPTIONS } from '../../store/AppContext';
+import { useApp, DEPT_OPTIONS } from '../../store/AppContext';
+import { registerApi } from '../../api/auth';
 
 function Register() {
   const navigate = useNavigate();
-  const { registerUser } = useApp();
+  const { stats } = useApp();
 
   const [mode, setMode] = useState('citizen');
   const [showPw, setShowPw] = useState(false);
@@ -14,25 +14,60 @@ function Register() {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [passwordConfirm, setPasswordConfirm] = useState('');
   const [selectedDept, setSelectedDept] = useState(DEPT_OPTIONS[0].dept);
   const [done, setDone] = useState(false);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const isStaff = mode === 'staff';
 
   const handleModeChange = (next) => {
     setMode(next);
-    setName(''); setPhone(''); setEmail(''); setDone(false);
+    setName(''); setPhone(''); setEmail(''); setPassword(''); setPasswordConfirm(''); setError(''); setDone(false);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (isStaff) {
+    setError('');
+
+    if (!name || !email || !password) {
+      setError('이름, 이메일, 비밀번호를 모두 입력해 주세요.');
+      return;
+    }
+    if (password !== passwordConfirm) {
+      setError('비밀번호가 일치하지 않습니다.');
+      return;
+    }
+
+    setLoading(true);
+    try {
       const deptOption = DEPT_OPTIONS.find((d) => d.dept === selectedDept);
-      registerUser({ name: name || '담당자', email: email || '', phone: phone || '', role: 'staff', dept: deptOption.dept, deptGroup: deptOption.deptGroup });
-      setDone(true);
-    } else {
-      registerUser({ name: name || '익명', email: email || '', phone: phone || '' });
-      navigate('/login');
+      await registerApi({
+        name,
+        email,
+        password,
+        phone: phone || '',
+        user_type: isStaff ? 'staff' : 'citizen',
+        ...(isStaff && { dept: deptOption.dept }),
+      });
+
+      if (isStaff) {
+        setDone(true);
+      } else {
+        navigate('/login');
+      }
+    } catch (err) {
+      if (err.response?.status === 409) {
+        setError('이미 사용 중인 이메일입니다.');
+      } else if (err.code === 'ERR_NETWORK') {
+        setError('서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.');
+      } else {
+        setError('회원가입 중 오류가 발생했습니다.');
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -64,8 +99,8 @@ function Register() {
             {/* 통계 */}
             <div className="relative z-10 grid grid-cols-3 gap-2">
               {[
-                { value: '12,400+', label: '누적 처리' },
-                { value: '1.8일',   label: '평균 처리 속도' },
+                { value: `${stats.done}건`, label: '누적 처리' },
+                { value: `${stats.total}건`, label: '총 접수' },
                 { value: '24시간',  label: '언제든 접수' },
               ].map((s) => (
                 <div key={s.label} className="bg-white/15 rounded-2xl py-3.5 text-center border border-white/20">
@@ -211,6 +246,7 @@ function Register() {
                         <div className="relative">
                           <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[20px]">lock</span>
                           <input type={showPw ? 'text' : 'password'} placeholder="비밀번호를 입력하세요"
+                            value={password} onChange={(e) => setPassword(e.target.value)}
                             className="w-full h-11 pl-10 pr-10 border border-outline-variant rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-on-surface text-sm" />
                           <button type="button" onClick={() => setShowPw(!showPw)} className="absolute right-3 top-1/2 -translate-y-1/2 text-outline hover:text-on-surface transition-colors">
                             <span className="material-symbols-outlined text-[20px]">{showPw ? 'visibility_off' : 'visibility'}</span>
@@ -224,12 +260,21 @@ function Register() {
                         <div className="relative">
                           <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[20px]">lock_reset</span>
                           <input type={showPwConfirm ? 'text' : 'password'} placeholder="비밀번호를 다시 입력하세요"
+                            value={passwordConfirm} onChange={(e) => setPasswordConfirm(e.target.value)}
                             className="w-full h-11 pl-10 pr-10 border border-outline-variant rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-on-surface text-sm" />
                           <button type="button" onClick={() => setShowPwConfirm(!showPwConfirm)} className="absolute right-3 top-1/2 -translate-y-1/2 text-outline hover:text-on-surface transition-colors">
                             <span className="material-symbols-outlined text-[20px]">{showPwConfirm ? 'visibility_off' : 'visibility'}</span>
                           </button>
                         </div>
                       </div>
+
+                      {/* 에러 */}
+                      {error && (
+                        <div className="flex items-center gap-2 bg-error-container text-error px-3 py-2.5 rounded-xl text-sm">
+                          <span className="material-symbols-outlined text-lg shrink-0">error</span>
+                          {error}
+                        </div>
+                      )}
 
                       {!isStaff && (
                         <label className="flex items-center gap-2 cursor-pointer pt-1">
@@ -238,10 +283,10 @@ function Register() {
                         </label>
                       )}
 
-                      <button type="submit"
-                        className="w-full py-3 font-bold rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-sm bg-primary text-white hover:brightness-105 shadow-md shadow-primary/30 mt-1">
-                        {isStaff ? '담당자 가입 신청' : '회원가입'}
-                        <span className="material-symbols-outlined text-lg">{isStaff ? 'badge' : 'person_add'}</span>
+                      <button type="submit" disabled={loading}
+                        className="w-full py-3 font-bold rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-sm bg-primary text-white hover:brightness-105 shadow-md shadow-primary/30 mt-1 disabled:opacity-60 disabled:cursor-not-allowed">
+                        {loading ? '처리 중...' : (isStaff ? '담당자 가입 신청' : '회원가입')}
+                        <span className="material-symbols-outlined text-lg">{loading ? 'hourglass_empty' : (isStaff ? 'badge' : 'person_add')}</span>
                       </button>
                     </form>
 

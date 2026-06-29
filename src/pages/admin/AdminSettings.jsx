@@ -27,21 +27,11 @@ function AdminSettings() {
   const [roleFilter, setRoleFilter]     = useState('citizen');
 
   // 카테고리 state
-  const [categories, setCategories] = useState([
-    { name: '주거 및 환경', desc: '소음, 불법주차, 위생 관리 등', icon: 'corporate_fare' },
-    { name: '교통 및 도로', desc: '신호등 고장, 도로 파손, 대중교통 불편', icon: 'directions_car' },
-    { name: '복지 및 보건', desc: '취약계층 지원, 예방접종, 의료시설 관련', icon: 'medical_services' },
-  ]);
+  const [categories, setCategories] = useState([]);
   const [catModal, setCatModal] = useState({ open: false, mode: 'add', idx: null, name: '', desc: '', icon: 'corporate_fare' });
 
   // 부서 state
-  const [departments, setDepartments] = useState([
-    { name: '도로교통과', type: '교통/도로', members: 12, active: 34, status: '정상' },
-    { name: '환경보전과', type: '환경/위생', members: 8,  active: 21, status: '정상' },
-    { name: '사회복지과', type: '복지/보건', members: 15, active: 18, status: '정상' },
-    { name: '교통지도과', type: '교통/주차', members: 10, active: 27, status: '정상' },
-    { name: '공원녹지과', type: '환경/녹지', members: 6,  active: 9,  status: '점검중' },
-  ]);
+  const [departments, setDepartments] = useState([]);
   const [deptModal, setDeptModal] = useState({ open: false, mode: 'add', idx: null, name: '', type: '', status: '정상' });
 
   // 삭제 확인 모달
@@ -288,6 +278,12 @@ function AdminSettings() {
               </div>
             </div>
             <div className="space-y-4">
+              {categories.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-12 text-on-surface-variant/50 gap-2">
+                  <span className="material-symbols-outlined text-4xl">category</span>
+                  <p className="text-sm">등록된 카테고리가 없습니다. 추가해 주세요.</p>
+                </div>
+              )}
               {categories.map((c, i) => (
                 <div key={i} className="flex items-center justify-between p-5 border border-outline-variant rounded-2xl">
                   <div className="flex items-center gap-5">
@@ -377,6 +373,9 @@ function AdminSettings() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-outline-variant/50">
+                {departments.length === 0 && (
+                  <tr><td colSpan={6} className="text-center py-10 text-on-surface-variant text-sm">등록된 부서가 없습니다.</td></tr>
+                )}
                 {departments.map((d, i) => (
                   <tr key={i} className="hover:bg-surface-container-low/50 transition-colors">
                     <td className="px-6 py-4 font-bold text-sm text-on-surface">{d.name}</td>

@@ -1,8 +1,10 @@
 import { useNavigate } from 'react-router-dom';
 import logo from '../../assets/logo.png';
+import { useApp } from '../../store/AppContext';
 
 function Landing() {
   const navigate = useNavigate();
+  const { stats } = useApp();
 
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-gradient-to-br from-blue-50/30 via-transparent to-indigo-50/30">
@@ -71,8 +73,8 @@ function Landing() {
               {/* 통계 */}
               <div className="flex items-center gap-6">
                 {[
-                  { value: '12,400+', label: '누적 처리' },
-                  { value: '1.8일',   label: '평균 처리' },
+                  { value: `${stats.done}건`, label: '누적 처리' },
+                  { value: `${stats.total}건`, label: '총 접수' },
                   { value: '24시간',  label: '접수 가능' },
                 ].map((s, i) => (
                   <div key={s.label} className="flex items-center gap-6">
