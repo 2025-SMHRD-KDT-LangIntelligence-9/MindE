@@ -1,17 +1,8 @@
-﻿import { useState, useRef } from 'react';
+﻿import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import logo from '../../assets/logo.png';
 import { useApp } from '../../store/AppContext';
 import { STAFF_ACCOUNTS } from '../../store/AppContext';
-
-const CITIZEN_ACCOUNT = { email: 'user@test.com',  password: '1234' };
-const ADMIN_ACCOUNT   = { email: 'admin@test.com', password: 'admin' };
-
-const PRESET_ACCOUNTS = [
-  { label: '일반 시민',   email: CITIZEN_ACCOUNT.email, password: CITIZEN_ACCOUNT.password },
-  { label: '관리자',     email: ADMIN_ACCOUNT.email,   password: ADMIN_ACCOUNT.password },
-  ...STAFF_ACCOUNTS.map((a) => ({ label: a.dept, email: a.email, password: a.password })),
-];
 
 function Login() {
   const navigate = useNavigate();
@@ -20,16 +11,14 @@ function Login() {
   const [password, setPassword] = useState('');
   const [showPw, setShowPw]     = useState(false);
   const [error, setError]       = useState('');
-  const [showDropdown, setShowDropdown] = useState(false);
   const [showForgot, setShowForgot] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotSent, setForgotSent] = useState(false);
-  const emailRef = useRef(null);
 
   const handleSubmit = (e) => {
     e.preventDefault();
 
-    if (email === ADMIN_ACCOUNT.email) {
+    if (email === 'admin@test.com') {
       login('admin');
       navigate('/admin');
       return;
@@ -57,13 +46,6 @@ function Login() {
 
     login('citizen');
     navigate('/chatbot');
-  };
-
-  const selectAccount = (account) => {
-    setEmail(account.email);
-    setPassword(account.password);
-    setError('');
-    setShowDropdown(false);
   };
 
   return (
@@ -166,48 +148,15 @@ function Login() {
                     <div className="flex flex-col gap-5">
                       <div>
                         <label className="text-xs font-bold text-on-surface-variant block mb-1.5">이메일</label>
-                        <div className="relative" ref={emailRef}>
+                        <div className="relative">
                           <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-outline text-[20px] z-10">mail</span>
                           <input
                             type="email"
                             value={email}
                             onChange={(e) => { setEmail(e.target.value); setError(''); }}
-                            onFocus={() => setShowDropdown(true)}
-                            onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
-                            placeholder="이메일을 입력하거나 선택하세요"
-                            className="w-full h-12 pl-11 pr-10 border-2 border-outline-variant rounded-xl focus:border-primary outline-none transition-all text-on-surface text-sm bg-surface-container-low/40 focus:bg-white"
+                            placeholder="이메일을 입력하세요"
+                            className="w-full h-12 pl-11 pr-4 border-2 border-outline-variant rounded-xl focus:border-primary outline-none transition-all text-on-surface text-sm bg-surface-container-low/40 focus:bg-white"
                           />
-                          <button
-                            type="button"
-                            onMouseDown={(e) => { e.preventDefault(); setShowDropdown((v) => !v); }}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-outline hover:text-primary transition-colors"
-                          >
-                            <span className="material-symbols-outlined text-[20px]">
-                              {showDropdown ? 'expand_less' : 'expand_more'}
-                            </span>
-                          </button>
-
-                          {showDropdown && (
-                            <div className="absolute top-full left-0 right-0 mt-1.5 bg-white border border-outline-variant rounded-xl shadow-xl z-50 overflow-hidden">
-                              <p className="text-[10px] font-bold text-on-surface-variant px-4 pt-2.5 pb-1 uppercase tracking-wide">계정 선택</p>
-                              {PRESET_ACCOUNTS.map((a) => (
-                                <button
-                                  key={a.email}
-                                  type="button"
-                                  onMouseDown={() => selectAccount(a)}
-                                  className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-primary/5 transition-colors text-left"
-                                >
-                                  <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                                    <span className="material-symbols-outlined text-primary text-sm">person</span>
-                                  </div>
-                                  <div>
-                                    <p className="text-xs font-bold text-on-surface">{a.label}</p>
-                                    <p className="text-[11px] text-on-surface-variant">{a.email}</p>
-                                  </div>
-                                </button>
-                              ))}
-                            </div>
-                          )}
                         </div>
                       </div>
 

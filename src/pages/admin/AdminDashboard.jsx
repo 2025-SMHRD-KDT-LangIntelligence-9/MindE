@@ -3,79 +3,33 @@ import AdminLayout from '../../layouts/AdminLayout';
 import { useApp, CATEGORY_STYLE, URGENCY_STYLE } from '../../store/AppContext';
 import { STATUS_STYLE } from '../../utils/statusStyle';
 
-const Y_TICKS  = [0, 20, 40, 60, 80, 100];
-const PRIMARY  = '#6EAEFF';
-const CHART_H  = 160;
-
-function BarChart({ bars, labels }) {
-  const maxVal = 100;
-  const VW = 560;
-  const barGroupW = VW / bars.length;
-  const barW      = barGroupW * 0.55;
-  const barPadX   = barGroupW * 0.225;
-  const getY = (v) => CHART_H - (v / maxVal) * CHART_H;
-
-  return (
-    <div>
-      <div className="flex gap-1">
-        <div className="flex flex-col justify-between shrink-0 pr-1" style={{ height: CHART_H }}>
-          {[...Y_TICKS].reverse().map((v) => (
-            <span key={v} className="text-[10px] text-on-surface-variant leading-none text-right w-6">{v}</span>
-          ))}
-        </div>
-        <svg viewBox={`0 0 ${VW} ${CHART_H}`} className="flex-1" style={{ height: CHART_H, overflow: 'visible' }}>
-          {Y_TICKS.map((v) => (
-            <line key={v} x1={0} y1={getY(v)} x2={VW} y2={getY(v)}
-              stroke="#e8edf2" strokeWidth={v === 0 ? 1.5 : 1} strokeDasharray={v === 0 ? '0' : '4 3'} />
-          ))}
-          {bars.map((val, i) => {
-            const barH = (val / maxVal) * CHART_H;
-            const x    = i * barGroupW + barPadX;
-            const y    = getY(val);
-            const isHigh = val >= 85;
-            return (
-              <g key={i}>
-                <defs>
-                  <linearGradient id={`grad-${i}`} x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%"   stopColor={PRIMARY} stopOpacity={isHigh ? 1 : 0.35} />
-                    <stop offset="100%" stopColor={PRIMARY} stopOpacity={isHigh ? 0.65 : 0.15} />
-                  </linearGradient>
-                </defs>
-                <rect x={x} y={y} width={barW} height={barH} fill={`url(#grad-${i})`} rx={4} />
-                {isHigh && <>
-                  <rect x={x} y={y} width={barW} height={barH} fill="none" stroke={PRIMARY} strokeWidth={1.5} rx={4} />
-                  <text x={x + barW / 2} y={y - 5} textAnchor="middle" fontSize={9} fontWeight="bold" fill={PRIMARY}>{val}</text>
-                </>}
-              </g>
-            );
-          })}
-          <line x1={0} y1={CHART_H} x2={VW} y2={CHART_H} stroke="#e8edf2" strokeWidth={1.5} />
-        </svg>
-      </div>
-      <div className="flex mt-1.5" style={{ paddingLeft: 32 }}>
-        {labels.map((l, i) => (
-          <span key={i} className="flex-1 text-center text-[10px] text-on-surface-variant">{l}시</span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-const chartBars   = [40, 60, 75, 50, 85, 65, 95, 70, 80, 55, 90, 72];
-const chartLabels = ['09','10','11','12','13','14','15','16','17','18','19','20'];
-
-const deptLoad = [
-  { dept: '도로교통과', pct: 88, color: 'bg-error' },
-  { dept: '환경보전과', pct: 62, color: 'bg-amber-400' },
-  { dept: '사회복지과', pct: 45, color: 'bg-primary' },
-  { dept: '공원녹지과', pct: 31, color: 'bg-emerald-500' },
-];
 
 function AdminDashboard() {
   const navigate = useNavigate();
   const { complaints, stats } = useApp();
 
   const urgentRows = complaints.filter((c) => c.urgency === '긴급').slice(0, 5);
+
+  // 최근 7일 민원 현황
+  const last7Days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - i));
+    const dateStr = d.toISOString().slice(0, 10);
+    const count = complaints.filter((c) => c.receivedAt?.startsWith(dateStr)).length;
+    return { date: dateStr.slice(5).replace('-', '/'), count };
+  });
+  const hasRecentData = last7Days.some((d) => d.count > 0);
+
+  // 부서별 민원 건수 (실제 데이터)
+  const deptCountMap = complaints.reduce((acc, c) => {
+    if (c.dept) acc[c.dept] = (acc[c.dept] || 0) + 1;
+    return acc;
+  }, {});
+  const deptData = Object.entries(deptCountMap)
+    .map(([dept, count]) => ({ dept, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+  const maxDeptCount = Math.max(...deptData.map((d) => d.count), 1);
 
   const total      = complaints.length;
   const cReceived  = complaints.filter((c) => c.status === '접수').length;
@@ -112,39 +66,78 @@ function AdminDashboard() {
         ))}
       </div>
 
-      {/* 차트 + 부서 로드 */}
+      {/* 최근 7일 + 부서별 민원 */}
       <div className="grid grid-cols-12 gap-5 mb-6">
         <div className="col-span-8 bg-white rounded-2xl border border-outline-variant p-6 shadow-sm">
           <div className="flex items-center justify-between mb-5">
             <div>
-              <h3 className="font-bold text-sm text-on-surface">실시간 민원 유입 추이</h3>
-              <p className="text-xs text-on-surface-variant mt-0.5">오늘 시간대별 민원 접수 현황</p>
+              <h3 className="font-bold text-sm text-on-surface">최근 7일 민원 접수 현황</h3>
+              <p className="text-xs text-on-surface-variant mt-0.5">날짜별 민원 접수 건수</p>
             </div>
-            <span className="text-xs text-primary font-bold bg-primary/10 px-3 py-1 rounded-full">실시간</span>
           </div>
-          <BarChart bars={chartBars} labels={chartLabels} />
+          {hasRecentData ? (
+            <div className="space-y-2">
+              {last7Days.map((d) => (
+                <div key={d.date} className="flex items-center gap-3">
+                  <span className="text-xs text-on-surface-variant w-12 shrink-0">{d.date}</span>
+                  <div className="flex-1 h-6 bg-surface-container-low rounded-lg overflow-hidden flex items-center">
+                    <div
+                      className="h-full bg-primary/70 rounded-lg transition-all"
+                      style={{ width: `${Math.max((d.count / Math.max(...last7Days.map(x => x.count), 1)) * 100, d.count > 0 ? 4 : 0)}%` }}
+                    />
+                  </div>
+                  <span className="text-xs font-bold text-on-surface w-8 text-right shrink-0">{d.count}건</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-36 gap-2 text-on-surface-variant">
+              <span className="material-symbols-outlined text-3xl text-outline">bar_chart</span>
+              <p className="text-sm">최근 7일간 접수된 민원이 없습니다.</p>
+              <div className="mt-2 w-full">
+                <table className="w-full text-xs text-center border-collapse">
+                  <thead>
+                    <tr className="border-b border-outline-variant">
+                      {last7Days.map((d) => (
+                        <th key={d.date} className="py-1.5 px-2 font-medium text-on-surface-variant">{d.date}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      {last7Days.map((d) => (
+                        <td key={d.date} className="py-1.5 px-2 font-bold text-on-surface">{d.count}</td>
+                      ))}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="col-span-4 bg-white rounded-2xl border border-outline-variant p-6 shadow-sm">
-          <h3 className="font-bold text-sm text-on-surface mb-5">부서별 업무 로드</h3>
-          <div className="space-y-4">
-            {deptLoad.map((d) => (
-              <div key={d.dept}>
-                <div className="flex justify-between text-xs mb-1.5">
-                  <span className="font-medium text-on-surface">{d.dept}</span>
-                  <span className={`font-bold ${d.pct >= 80 ? 'text-error' : d.pct >= 60 ? 'text-amber-600' : 'text-primary'}`}>{d.pct}%</span>
-                </div>
-                <div className="w-full h-2 bg-surface-container rounded-full overflow-hidden">
-                  <div className={`h-full rounded-full ${d.color}`} style={{ width: `${d.pct}%` }} />
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="mt-5 pt-4 border-t border-outline-variant">
-            <p className="text-xs text-on-surface-variant">
-              <span className="text-error font-bold">도로교통과</span>가 업무 과부하 상태입니다.
-            </p>
-          </div>
+          <h3 className="font-bold text-sm text-on-surface mb-5">부서별 민원 현황</h3>
+          {deptData.length === 0 ? (
+            <p className="text-sm text-on-surface-variant text-center py-8">데이터가 없습니다.</p>
+          ) : (
+            <div className="space-y-4">
+              {deptData.map((d) => {
+                const pct = Math.round((d.count / maxDeptCount) * 100);
+                return (
+                  <div key={d.dept}>
+                    <div className="flex justify-between text-xs mb-1.5">
+                      <span className="font-medium text-on-surface">{d.dept}</span>
+                      <span className="font-bold text-primary">{d.count}건</span>
+                    </div>
+                    <div className="w-full h-2 bg-surface-container rounded-full overflow-hidden">
+                      <div className="h-full rounded-full bg-primary/70" style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 

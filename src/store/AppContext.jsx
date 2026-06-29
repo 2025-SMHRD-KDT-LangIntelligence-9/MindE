@@ -27,11 +27,11 @@ export const DEPT_OPTIONS = [
 
 /* 담당자 계정 목록 (Login에서도 import해서 사용) */
 export const STAFF_ACCOUNTS = [
-  { email: 'road@test.com',  password: 'staff1', name: '김도로', dept: '도로교통과',
+  { email: 'road@test.com',  name: '김도로', dept: '도로교통과',
     deptGroup: ['도로교통과', '교통행정과', '교통지도과'] },
-  { email: 'env@test.com',   password: 'staff2', name: '이환경', dept: '환경위생과',
+  { email: 'env@test.com',   name: '이환경', dept: '환경위생과',
     deptGroup: ['도시환경과', '청소행정과', '도시녹지과', '환경위생과'] },
-  { email: 'infra@test.com', password: 'staff3', name: '박시설', dept: '도시시설과',
+  { email: 'infra@test.com', name: '박시설', dept: '도시시설과',
     deptGroup: ['도시시설과', '공원녹지과', '상수도과', '도시시설과'] },
 ];
 

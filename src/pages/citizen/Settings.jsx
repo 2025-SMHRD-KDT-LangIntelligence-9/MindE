@@ -2,8 +2,6 @@
 import { useNavigate } from 'react-router-dom';
 import CitizenLayout from '../../layouts/CitizenLayout';
 
-const DEMO_PASSWORD = '1234';
-
 function Toggle({ on, onClick }) {
   return (
     <button
@@ -34,7 +32,6 @@ function Settings() {
   const handleSave = (e) => {
     e.preventDefault();
     if (!confirmPw) { setConfirmErr('현재 비밀번호를 입력해야 저장할 수 있습니다.'); return; }
-    if (confirmPw !== DEMO_PASSWORD) { setConfirmErr('비밀번호가 올바르지 않습니다.'); return; }
     setConfirmErr('');
     setConfirmPw('');
     setSaveOk(true);
@@ -80,7 +77,6 @@ function Settings() {
                   onSubmit={(e) => {
                     e.preventDefault();
                     if (!pw) { setPwError('비밀번호를 입력해주세요.'); return; }
-                    if (pw !== DEMO_PASSWORD) { setPwError('비밀번호가 올바르지 않습니다.'); return; }
                     setVerified(true);
                   }}
                   className="space-y-4"
@@ -160,7 +156,7 @@ function Settings() {
                 <div className="flex flex-col gap-1">
                   {[
                     { icon: 'mail',           value: 'chulsoo@maumgyeol.kr' },
-                    { icon: 'phone',          value: '010-1234-5678' },
+                    { icon: 'phone',          value: '연락처 미등록' },
                     { icon: 'calendar_today', value: '2024-03-15 가입' },
                   ].map((row) => (
                     <div key={row.icon} className="flex items-center gap-1.5 text-xs text-on-surface-variant">
@@ -188,7 +184,7 @@ function Settings() {
                 <label className="text-xs font-bold text-on-surface-variant block mb-1">전화번호</label>
                 <div className="relative">
                   <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[18px]">phone</span>
-                  <input defaultValue="010-1234-5678" className="w-full h-10 pl-10 pr-4 rounded-xl border border-outline-variant focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-sm" />
+                  <input defaultValue="" placeholder="전화번호를 입력하세요" className="w-full h-10 pl-10 pr-4 rounded-xl border border-outline-variant focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-sm" />
                 </div>
               </div>
               <div>
@@ -371,7 +367,6 @@ function Settings() {
                   type="button"
                   onClick={() => {
                     if (!withdrawPw) { setWithdrawErr('비밀번호를 입력해주세요.'); return; }
-                    if (withdrawPw !== DEMO_PASSWORD) { setWithdrawErr('비밀번호가 올바르지 않습니다.'); return; }
                     setWithdrawOpen(false);
                     navigate('/login');
                   }}

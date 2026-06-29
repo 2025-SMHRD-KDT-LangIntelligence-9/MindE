@@ -8,7 +8,11 @@ import logo from '../../assets/logo.png';
 function Home() {
   const navigate = useNavigate();
   const { stats } = useApp();
-  const recentComplaints = stats.myComplaints.slice(0, 3);
+  const myComplaints = stats.myComplaints;
+  const recentComplaints = myComplaints.slice(0, 3);
+  const cReceived   = myComplaints.filter((c) => c.status === '접수').length;
+  const cInProgress = myComplaints.filter((c) => ['처리 중', '보완 요청'].includes(c.status)).length;
+  const cDone       = myComplaints.filter((c) => c.status === '완료').length;
 
   return (
     <CitizenLayout pageTitle="대시보드" activeMenu="home" sidebarColor="#aecdfa">
@@ -30,9 +34,9 @@ function Home() {
       {/* 상태 요약 카드 3개 */}
       <section className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         {[
-          { label: '접수 완료', value: '1건', icon: 'archive' },
-          { label: '처리 중', value: '2건', icon: 'pending_actions' },
-          { label: '처리 완료', value: '5건', icon: 'check_circle' },
+          { label: '접수 완료', value: `${cReceived}건`, icon: 'archive' },
+          { label: '처리 중', value: `${cInProgress}건`, icon: 'pending_actions' },
+          { label: '처리 완료', value: `${cDone}건`, icon: 'check_circle' },
         ].map((card) => (
           <div key={card.label} className="bg-white p-6 rounded-2xl border border-outline-variant flex items-center gap-5 shadow-sm">
             <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">

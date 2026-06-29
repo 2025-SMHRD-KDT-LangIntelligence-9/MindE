@@ -13,13 +13,26 @@ function StatusBadge({ status }) {
 }
 
 const weekDays = ['월', '화', '수', '목', '금', '토', '일'];
-const weeklyMock = [4, 6, 3, 7, 5, 2, 1];
-const maxWeekly = Math.max(...weeklyMock);
 
 function StaffStats() {
   const navigate = useNavigate();
   const { myDeptComplaints, currentUser, notifications } = useApp();
   const complaints = myDeptComplaints;
+
+  // 이번 주 요일별 접수 건수 계산
+  const today = new Date();
+  const dow = today.getDay();
+  const mondayOffset = dow === 0 ? -6 : 1 - dow;
+  const weekStart = new Date(today);
+  weekStart.setDate(today.getDate() + mondayOffset);
+  const weeklyData = weekDays.map((_, i) => {
+    const d = new Date(weekStart);
+    d.setDate(weekStart.getDate() + i);
+    const dateStr = d.toISOString().slice(0, 10);
+    return complaints.filter((c) => c.receivedAt?.startsWith(dateStr)).length;
+  });
+  const maxWeekly = Math.max(...weeklyData, 1);
+  const hasWeeklyData = weeklyData.some((v) => v > 0);
 
   const total      = complaints.length;
   const received   = complaints.filter((c) => c.status === '접수').length;
@@ -104,18 +117,40 @@ function StaffStats() {
               <span className="material-symbols-outlined text-[#1e3a5f] text-lg">bar_chart</span>
               <h3 className="font-bold text-sm text-on-surface">이번 주 요일별 접수</h3>
             </div>
-            <div className="flex items-end justify-between gap-2 h-36 mt-13">
-              {weeklyMock.map((count, i) => (
-                <div key={weekDays[i]} className="flex-1 flex flex-col items-center gap-1.5">
-                  <span className="text-[11px] font-bold text-on-surface-variant">{count}</span>
-                  <div className="w-full flex items-end justify-center" style={{ height: '96px' }}>
-                    <div className="w-full rounded-t-lg transition-all bg-primary"
-                      style={{ height: `${(count / maxWeekly) * 96}px` }} />
+            {hasWeeklyData ? (
+              <div className="flex items-end justify-between gap-2 h-36 mt-13">
+                {weeklyData.map((count, i) => (
+                  <div key={weekDays[i]} className="flex-1 flex flex-col items-center gap-1.5">
+                    <span className="text-[11px] font-bold text-on-surface-variant">{count}</span>
+                    <div className="w-full flex items-end justify-center" style={{ height: '96px' }}>
+                      <div className="w-full rounded-t-lg transition-all bg-primary"
+                        style={{ height: `${(count / maxWeekly) * 96}px` }} />
+                    </div>
+                    <span className="text-[11px] text-on-surface-variant">{weekDays[i]}</span>
                   </div>
-                  <span className="text-[11px] text-on-surface-variant">{weekDays[i]}</span>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-4 gap-3">
+                <p className="text-sm text-on-surface-variant">이번 주 접수된 민원이 없습니다.</p>
+                <table className="w-full text-xs text-center border-collapse mt-1">
+                  <thead>
+                    <tr className="border-b border-outline-variant">
+                      {weekDays.map((d) => (
+                        <th key={d} className="py-1.5 px-2 font-medium text-on-surface-variant">{d}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      {weeklyData.map((count, i) => (
+                        <td key={weekDays[i]} className="py-1.5 px-2 font-bold text-on-surface">{count}</td>
+                      ))}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
 
