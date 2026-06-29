@@ -1,6 +1,6 @@
 # 진행 상황 (Resume용)
 
-마지막 업데이트: 2026-06-29 (오후 — 게이트/멀티턴/Top-3 LLM 선택 추가)
+마지막 업데이트: 2026-06-29 (저녁 — 멀티모달 STT/Vision 통합)
 
 ## ✅ 완료된 작업
 
@@ -37,6 +37,15 @@
 | `match_or_create_cluster(text, keywords?, threshold=0.75)` | 클러스터링 + urgency_bonus |
 | `get_categories()` | 11 카테고리 메타 |
 | `preload_models()` | 서버 startup용 |
+
+### 멀티모달 입력 (신규)
+| 함수 | 용도 | 상태 |
+|---|---|---|
+| `transcribe_audio(audio_bytes, lang="Kor")` | 음성 → 텍스트 (CLOVA CSR) | ✅ 동작 확인 (Heami TTS 샘플로 검증, latency 1.5s) |
+| `synthesize_speech(text, speaker="nara")` | 텍스트 → 음성 mp3 (CLOVA Voice) | ⏳ 코드 OK, NCP Voice Premium 활성화 대기 |
+| `analyze_image(image_bytes, mime_type)` | 이미지 → 민원 분석 텍스트 (gpt-4o Vision) | ✅ 동작 확인 (도로 싱크홀 사진, E2E 19s) |
+
+세 함수 모두 stateless. 백엔드가 파일 받아 호출 → 텍스트 → `answer_chatbot`에 전달.
 
 ### answer_chatbot 흐름 (현재 버전)
 
@@ -94,6 +103,10 @@
 - ⭐ 게이트 분기: `metadata['tool_used']` 보고 화면 처리 분기 가능 (잡담 시 분류/부서 등 None)
 - ⭐ classification.top_k 각 후보에 `departments` 동봉
 - ⭐ OPENAI_MODEL = gpt-4o (비용↑, 정확도↑)
+- ⭐ **멀티모달 함수 3개** — `transcribe_audio`, `synthesize_speech`, `analyze_image`
+  - 백엔드는 음성/이미지 파일 받아 → 위 함수로 텍스트 변환 → `answer_chatbot(text, history)` 호출
+  - `.env`에 `NAVER_CLOVA_CLIENT_ID/SECRET` 필요 (STT/TTS용)
+  - Vision은 기존 `OPENAI_API_KEY`만 있으면 됨
 - (이전) `departments.description` / `complaint_clusters.centroid` / `search_dept` / `match_or_create_cluster`
 
 ### 미적용 후보

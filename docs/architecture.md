@@ -67,7 +67,31 @@
 - 정식 민원(/complaints) — DB 저장 + 알림 발동
 - **멀티턴**: history는 백엔드가 session_id별 보관. AI 모듈은 stateless.
 
-## LLM 호출 위치 (총 최대 3회)
+## 멀티모달 입력 통합
+
+```
+[사용자]
+   ├─ 텍스트 입력
+   │     ↓
+   ├─ 음성 입력 → transcribe_audio() ── (CLOVA CSR) ──┐
+   │                                                    │
+   └─ 이미지 입력 → analyze_image() ── (gpt-4o Vision) ──┤
+                                                          ↓
+                                              [텍스트로 통일]
+                                                          ↓
+                                              answer_chatbot(text, history)
+                                                          ↓
+                                              [답변 텍스트]
+                                                          ↓
+                              (선택) synthesize_speech() → (CLOVA Voice) → 음성 mp3
+                                                          ↓
+                                              사용자에게 응답
+```
+
+- 음성/이미지를 텍스트로 변환한 후 기존 `answer_chatbot` 흐름에 그대로 태움 → 분류/검색/답변 흐름 변경 0
+- 각 변환 함수는 stateless. 백엔드가 호출 순서 결정.
+
+## LLM 호출 위치 (총 최대 3회 + 멀티모달 0~2회)
 
 | 단계 | 호출 | history 받음? | 비고 |
 |---|---|---|---|

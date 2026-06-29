@@ -23,6 +23,10 @@ PG_USER=...
 PG_PASSWORD=...
 PG_DB=...
 OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4o
+# 멀티모달 입력용 (선택) — NAVER CLOVA
+NAVER_CLOVA_CLIENT_ID=...
+NAVER_CLOVA_CLIENT_SECRET=...
 ```
 
 ### 4. 모델 다운로드
@@ -115,6 +119,15 @@ ai/
 |---|---|
 | **`answer_chatbot(text, history=None)`** ⭐ | 게이트 + 모든 도구 + LLM 호출 → 자연어 답변 + metadata. 멀티턴은 history 인자로. |
 | `extract_keywords(text)` | LLM으로 키워드 추출 (클러스터링 input용) |
+
+### 멀티모달 입력 (async)
+| 함수 | 용도 |
+|---|---|
+| `transcribe_audio(audio_bytes, lang="Kor")` | 음성 → 텍스트 (NAVER CLOVA CSR, 60초 이내) |
+| `synthesize_speech(text, speaker="nara")` | 텍스트 → 음성 mp3 (NAVER CLOVA Voice Premium) |
+| `analyze_image(image_bytes, mime_type)` | 이미지 → 민원 분석 텍스트 (gpt-4o Vision, OCR+의도 추정) |
+
+세 함수 모두 출력 텍스트(또는 텍스트 변환 후)를 `answer_chatbot`에 그대로 전달하면 분류/검색/답변 자동.
 
 ### 도구 함수 (sync — `asyncio.to_thread`로 감쌀 것)
 | 함수 | 용도 |
@@ -243,3 +256,8 @@ async def handle(text):
   - **Top-3 카테고리×부서 통합**: classification.top_k 각 후보에 departments 동봉 → LLM이 의미 보고 분류기 헛바람 보정
   - 시스템 프롬프트 유연화: 안전신문고/국민신문고/정부24 등 공공 채널 자유 안내, 후속 turn 부서 반복 금지
   - `OPENAI_MODEL` 기본값 `gpt-4o-mini` → `gpt-4o` (분류기 헛바람 보정 안정성 ↑)
+- 2026-06: **멀티모달 입력 통합**
+  - `transcribe_audio()` — NAVER CLOVA CSR (단문 음성 인식) 통합. 음성 → 텍스트.
+  - `synthesize_speech()` — NAVER CLOVA Voice Premium (TTS) 함수 추가. 활성화 시 즉시 사용 가능.
+  - `analyze_image()` — gpt-4o Vision으로 OCR + 장면 이해 + 민원 의도 추정. 결과 텍스트를 `answer_chatbot`에 그대로 전달 가능.
+  - 모두 stateless 함수, 백엔드가 파일을 받아 호출 후 텍스트로 answer_chatbot에 연결하는 패턴.

@@ -13,6 +13,9 @@ MCP 서버(mcp_server.py)도 이 모듈을 import해서 같은 함수를 노출.
   - lookup_dept_by_category(category_id)           → 카테고리 → 부서 매핑
   - get_categories()                               → 11 카테고리 메타
   - answer_chatbot(text, history=None)  [async]    → LLM 답변 생성 (메인 진입점)
+  - transcribe_audio(audio_bytes, lang="Kor")  [async] → 음성 → 텍스트 (NAVER CLOVA CSR)
+  - synthesize_speech(text, speaker="nara")    [async] → 텍스트 → 음성 mp3 (NAVER CLOVA Voice)
+  - analyze_image(image_bytes, mime_type)      [async] → 이미지 → 민원 분석 텍스트 (gpt-4o Vision)
 
 위 함수는 sync (answer_chatbot만 async).
 async 환경에서는 asyncio.to_thread()로 sync 함수 감쌈.
@@ -21,6 +24,8 @@ async 환경에서는 asyncio.to_thread()로 sync 함수 감쌈.
 환경변수:
   PG_HOST, PG_PORT, PG_USER, PG_PASSWORD, PG_DB  → DB 연결
   CLASSIFIER_DIR, URGENCY_DIR, EMBED_MODEL       → 모델 경로 오버라이드 (선택)
+  OPENAI_API_KEY, OPENAI_MODEL                   → 답변/게이트/키워드 LLM
+  NAVER_CLOVA_CLIENT_ID, NAVER_CLOVA_CLIENT_SECRET → STT (transcribe_audio용)
 """
 import os
 import re
@@ -681,6 +686,19 @@ _TOOL_DISPATCH = {
 OPENAI_MODEL = os.environ.get('OPENAI_MODEL', 'gpt-4o')
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
 
+# NAVER CLOVA (NCP API Gateway 공통 인증)
+# - CSR (STT): 음성 → 텍스트
+# - Voice (TTS): 텍스트 → 음성 (mp3)
+CLOVA_CLIENT_ID = os.environ.get('NAVER_CLOVA_CLIENT_ID', '')
+CLOVA_CLIENT_SECRET = os.environ.get('NAVER_CLOVA_CLIENT_SECRET', '')
+CLOVA_STT_URL = 'https://naveropenapi.apigw.ntruss.com/recog/v1/stt'
+CLOVA_TTS_URL = os.environ.get(
+    'CLOVA_TTS_URL',
+    'https://naveropenapi.apigw.ntruss.com/tts-premium/v1/tts'
+)
+# tts-premium 활성화 안 된 경우 .env에서 'tts/v1/tts'로 오버라이드 가능:
+#   CLOVA_TTS_URL=https://naveropenapi.apigw.ntruss.com/tts/v1/tts
+
 GATE_PROMPT = """\
 당신은 "마음결" 공공 민원 상담 챗봇입니다. 사용자 메시지가 민원 관련 질문인지 판단하세요.
 
@@ -792,6 +810,202 @@ def _summarize(result):
         return 'dict(' + ', '.join(list(result.keys())[:5]) + ')'
     s = str(result)
     return s[:80]
+
+
+# ============================================================
+# STT (Speech-to-Text) — 음성을 텍스트로 변환
+# ============================================================
+
+async def transcribe_audio(audio_data: bytes, lang: str = "Kor") -> str:
+    """음성 데이터를 텍스트로 변환 (NAVER CLOVA CSR — 단문 음성 인식).
+
+    60초 이내 짧은 음성을 동기 호출로 변환. 챗봇 입력 시나리오에 적합.
+    변환된 텍스트를 그대로 answer_chatbot에 전달하면 됩니다.
+
+    Args:
+        audio_data: 음성 파일 raw bytes (mp3/aac/ac3/ogg/flac/wav 지원)
+        lang: "Kor"(한국어, 기본), "Eng", "Jpn", "Chn"
+
+    Returns:
+        변환된 텍스트. 빈 입력이나 인식 실패 시 빈 문자열.
+
+    Raises:
+        RuntimeError: NAVER_CLOVA_CLIENT_ID/SECRET 환경변수 없을 때
+        httpx.HTTPStatusError: CLOVA API 호출 4xx/5xx 응답
+
+    사용 예 (백엔드 라우터):
+        @router.post("/chat/voice")
+        async def voice(audio: UploadFile, session_id: str):
+            audio_bytes = await audio.read()
+            text = await svc.transcribe_audio(audio_bytes)
+            history = SESSIONS.get(session_id, [])
+            return await svc.answer_chatbot(text, history=history)
+
+    Notes:
+        - 60초 초과 음성은 잘리거나 에러. 장문은 별도 API 필요.
+        - CLOVA는 표준어로 정규화하는 경향 (사투리 → 표준어 출력).
+    """
+    if not (CLOVA_CLIENT_ID and CLOVA_CLIENT_SECRET):
+        raise RuntimeError(
+            "NAVER_CLOVA_CLIENT_ID / NAVER_CLOVA_CLIENT_SECRET 환경변수 없음. "
+            ".env 확인하세요."
+        )
+    if not audio_data:
+        return ""
+
+    import httpx
+    headers = {
+        "X-NCP-APIGW-API-KEY-ID": CLOVA_CLIENT_ID,
+        "X-NCP-APIGW-API-KEY": CLOVA_CLIENT_SECRET,
+        "Content-Type": "application/octet-stream",
+    }
+    async with httpx.AsyncClient(timeout=30.0) as http:
+        resp = await http.post(
+            CLOVA_STT_URL,
+            params={"lang": lang},
+            headers=headers,
+            content=audio_data,
+        )
+        resp.raise_for_status()
+        return resp.json().get("text", "")
+
+
+async def synthesize_speech(
+    text: str,
+    speaker: str = "nara",
+    speed: int = 0,
+    volume: int = 0,
+    pitch: int = 0,
+    audio_format: str = "mp3",
+) -> bytes:
+    """텍스트를 음성으로 변환 (NAVER CLOVA Voice — TTS Premium).
+
+    answer_chatbot 답변을 음성으로 재생할 때 사용. 프론트엔드가 mp3 bytes 받아서 재생.
+
+    Args:
+        text: 변환할 텍스트 (한 요청 최대 ~200자 권장, 길면 분할 호출)
+        speaker: 보이스 ID
+          - "nara" (한국어 여성, 차분, 기본)
+          - "mijin" (여성), "jinho" (남성)
+          - 감정/캐릭터: "vara", "vmikyung", "vdaeseong" 등 (premium)
+        speed: -5(빠름) ~ 5(느림), 기본 0
+        volume: -5 ~ 5, 기본 0
+        pitch: -5 ~ 5, 기본 0
+        audio_format: "mp3" 또는 "pcm"
+
+    Returns:
+        오디오 파일 raw bytes (mp3/pcm). 빈 입력이면 빈 bytes.
+
+    Raises:
+        RuntimeError: NAVER_CLOVA_CLIENT_ID/SECRET 환경변수 없을 때
+        httpx.HTTPStatusError: CLOVA Voice 서비스 미활성화/호출 실패
+
+    사용 예 (백엔드):
+        @router.post("/chat/voice-reply")
+        async def voice_reply(text: str):
+            audio = await svc.synthesize_speech(text)
+            return Response(content=audio, media_type="audio/mpeg")
+    """
+    if not (CLOVA_CLIENT_ID and CLOVA_CLIENT_SECRET):
+        raise RuntimeError(
+            "NAVER_CLOVA_CLIENT_ID / NAVER_CLOVA_CLIENT_SECRET 환경변수 없음."
+        )
+    if not text or not text.strip():
+        return b''
+
+    import httpx
+    headers = {
+        "X-NCP-APIGW-API-KEY-ID": CLOVA_CLIENT_ID,
+        "X-NCP-APIGW-API-KEY": CLOVA_CLIENT_SECRET,
+        "Content-Type": "application/x-www-form-urlencoded",
+    }
+    data = {
+        "speaker": speaker,
+        "text": text,
+        "speed": str(speed),
+        "volume": str(volume),
+        "pitch": str(pitch),
+        "format": audio_format,
+    }
+    async with httpx.AsyncClient(timeout=30.0) as http:
+        resp = await http.post(CLOVA_TTS_URL, headers=headers, data=data)
+        resp.raise_for_status()
+        return resp.content
+
+
+IMAGE_ANALYSIS_PROMPT = """\
+당신은 "마음결" 공공 민원 챗봇의 이미지 분석 모듈입니다.
+사용자가 첨부한 이미지를 보고 다음 정보를 3~5문장으로 출력하세요. 출력 텍스트는 이어지는
+민원 분석 시스템(분류기/RAG/답변 LLM)에 그대로 입력되므로, 핵심 키워드 위주로 구체적으로 쓰세요.
+
+1. **무엇이 보이는가** — 객체/장면/표지판 텍스트 (사실 기반, 본 것만)
+2. **민원 성격** — 이 사진으로 사용자가 제기하려는 민원의 의도 추정
+3. **카테고리 후보** — 다음 중 가장 가까운 1~2개:
+   교통, 건축, 행정, 보건위생, 환경, 문화_여가, 농축산, 복지, 세무, 상하수도, 경제
+
+규칙:
+- 이미지에 없는 내용을 만들지 마세요 (할루시네이션 금지).
+- 표지판/간판/문서 텍스트가 있으면 그대로 인용.
+- 불명확한 부분은 "정확히 보이지 않음"이라고 표시.
+- 이미지가 공공 민원과 무관해 보이면 "공공 민원과 무관한 이미지로 보입니다"만 출력.
+
+예시 출력:
+"도로 우측에 깊이 약 10cm 정도의 포트홀이 보입니다. 차량 통행이 있는 차도이며 주변에
+'도로 보수 중' 표지판은 없습니다. 사용자가 도로 파손 신고를 원하는 것으로 보입니다.
+카테고리 후보: 교통."
+"""
+
+
+async def analyze_image(image_data: bytes, mime_type: str = "image/jpeg") -> str:
+    """이미지를 분석해 민원 의도 추정 텍스트를 반환 (gpt-4o Vision).
+
+    OCR + 객체 인식 + 장면 이해 + 민원 의도 추정을 한 번의 LLM 호출로 처리.
+    반환된 텍스트를 answer_chatbot에 그대로 전달하면 분류/검색/답변까지 자동 연계됨.
+
+    Args:
+        image_data: 이미지 raw bytes (jpg/png/gif/webp)
+        mime_type: "image/jpeg", "image/png" 등
+
+    Returns:
+        분석 텍스트 (보이는 것 + 민원 성격 + 카테고리 후보).
+        빈 입력이면 빈 문자열.
+
+    Raises:
+        RuntimeError: OPENAI_API_KEY 없을 때
+
+    사용 예 (백엔드):
+        @router.post("/chat/image")
+        async def chat_image(file: UploadFile, text: str | None, session_id: str):
+            img_bytes = await file.read()
+            desc = await svc.analyze_image(img_bytes, file.content_type)
+            combined = f"[첨부 이미지]\\n{desc}\\n\\n[사용자 메시지]\\n{text or '(이미지만)'}"
+            history = SESSIONS.get(session_id, [])
+            return await svc.answer_chatbot(combined, history=history)
+
+    Notes:
+        - gpt-4o가 이미 멀티모달이라 OCR/Vision API 별도 호출 불필요.
+        - 흐릿한 영수증이나 전문 의료 차트는 전용 OCR이 더 정확할 수 있음.
+        - 이미지 1장당 비용 약 $0.005~0.015 (해상도 따라).
+    """
+    if not image_data:
+        return ""
+
+    import base64
+    b64 = base64.b64encode(image_data).decode('utf-8')
+    client = _get_openai()
+
+    resp = await client.chat.completions.create(
+        model=OPENAI_MODEL,
+        messages=[
+            {"role": "system", "content": IMAGE_ANALYSIS_PROMPT},
+            {"role": "user", "content": [
+                {"type": "text", "text": "이 이미지를 분석하세요."},
+                {"type": "image_url",
+                 "image_url": {"url": f"data:{mime_type};base64,{b64}"}},
+            ]},
+        ],
+    )
+    return (resp.choices[0].message.content or "").strip()
 
 
 async def extract_keywords(text: str, max_keywords: int = 5) -> list[str]:
