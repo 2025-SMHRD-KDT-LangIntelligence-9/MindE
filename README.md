@@ -97,23 +97,35 @@ ai/
 
 ## 백엔드 통합 패턴 (권장)
 
-병렬 에이전트:
+`category_id`가 결정돼야 부서 조회 가능 → 2단계로 나눠서 단계 내 병렬.
+
 ```python
 import asyncio
 import chatbot_service as svc
 
 async def handle_complaint(text: str):
-    cls, urg, laws, cases = await asyncio.gather(
+    # 1단계: 카테고리 의존 없는 도구 병렬
+    cls, urg, cluster, laws, cases, faq = await asyncio.gather(
         asyncio.to_thread(svc.classify_complaint, text),
         asyncio.to_thread(svc.check_urgency, text),
+        asyncio.to_thread(svc.match_or_create_cluster, text),
         asyncio.to_thread(svc.search_laws, text, None, 5),
         asyncio.to_thread(svc.search_cases, text, None, 5),
+        asyncio.to_thread(svc.search_faq, text, 5),
     )
-    depts = await asyncio.to_thread(svc.lookup_dept_by_category, cls['category_id'])
-    # OpenAI 호출, DB 저장, ...
+    cat_id = cls['category_id']
+
+    # 2단계: 카테고리 결정 후 부서 조회 병렬
+    depts, dept_search = await asyncio.gather(
+        asyncio.to_thread(svc.lookup_dept_by_category, cat_id),
+        asyncio.to_thread(svc.search_dept, text, cat_id, 5),
+    )
+
+    # 3단계: 결과 합쳐서 OpenAI 호출
+    # 4단계: (정식 민원이면) DB 저장 — cluster_id + (urgency + cluster.urgency_bonus)
 ```
 
-`docs/api_spec.md`에 상세 예시 + 성능 표.
+`docs/api_spec.md`에 상세 예시.
 
 ## 모델 정보
 

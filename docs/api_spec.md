@@ -180,32 +180,51 @@ results = await asyncio.gather(
 
 ---
 
-## 추천 호출 흐름 (병렬 에이전트)
+## 추천 호출 흐름 (2단계 병렬)
+
+핵심 의존: `category_id`가 결정돼야 부서 조회 가능. 두 단계로 나눠서 단계 내 병렬.
 
 ```python
 async def handle_complaint(text: str):
-    # 1) 도구 병렬 호출
-    classify_task = asyncio.to_thread(svc.classify_complaint, text)
-    urgency_task = asyncio.to_thread(svc.check_urgency, text)
-    laws_task = asyncio.to_thread(svc.search_laws, text, None, 5)
-    cases_task = asyncio.to_thread(svc.search_cases, text, None, 5)
+    # ─── 1단계: 카테고리 의존 없는 도구 병렬 ───
+    cls, urg, cluster, laws, cases, faq = await asyncio.gather(
+        asyncio.to_thread(svc.classify_complaint, text),
+        asyncio.to_thread(svc.check_urgency, text),
+        asyncio.to_thread(svc.match_or_create_cluster, text),
+        asyncio.to_thread(svc.search_laws, text, None, 5),
+        asyncio.to_thread(svc.search_cases, text, None, 5),
+        asyncio.to_thread(svc.search_faq, text, 5),
+    )
+    cat_id = cls['category_id']
 
-    cls, urg, laws, cases = await asyncio.gather(
-        classify_task, urgency_task, laws_task, cases_task
+    # ─── 2단계: category_id 결정 후 부서 조회 병렬 ───
+    depts, dept_search = await asyncio.gather(
+        asyncio.to_thread(svc.lookup_dept_by_category, cat_id),
+        asyncio.to_thread(svc.search_dept, text, cat_id, 5),
     )
 
-    # 2) 카테고리 기반 부서 조회 (분류 결과 의존이라 직렬)
-    depts = await asyncio.to_thread(svc.lookup_dept_by_category, cls['category_id'])
-
-    # 3) OpenAI에 컨텍스트로 전달해서 답변 생성
+    # ─── 3단계: 결과 합쳐서 OpenAI 호출 ───
     context = {
         'classification': cls,
         'urgency': urg,
+        'cluster': cluster,         # cluster_id, urgency_bonus 포함
         'laws': laws,
         'cases': cases,
-        'departments': depts,
+        'faq': faq,
+        'departments_priority': depts,
+        'departments_semantic': dept_search,
     }
     answer = await openai_generate(text, context)
+
+    # ─── 4단계: (정식 민원 접수면) DB 저장 ───
+    complaints.insert(
+        ...,
+        category_id = cat_id,
+        assigned_department_id = depts[0]['department_id'] if depts else None,
+        cluster_id = cluster['cluster_id'],
+        urgency_score = urg['probability_urgent'] + cluster['urgency_bonus'],
+    )
+    complaint_responses.insert(complaint_id=..., content=answer, ...)
 
     # 4) DB 저장 (complaints/complaint_responses)
     ...

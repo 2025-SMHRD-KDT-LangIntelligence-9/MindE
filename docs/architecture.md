@@ -3,29 +3,54 @@
 ## 전체 흐름
 
 ```
-사용자 (웹/앱)
-  │
-  ▼
-백엔드 (FastAPI 등)
-  │
-  ├── 1) chatbot_service 병렬 호출
-  │     ├── classify_complaint  (BERT v9, 11카테고리)
-  │     ├── check_urgency       (BERT 이진, F1 0.93)
-  │     ├── search_laws         (벡터 검색, 5,441 조항)
-  │     ├── search_cases        (벡터 검색, 사례 + 답변)
-  │     ├── search_faq          (벡터 검색, 교육 FAQ)
-  │     └── lookup_dept_by_category (DB)
-  │
-  ├── 2) 결과 컨텍스트화 → OpenAI 호출
-  │     "민원 내용 + 분류 결과 + 긴급 여부 + 법령/사례 + 부서"
-  │
-  ├── 3) DB 저장
-  │     ├── complaints (민원 본체)
-  │     ├── complaint_responses (LLM 답변)
-  │     └── complaint_status_history (접수)
-  │
-  └── 4) 사용자에게 응답 + 알림 (notifications)
+[사용자]
+   │  "도로 포트홀 신고하고 싶어요"
+   ▼
+[프론트엔드]
+   │  POST /complaints  (또는 /chat/ask)
+   ▼
+[백엔드 FastAPI]
+   │
+   │  ─── [1단계] 카테고리 의존 없는 도구 병렬 실행 ───
+   │      ├─ classify_complaint(text)        → category_id  ★ (다음 단계 필수)
+   │      ├─ check_urgency(text)             → is_urgent
+   │      ├─ match_or_create_cluster(text)   → cluster_id + urgency_bonus
+   │      ├─ search_laws(text)               → 관련 법령 (cat 필터 옵션)
+   │      ├─ search_cases(text)              → 유사 사례
+   │      └─ search_faq(text)                → 교육 FAQ
+   │
+   │  ─── [2단계] classify 결과 도착 후 ───
+   │      ├─ lookup_dept_by_category(category_id) → 매핑된 부서들 priority 순
+   │      └─ search_dept(text, category_id)       → 부서 의미 검색 (카테고리 좁힘)
+   │
+   │  ─── [3단계] 모든 결과 합쳐서 ───
+   ▼
+[OpenAI gpt-4o-mini]
+   │  system: "민원 챗봇. 위 정보로 친절하게 답변"
+   │  context: 분류 + 긴급 + 클러스터 + 법령 + 사례 + FAQ + 부서
+   │  ↓
+   │  자연어 답변 생성
+   ▼
+[백엔드]
+   │  (정식 민원 접수면) DB 저장:
+   │    ├─ complaints (category_id, dept_id, cluster_id,
+   │    │              urgency_score = base + cluster.urgency_bonus)
+   │    ├─ complaint_responses (LLM 답변 + referenced_docs)
+   │    ├─ complaint_status_history ('received')
+   │    └─ notifications (사용자 알림)
+   ▼
+[사용자에게 응답]
+   "교통 카테고리 민원입니다. 도로교통법 제35조에 따라
+    교통행정과(061-286-7450)에 신고 가능합니다.
+    같은 민원 327건 접수돼 우선 처리 중입니다."
 ```
+
+## 핵심 의존 관계
+
+- **`category_id` 결정 필수** → `lookup_dept_by_category`, `search_dept`는 직렬 의존
+- 그 외 도구(긴급/클러스터/법령/사례/FAQ)는 카테고리 무관, 1단계 병렬 가능
+- 챗봇 질의(/chat/ask) — 답변만, DB 저장 X
+- 정식 민원(/complaints) — DB 저장 + 알림 발동
 
 ## 모델/데이터 스택
 
