@@ -1,23 +1,28 @@
-﻿import { useState } from 'react';
+﻿import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import AdminLayout from '../../layouts/AdminLayout';
 import { useApp, CATEGORY_STYLE, URGENCY_STYLE } from '../../store/AppContext';
-
-const statusStyle = {
-  '접수':     { bg: 'bg-blue-50',    text: 'text-blue-600' },
-  '처리 중':  { bg: 'bg-amber-50',   text: 'text-amber-600' },
-  '보완 요청':{ bg: 'bg-purple-50',  text: 'text-purple-600' },
-  '완료':     { bg: 'bg-emerald-50', text: 'text-emerald-600' },
-  '반려':     { bg: 'bg-red-50',     text: 'text-red-600' },
-};
+import { STATUS_STYLE as statusStyle } from '../../utils/statusStyle';
 
 function AdminMonitoring() {
   const { complaints, stats, updateComplaintStatus, updateComplaintDept } = useApp();
+  const [searchParams] = useSearchParams();
   const DEPT_LIST = ['도로교통과', '환경위생과', '도시시설과', '교통행정과', '청소행정과', '공원녹지과', '상수도과', '사회복지과'];
   const [search,       setSearch]       = useState('');
   const [filterStatus, setFilterStatus] = useState('전체');
   const [filterUrgent, setFilterUrgent] = useState('전체');
   const [activeTab,    setActiveTab]    = useState('all');
   const [toast, setToast] = useState('');
+
+  useEffect(() => {
+    const idParam = searchParams.get('id');
+    if (idParam) {
+      setSearch(idParam);
+      setActiveTab('all');
+      setFilterStatus('전체');
+      setFilterUrgent('전체');
+    }
+  }, [searchParams]);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 2500); };
 

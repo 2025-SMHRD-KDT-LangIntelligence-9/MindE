@@ -162,12 +162,11 @@ function Landing() {
                   </div>
                 </div>
 
-                {/* 접수 버튼 */}
                 <div className="px-4 pb-4">
-                  <button className="w-full bg-primary text-white text-xs font-bold py-3 rounded-xl flex items-center justify-center gap-1.5 shadow-sm shadow-primary/20">
+                  <div className="w-full bg-primary text-white text-xs font-bold py-3 rounded-xl flex items-center justify-center gap-1.5 shadow-sm shadow-primary/20">
                     <span className="material-symbols-outlined text-sm">edit_document</span>
                     민원 바로 접수하기
-                  </button>
+                  </div>
                 </div>
               </div>
             </div>

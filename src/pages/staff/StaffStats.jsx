@@ -1,17 +1,11 @@
-﻿import StaffLayout from '../../layouts/StaffLayout';
+﻿import { useNavigate } from 'react-router-dom';
+import StaffLayout from '../../layouts/StaffLayout';
 import { useApp } from '../../store/AppContext';
+import { STATUS_STYLE as statusStyle } from '../../utils/statusStyle';
 
 const barColors    = ['bg-sky-400', 'bg-blue-400', 'bg-amber-400', 'bg-emerald-400', 'bg-purple-400'];
 
 const CATEGORIES = ['도로/교통', '시설/안전', '환경/위생', '시설/환경', '교통/주차', '교통/안전'];
-
-const statusStyle = {
-  '접수':     { bg: 'bg-blue-50',    text: 'text-blue-600' },
-  '처리 중':  { bg: 'bg-amber-50',   text: 'text-amber-600' },
-  '완료':     { bg: 'bg-emerald-50', text: 'text-emerald-600' },
-  '반려':     { bg: 'bg-red-50',     text: 'text-red-600' },
-  '보완 요청':{ bg: 'bg-purple-50',  text: 'text-purple-600' },
-};
 
 function StatusBadge({ status }) {
   const s = statusStyle[status] ?? { bg: 'bg-slate-100', text: 'text-slate-500' };
@@ -23,6 +17,7 @@ const weeklyMock = [4, 6, 3, 7, 5, 2, 1];
 const maxWeekly = Math.max(...weeklyMock);
 
 function StaffStats() {
+  const navigate = useNavigate();
   const { myDeptComplaints, currentUser, notifications } = useApp();
   const complaints = myDeptComplaints;
 
@@ -134,14 +129,22 @@ function StaffStats() {
             <p className="text-sm text-on-surface-variant text-center py-4">처리 이력이 없습니다.</p>
           ) : (
             <div className="divide-y divide-outline-variant/40">
-              {recentHistory.map((n) => (
-                <div key={n.id} className="flex items-center gap-4 py-3">
-                  <span className="text-[11px] text-on-surface-variant shrink-0 w-20">{n.time}</span>
-                  <span className="text-[11px] text-on-surface-variant shrink-0">{n.complaintId}</span>
-                  <p className="text-sm text-on-surface flex-1 truncate">{n.desc}</p>
-                  <StatusBadge status={n.tag} />
-                </div>
-              ))}
+              {recentHistory.map((n) => {
+                const complaint = complaints.find((c) => c.id === n.complaintId);
+                const isUrgent = complaint?.urgency === '긴급';
+                return (
+                  <div
+                    key={n.id}
+                    onClick={() => navigate(isUrgent ? `/staff/urgent?id=${n.complaintId}` : `/staff?id=${n.complaintId}`)}
+                    className="flex items-center gap-4 py-3 cursor-pointer hover:bg-surface-container-low rounded-lg px-2 -mx-2 transition-colors"
+                  >
+                    <span className="text-[11px] text-on-surface-variant shrink-0 w-20">{n.time}</span>
+                    <span className="text-[11px] text-primary font-bold shrink-0">{n.complaintId}</span>
+                    <p className="text-sm text-on-surface flex-1 truncate">{n.desc}</p>
+                    <StatusBadge status={n.tag} />
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

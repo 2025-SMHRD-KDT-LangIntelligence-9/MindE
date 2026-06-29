@@ -33,6 +33,7 @@ function AdminLayout({ pageTitle, activeMenu, children }) {
     })),
     ...urgentComplaints.map((c) => ({
       id: `urgent-${c.id}`,
+      complaintId: c.id,
       title: '긴급 민원 접수',
       desc: c.title,
       icon: 'priority_high',
@@ -73,7 +74,14 @@ function AdminLayout({ pageTitle, activeMenu, children }) {
         </nav>
 
         <div className="flex items-center gap-2 shrink-0 pl-4">
-          <NotificationDropdown items={notifItems} onMarkAllRead={handleMarkAllRead} />
+          <NotificationDropdown
+            items={notifItems}
+            onMarkAllRead={handleMarkAllRead}
+            onClickItem={(n) => {
+              if (n.complaintId) navigate(`/admin/monitoring?id=${n.complaintId}`);
+              else navigate('/admin/settings?tab=users');
+            }}
+          />
           <div className="flex items-center gap-2 pl-3 border-l border-slate-300">
             <span className="text-sm font-bold text-slate-700 hidden sm:inline">시스템 관리자</span>
             <button

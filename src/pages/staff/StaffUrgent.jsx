@@ -1,16 +1,11 @@
-﻿import { useState, useRef } from 'react';
+﻿import { useState, useRef, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import StaffLayout from '../../layouts/StaffLayout';
 import { useApp, CATEGORY_STYLE } from '../../store/AppContext';
+import { STATUS_STYLE as statusStyle } from '../../utils/statusStyle';
+import FilePreviewModal from '../../components/FilePreviewModal';
 
 const STATUS_OPTIONS = ['접수', '처리 중', '보완 요청', '반려', '완료'];
-
-const statusStyle = {
-  '접수':     { bg: 'bg-blue-50',    text: 'text-blue-600' },
-  '처리 중':  { bg: 'bg-amber-50',   text: 'text-amber-600' },
-  '보완 요청':{ bg: 'bg-purple-50',  text: 'text-purple-600' },
-  '완료':     { bg: 'bg-emerald-50', text: 'text-emerald-600' },
-  '반려':     { bg: 'bg-red-50',     text: 'text-red-600' },
-};
 
 const URGENCY_REASONS = {
   '도로/교통': '도로 파손 → 차량/보행자 사고 위험. 즉시 현장 점검 필요.',
@@ -24,106 +19,43 @@ function StatusBadge({ status }) {
   return <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${s.bg} ${s.text}`}>{status}</span>;
 }
 
-function PreviewModal({ file, onClose }) {
-  if (!file) return null;
-  const isImage = file.type === 'image' || (file.mimeType && file.mimeType.startsWith('image/'));
-  const isPdf   = file.type === 'pdf';
-  const isVideo = file.type === 'video';
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-outline-variant">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="material-symbols-outlined text-red-600 text-lg shrink-0">
-              {isImage ? 'image' : isPdf ? 'picture_as_pdf' : isVideo ? 'videocam' : 'description'}
-            </span>
-            <p className="text-sm font-bold text-on-surface truncate">{file.name}</p>
-          </div>
-          <button onClick={onClose} className="shrink-0 w-8 h-8 rounded-lg hover:bg-surface-container flex items-center justify-center transition-colors ml-3">
-            <span className="material-symbols-outlined text-on-surface-variant">close</span>
-          </button>
-        </div>
-        <div className="p-6 flex items-center justify-center min-h-64 bg-surface-container-low/40">
-          {isImage && file.url ? (
-            <img src={file.url} alt={file.name} className="max-w-full max-h-96 rounded-xl object-contain shadow-sm" />
-          ) : isImage ? (
-            <div className="flex flex-col items-center gap-4 text-on-surface-variant">
-              <div className="w-24 h-24 rounded-2xl bg-sky-100 flex items-center justify-center">
-                <span className="material-symbols-outlined text-sky-400 text-5xl">image</span>
-              </div>
-              <div className="text-center">
-                <p className="text-sm font-bold text-on-surface">{file.name}</p>
-                <p className="text-xs text-on-surface-variant mt-1">이미지 미리보기 (실제 파일 첨부 시 표시됩니다)</p>
-              </div>
-            </div>
-          ) : isPdf ? (
-            <div className="flex flex-col items-center gap-4 text-on-surface-variant">
-              <div className="w-24 h-24 rounded-2xl bg-red-50 flex items-center justify-center">
-                <span className="material-symbols-outlined text-red-400 text-5xl">picture_as_pdf</span>
-              </div>
-              <div className="text-center">
-                <p className="text-sm font-bold text-on-surface">{file.name}</p>
-                <p className="text-xs text-on-surface-variant mt-1">PDF 뷰어 (실제 파일 첨부 시 표시됩니다)</p>
-              </div>
-            </div>
-          ) : isVideo ? (
-            <div className="flex flex-col items-center gap-4 text-on-surface-variant">
-              <div className="w-24 h-24 rounded-2xl bg-purple-50 flex items-center justify-center">
-                <span className="material-symbols-outlined text-purple-400 text-5xl">videocam</span>
-              </div>
-              <div className="text-center">
-                <p className="text-sm font-bold text-on-surface">{file.name}</p>
-                <p className="text-xs text-on-surface-variant mt-1">동영상 플레이어 (실제 파일 첨부 시 표시됩니다)</p>
-              </div>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center gap-4 text-on-surface-variant">
-              <div className="w-24 h-24 rounded-2xl bg-blue-50 flex items-center justify-center">
-                <span className="material-symbols-outlined text-blue-400 text-5xl">description</span>
-              </div>
-              <div className="text-center">
-                <p className="text-sm font-bold text-on-surface">{file.name}</p>
-                <p className="text-xs text-on-surface-variant mt-1">문서 미리보기 (실제 파일 첨부 시 표시됩니다)</p>
-              </div>
-            </div>
-          )}
-        </div>
-        <div className="px-5 py-3 border-t border-outline-variant flex justify-end">
-          <button onClick={onClose} className="px-5 py-2 text-sm font-bold text-on-surface-variant hover:text-on-surface transition-colors">
-            닫기
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function StaffUrgent() {
-  const { myDeptComplaints, currentUser, updateComplaintStatus, saveMemo } = useApp();
+  const { myDeptComplaints, currentUser, updateComplaintStatus, saveMemo, saveReply, staffFiles, addStaffFile, removeStaffFile } = useApp();
+  const [searchParams] = useSearchParams();
 
   const urgentList = myDeptComplaints.filter((c) => c.urgency === '긴급');
 
-  const [selected,     setSelected]     = useState(null);
-  const [filterStatus, setFilterStatus] = useState('전체');
-  const [searchText,   setSearchText]   = useState('');
-  const [memoInput,    setMemoInput]    = useState('');
-  const [toast,        setToast]        = useState('');
-  const [attachments,  setAttachments]  = useState({});
-  const [dragOver,     setDragOver]     = useState(false);
-  const [preview,      setPreview]      = useState(null);
+  const [selected,       setSelected]       = useState(null);
+  const [filterStatus,   setFilterStatus]   = useState('전체');
+  const [searchText,     setSearchText]     = useState('');
+  const [memoInput,      setMemoInput]      = useState('');
+  const [replyInput,     setReplyInput]     = useState('');
+  const [toast,          setToast]          = useState('');
+  const [dragOver,       setDragOver]       = useState(false);
+  const [preview,        setPreview]        = useState(null);
+  const [pendingStatus,  setPendingStatus]  = useState(null);
   const fileInputRef = useRef(null);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 2500); };
 
-  const openDetail = (c) => { setSelected(c); setMemoInput(c.memo); };
+  const openDetail = (c) => { setSelected(c); setMemoInput(c.memo); setPendingStatus(c.status); setReplyInput(c.reply ?? ''); };
+
+  useEffect(() => {
+    const idParam = searchParams.get('id');
+    if (idParam) {
+      const found = urgentList.find((c) => c.id === idParam);
+      if (found) openDetail(found);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, urgentList]);
 
   const selectedData = selected ? urgentList.find((c) => c.id === selected.id) ?? selected : null;
 
-  const handleStatusChange = (id, newStatus) => {
-    updateComplaintStatus(id, newStatus);
-    if (selectedData?.id === id) setSelected((s) => ({ ...s, status: newStatus }));
-    showToast(`상태가 '${newStatus}'(으)로 변경되었습니다.`);
+  const handleStatusChange = () => {
+    if (!selectedData || !pendingStatus || pendingStatus === selectedData.status) return;
+    updateComplaintStatus(selectedData.id, pendingStatus);
+    setSelected((s) => ({ ...s, status: pendingStatus }));
+    showToast(`상태가 '${pendingStatus}'(으)로 변경되었습니다.`);
   };
 
   const handleSaveMemo = () => {
@@ -131,21 +63,21 @@ function StaffUrgent() {
     showToast('메모가 저장되었습니다.');
   };
 
-  const currentFiles = selectedData ? (attachments[selectedData.id] ?? []) : [];
+  const handleSaveReply = () => {
+    if (!replyInput.trim()) return;
+    saveReply(selectedData.id, replyInput.trim());
+    setSelected((s) => ({ ...s, reply: replyInput.trim() }));
+    showToast('답변이 등록되었습니다.');
+  };
+
+  const currentFiles = selectedData ? (staffFiles[selectedData.id] ?? []) : [];
 
   const addFiles = (fileList) => {
-    const newFiles = Array.from(fileList);
-    setAttachments((prev) => ({
-      ...prev,
-      [selectedData.id]: [...(prev[selectedData.id] ?? []), ...newFiles],
-    }));
+    Array.from(fileList).forEach((f) => addStaffFile(selectedData.id, f));
   };
 
   const removeFile = (index) => {
-    setAttachments((prev) => ({
-      ...prev,
-      [selectedData.id]: prev[selectedData.id].filter((_, i) => i !== index),
-    }));
+    removeStaffFile(selectedData.id, index);
   };
 
   const getFileIcon = (name) => {
@@ -164,20 +96,10 @@ function StaffUrgent() {
   };
 
   const openFilePreview = (file) => {
-    if (file instanceof File && file.type.startsWith('image/')) {
-      const url = URL.createObjectURL(file);
-      setPreview({ name: file.name, type: 'image', url, isBlob: true });
-    } else if (file instanceof File) {
-      setPreview({ name: file.name, type: file.name.split('.').pop().toLowerCase() });
-    } else {
-      setPreview(file);
-    }
+    setPreview(file);
   };
 
-  const closePreview = () => {
-    if (preview?.isBlob) URL.revokeObjectURL(preview.url);
-    setPreview(null);
-  };
+  const closePreview = () => setPreview(null);
 
   const filtered = urgentList.filter((c) => {
     const matchStatus = filterStatus === '전체' || c.status === filterStatus;
@@ -192,7 +114,7 @@ function StaffUrgent() {
 
   return (
     <StaffLayout pageTitle="긴급 민원" activeMenu="urgent">
-      <PreviewModal file={preview} onClose={closePreview} />
+      <FilePreviewModal file={preview} onClose={closePreview} />
 
       {toast && (
         <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-red-600 text-white text-sm font-bold px-5 py-3 rounded-xl shadow-lg flex items-center gap-2">
@@ -371,10 +293,6 @@ function StaffUrgent() {
                                     <span className="material-symbols-outlined text-sm">visibility</span>
                                     미리보기
                                   </button>
-                                  <button className="flex items-center gap-1 text-[10px] font-bold text-on-surface-variant hover:underline">
-                                    <span className="material-symbols-outlined text-sm">download</span>
-                                    다운로드
-                                  </button>
                                 </div>
                               </div>
                             );
@@ -391,17 +309,22 @@ function StaffUrgent() {
                     <span className="material-symbols-outlined text-sm text-red-600">swap_horiz</span>
                     처리 상태 변경
                   </p>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-2 mb-3">
                     {STATUS_OPTIONS.map((s) => {
                       const st = statusStyle[s];
-                      const isActive = selectedData.status === s;
+                      const isCurrent = selectedData.status === s;
+                      const isPending = pendingStatus === s;
                       return (
                         <button
                           key={s}
-                          onClick={() => handleStatusChange(selectedData.id, s)}
+                          onClick={() => setPendingStatus(s)}
                           className={`text-xs font-bold px-4 py-2 rounded-xl border-2 transition-all ${
-                            isActive
+                            isCurrent && isPending
                               ? `${st.bg} ${st.text} border-current`
+                              : isPending
+                              ? `${st.bg} ${st.text} border-current ring-2 ring-offset-1 ring-current`
+                              : isCurrent
+                              ? `${st.bg} ${st.text} border-current opacity-50`
                               : 'bg-white text-on-surface-variant border-outline-variant hover:border-red-600 hover:text-red-600'
                           }`}
                         >
@@ -431,6 +354,45 @@ function StaffUrgent() {
                   >
                     <span className="material-symbols-outlined text-base">save</span>
                     메모 저장
+                  </button>
+                </div>
+
+                {/* 담당 부서 공식 답변 */}
+                <div className="bg-white rounded-xl border border-outline-variant p-4">
+                  <p className="text-xs font-bold text-on-surface mb-3 flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-sm text-red-600">mark_email_read</span>
+                    담당 부서 공식 답변
+                    {selectedData.reply && (
+                      <span className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600">답변 완료</span>
+                    )}
+                  </p>
+                  {selectedData.reply && (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2.5 mb-3">
+                      <p className="text-[11px] text-emerald-700 font-bold mb-1">등록된 답변</p>
+                      <p className="text-xs text-emerald-900 leading-relaxed whitespace-pre-wrap">{selectedData.reply}</p>
+                      {selectedData.replyDate && (
+                        <p className="text-[10px] text-emerald-600 mt-1.5">{selectedData.replyDate} 등록</p>
+                      )}
+                    </div>
+                  )}
+                  <textarea
+                    value={replyInput}
+                    onChange={(e) => setReplyInput(e.target.value)}
+                    placeholder={selectedData.reply ? '답변을 수정하려면 내용을 변경 후 다시 등록하세요.' : '시민에게 공개되는 공식 답변을 작성하세요.\n등록 시 민원이 자동으로 완료 처리됩니다.'}
+                    rows={4}
+                    className="w-full px-3 py-2.5 border border-outline-variant rounded-xl text-sm outline-none focus:border-red-500 resize-none"
+                  />
+                  <div className="mt-2 flex items-center gap-1.5 text-[11px] text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+                    <span className="material-symbols-outlined text-sm shrink-0">info</span>
+                    답변 등록 후 하단 <strong className="mx-0.5">민원처리</strong> 버튼으로 상태를 변경해 주세요.
+                  </div>
+                  <button
+                    onClick={handleSaveReply}
+                    disabled={!replyInput.trim() || replyInput.trim() === (selectedData.reply ?? '')}
+                    className="mt-2 w-full bg-emerald-600 text-white text-sm font-bold py-2.5 rounded-xl hover:brightness-110 transition-all flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <span className="material-symbols-outlined text-base">mark_email_read</span>
+                    {selectedData.reply ? '답변 수정 등록' : '답변 등록'}
                   </button>
                 </div>
 
@@ -509,6 +471,18 @@ function StaffUrgent() {
                     <p className="text-sm text-amber-900 leading-relaxed whitespace-pre-wrap">{selectedData.memo}</p>
                   </div>
                 )}
+              </div>
+
+              {/* 민원처리 버튼 */}
+              <div className="shrink-0 px-6 py-4 border-t border-outline-variant/60">
+                <button
+                  onClick={handleStatusChange}
+                  disabled={!pendingStatus || pendingStatus === selectedData.status}
+                  className="w-full py-3.5 rounded-xl text-sm font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-red-600 text-white hover:brightness-110 flex items-center justify-center gap-2"
+                >
+                  <span className="material-symbols-outlined text-base">task_alt</span>
+                  민원처리
+                </button>
               </div>
             </section>
           ) : (

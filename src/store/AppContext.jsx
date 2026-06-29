@@ -69,7 +69,7 @@ const INITIAL_COMPLAINTS = [
     dept: '도시시설과',
     citizen: '홍길동',
     citizenId: 'citizen',
-    status: '접수',
+    status: '보완 요청',
     urgency: '보통',
     receivedAt: '2025-05-18 09:00',
     updatedAt: '2025-05-18 09:00',
@@ -300,6 +300,7 @@ export function AppProvider({ children }) {
   const [complaints, setComplaints] = useState(INITIAL_COMPLAINTS);
   const [notifications, setNotifications] = useState(INITIAL_NOTIFICATIONS);
   const [users, setUsers] = useState(INITIAL_USERS);
+  const [staffFiles, setStaffFiles] = useState({});
   const [currentUser, setCurrentUser] = useState({
     role: 'guest', name: '', dept: '', deptGroup: [],
   });
@@ -364,7 +365,7 @@ export function AppProvider({ children }) {
     );
   };
 
-  // 담당자 공식 답변 등록 → 상태 자동 완료 처리
+  // 담당자 공식 답변 등록 (상태 변경 없음 - 상태는 민원처리 버튼으로 별도 변경)
   const saveReply = (id, reply) => {
     setComplaints((prev) =>
       prev.map((c) =>
@@ -373,7 +374,6 @@ export function AppProvider({ children }) {
               ...c,
               reply,
               replyDate: new Date().toLocaleDateString('ko-KR'),
-              status: '완료',
               updatedAt: new Date().toLocaleString('ko-KR'),
             }
           : c
@@ -468,6 +468,11 @@ export function AppProvider({ children }) {
     setUsers((prev) => prev.filter((u) => u.id !== userId));
   };
 
+  // 관리자가 회원 강제 탈퇴
+  const deleteUser = (userId) => {
+    setUsers((prev) => prev.filter((u) => u.id !== userId));
+  };
+
   // 담당자 부서 변경
   const updateUserDept = (userId, newDept) => {
     const deptGroupMap = {
@@ -487,6 +492,25 @@ export function AppProvider({ children }) {
         ? { ...u, dept: newDept, deptGroup: deptGroupMap[newDept] ?? [newDept] }
         : u
     ));
+  };
+
+  // 담당자 첨부파일 추가 (objectURL 생성 후 메타데이터 저장)
+  const addStaffFile = (complaintId, file) => {
+    const url = file.type.startsWith('image/') ? URL.createObjectURL(file) : null;
+    setStaffFiles((prev) => ({
+      ...prev,
+      [complaintId]: [...(prev[complaintId] ?? []), { name: file.name, size: file.size, type: file.type, url }],
+    }));
+  };
+
+  // 담당자 첨부파일 삭제
+  const removeStaffFile = (complaintId, index) => {
+    setStaffFiles((prev) => {
+      const files = prev[complaintId] ?? [];
+      const target = files[index];
+      if (target?.url) URL.revokeObjectURL(target.url);
+      return { ...prev, [complaintId]: files.filter((_, i) => i !== index) };
+    });
   };
 
   // 알림 읽음 처리
@@ -517,6 +541,7 @@ export function AppProvider({ children }) {
       complaints,
       notifications,
       users,
+      staffFiles,
       stats,
       currentUser,
       myDeptComplaints,
@@ -531,7 +556,10 @@ export function AppProvider({ children }) {
       registerUser,
       approveUser,
       rejectUser,
+      deleteUser,
       updateUserDept,
+      addStaffFile,
+      removeStaffFile,
     }}>
       {children}
     </AppContext.Provider>

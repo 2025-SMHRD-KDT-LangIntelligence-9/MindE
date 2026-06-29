@@ -1,6 +1,7 @@
 ﻿import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../../layouts/AdminLayout';
 import { useApp, CATEGORY_STYLE, URGENCY_STYLE } from '../../store/AppContext';
+import { STATUS_STYLE } from '../../utils/statusStyle';
 
 const Y_TICKS  = [0, 20, 40, 60, 80, 100];
 const PRIMARY  = '#6EAEFF';
@@ -94,13 +95,6 @@ function AdminDashboard() {
     { label: '완료',     value: cDone,       icon: 'check_circle', color: 'text-emerald-600',  bg: 'bg-emerald-50' },
   ];
 
-  const statusConfig = {
-    '접수':     'bg-blue-50 text-blue-600',
-    '처리 중':  'bg-amber-50 text-amber-600',
-    '보완 요청':'bg-purple-50 text-purple-600',
-    '완료':     'bg-emerald-50 text-emerald-600',
-    '반려':     'bg-red-50 text-red-600',
-  };
 
   return (
     <AdminLayout pageTitle="오늘의 대시보드" activeMenu="dashboard">
@@ -184,7 +178,7 @@ function AdminDashboard() {
             <tbody className="divide-y divide-outline-variant/60">
               {urgentRows.map((r) => (
                 <tr key={r.id}
-                  onClick={() => navigate('/admin/monitoring')}
+                  onClick={() => navigate(`/admin/monitoring?id=${r.id}`)}
                   className="hover:bg-surface-container-low/50 cursor-pointer transition-colors">
                   <td className="px-5 py-3 text-xs font-bold text-primary whitespace-nowrap">{r.id}</td>
                   <td className="px-5 py-3">
@@ -198,7 +192,7 @@ function AdminDashboard() {
                   </td>
                   <td className="px-5 py-3 text-xs text-on-surface-variant whitespace-nowrap">{r.receivedAt}</td>
                   <td className="px-5 py-3 whitespace-nowrap">
-                    <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${statusConfig[r.status] ?? 'bg-surface-container text-on-surface-variant'}`}>
+                    <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${STATUS_STYLE[r.status] ? `${STATUS_STYLE[r.status].bg} ${STATUS_STYLE[r.status].text}` : 'bg-surface-container text-on-surface-variant'}`}>
                       {r.status}
                     </span>
                   </td>

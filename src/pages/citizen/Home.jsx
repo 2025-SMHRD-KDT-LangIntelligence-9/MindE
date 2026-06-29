@@ -1,16 +1,9 @@
 ﻿import { useNavigate } from 'react-router-dom';
 import CitizenLayout from '../../layouts/CitizenLayout';
 import { useApp } from '../../store/AppContext';
-import logo from '../../assets/logo.png';
 import EmptyState from '../../components/EmptyState';
-
-const statusConfig = {
-  '접수':     { bg: 'bg-blue-50',    text: 'text-blue-600',    dot: 'bg-blue-400' },
-  '처리 중':  { bg: 'bg-amber-50',   text: 'text-amber-600',   dot: 'bg-amber-400' },
-  '보완 요청':{ bg: 'bg-purple-50',  text: 'text-purple-600',  dot: 'bg-purple-400' },
-  '완료':     { bg: 'bg-emerald-50', text: 'text-emerald-600', dot: 'bg-emerald-500' },
-  '반려':     { bg: 'bg-red-50',     text: 'text-red-600',     dot: 'bg-red-400' },
-};
+import { STATUS_STYLE as statusConfig } from '../../utils/statusStyle';
+import logo from '../../assets/logo.png';
 
 function Home() {
   const navigate = useNavigate();

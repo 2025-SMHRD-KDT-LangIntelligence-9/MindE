@@ -1,6 +1,8 @@
 ﻿import { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 
-function NotificationDropdown({ items, onMarkAllRead }) {
+function NotificationDropdown({ items, onMarkAllRead, onClickItem }) {
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   const unread = items.filter((n) => !n.read).length;
@@ -52,7 +54,11 @@ function NotificationDropdown({ items, onMarkAllRead }) {
                 <p className="text-sm text-on-surface-variant">새 알림이 없습니다.</p>
               </div>
             ) : items.map((n) => (
-              <div key={n.id} className={`flex items-start gap-3 px-4 py-3 transition-colors ${n.read ? 'bg-white' : 'bg-primary/3'}`}>
+              <div
+                key={n.id}
+                onClick={() => { setOpen(false); if (onClickItem) onClickItem(n); else navigate(`/my-complaints?id=${n.complaintId}`); }}
+                className={`flex items-start gap-3 px-4 py-3 transition-colors cursor-pointer hover:bg-surface-container-low ${n.read ? 'bg-white' : 'bg-primary/3'}`}
+              >
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${n.iconBg ?? 'bg-slate-100'}`}>
                   <span className={`material-symbols-outlined text-base ${n.color ?? 'text-slate-500'}`}>{n.icon}</span>
                 </div>

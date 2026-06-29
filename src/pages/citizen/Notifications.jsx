@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import CitizenLayout from '../../layouts/CitizenLayout';
 import { useApp } from '../../store/AppContext';
 import EmptyState from '../../components/EmptyState';
@@ -27,6 +28,7 @@ const iconColorMap = {
 };
 
 function Notifications() {
+  const navigate = useNavigate();
   const { notifications, markAllRead } = useApp();
   const [tab, setTab] = useState('all');
 
@@ -131,7 +133,8 @@ function Notifications() {
                     return (
                       <div
                         key={n.id}
-                        className={`bg-white border rounded-2xl flex gap-4 p-4 transition-all ${
+                        onClick={() => navigate(`/my-complaints?id=${n.complaintId}`)}
+                        className={`bg-white border rounded-2xl flex gap-4 p-4 transition-all cursor-pointer hover:shadow-md ${
                           n.read
                             ? 'border-outline-variant/60'
                             : 'border-primary/20 shadow-sm shadow-primary/5'

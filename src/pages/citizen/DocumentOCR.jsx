@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+﻿import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import CitizenLayout from '../../layouts/CitizenLayout';
 
@@ -48,13 +48,38 @@ function DocumentOCR() {
     ocrFields.forEach((s) => s.fields.forEach((f) => { init[f.key] = f.value; }));
     return init;
   });
-  const [activeTab, setActiveTab] = useState('ocr');
   const [centerPage, setCenterPage] = useState(0);
   const [zoom, setZoom] = useState(100);
   const [fullscreenPage, setFullscreenPage] = useState(null);
+  const [uploadedFile, setUploadedFile] = useState(null);
+  const [dragOverUpload, setDragOverUpload] = useState(false);
+  const [dragOverStep2, setDragOverStep2] = useState(false);
+  const [zoom2, setZoom2] = useState(100);
+  const [step2Page, setStep2Page] = useState(3);
+  const [step2Fullscreen, setStep2Fullscreen] = useState(false);
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [saveFileName, setSaveFileName] = useState('교통사고_사실확인서_작성완료.pdf');
+  const [toast, setToast] = useState('');
+  const fileInputRef1 = useRef(null);
+  const fileInputRef2 = useRef(null);
+  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 2500); };
+
+  const handleUpload = (files) => {
+    if (files && files[0]) {
+      const f = files[0];
+      setUploadedFile(f);
+      const sizeMB = (f.size / 1024 / 1024).toFixed(2);
+      setFieldValues((prev) => ({ ...prev, docname: f.name, size: `${sizeMB} MB` }));
+    }
+  };
 
   return (
     <CitizenLayout pageTitle="민원 서류 작성" activeMenu="document">
+      {toast && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-[#1e3a5f] text-white text-sm font-bold px-5 py-3 rounded-xl shadow-lg flex items-center gap-2">
+          <span className="material-symbols-outlined text-base">check_circle</span>{toast}
+        </div>
+      )}
       <div className="flex gap-5" style={{ minHeight: 'calc(100vh - 8rem)' }}>
 
         {/* ── 왼쪽 사이드 ── */}
@@ -116,7 +141,10 @@ function DocumentOCR() {
                 </li>
               ))}
             </ul>
-            <button className="flex items-center gap-1 text-xs text-primary font-bold hover:underline">
+            <button
+              onClick={() => navigate('/faq', { state: { category: 'OCR / 서류' } })}
+              className="flex items-center gap-1 text-xs text-primary font-bold hover:underline"
+            >
               이용 가이드 보기
               <span className="material-symbols-outlined text-sm">arrow_forward</span>
             </button>
@@ -171,6 +199,13 @@ function DocumentOCR() {
           {/* Step 1: 업로드 */}
           {currentStep === 1 && (
             <div className="bg-white rounded-2xl border border-outline-variant p-8 shadow-sm flex flex-col items-center justify-center gap-6" style={{ minHeight: '400px' }}>
+              <input
+                ref={fileInputRef1}
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png"
+                className="hidden"
+                onChange={(e) => { handleUpload(e.target.files); e.target.value = ''; }}
+              />
               <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
                 <span className="material-symbols-outlined text-primary text-4xl">upload_file</span>
               </div>
@@ -178,12 +213,33 @@ function DocumentOCR() {
                 <h3 className="text-base font-bold text-on-surface mb-1">문서 또는 이미지를 업로드하세요</h3>
                 <p className="text-sm text-on-surface-variant">PDF, JPG, PNG 형식을 지원합니다 · 최대 10MB</p>
               </div>
-              <div className="w-full max-w-md border-2 border-dashed border-primary/30 rounded-2xl p-10 flex flex-col items-center gap-3 hover:border-primary hover:bg-primary/3 transition-all cursor-pointer">
-                <span className="material-symbols-outlined text-primary/50 text-5xl">cloud_upload</span>
-                <p className="text-sm text-on-surface-variant">파일을 드래그하거나 클릭하여 선택</p>
-                <button className="bg-primary text-white text-sm font-bold px-6 py-2.5 rounded-xl hover:brightness-95 transition-all">
-                  파일 선택
-                </button>
+              <div
+                onClick={() => fileInputRef1.current.click()}
+                onDragOver={(e) => { e.preventDefault(); setDragOverUpload(true); }}
+                onDragLeave={() => setDragOverUpload(false)}
+                onDrop={(e) => { e.preventDefault(); setDragOverUpload(false); handleUpload(e.dataTransfer.files); }}
+                className={`w-full max-w-md border-2 border-dashed rounded-2xl p-10 flex flex-col items-center gap-3 cursor-pointer transition-all ${
+                  dragOverUpload ? 'border-primary bg-primary/8' : uploadedFile ? 'border-emerald-400 bg-emerald-50' : 'border-primary/30 hover:border-primary hover:bg-primary/3'
+                }`}
+              >
+                {uploadedFile ? (
+                  <>
+                    <span className="material-symbols-outlined text-emerald-500 text-5xl">check_circle</span>
+                    <p className="text-sm font-bold text-emerald-700">{uploadedFile.name}</p>
+                    <p className="text-xs text-emerald-600">{(uploadedFile.size / 1024 / 1024).toFixed(2)} MB · 클릭하여 다른 파일 선택</p>
+                  </>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined text-primary/50 text-5xl">cloud_upload</span>
+                    <p className="text-sm text-on-surface-variant">파일을 드래그하거나 클릭하여 선택</p>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); fileInputRef1.current.click(); }}
+                      className="bg-primary text-white text-sm font-bold px-6 py-2.5 rounded-xl hover:brightness-95 transition-all"
+                    >
+                      파일 선택
+                    </button>
+                  </>
+                )}
               </div>
               <p className="text-xs text-on-surface-variant">* 인식 품질이 낮은 경우, 문서가 흐릿할 수 있습니다. 재촬영 또는 선명한 이미지 사용을 권장합니다.</p>
             </div>
@@ -194,49 +250,89 @@ function DocumentOCR() {
             <div className="grid grid-cols-12 gap-4 flex-1">
               {/* 문서 미리보기 */}
               <div className="col-span-5 bg-white rounded-2xl border border-outline-variant shadow-sm flex flex-col overflow-hidden">
+                <input
+                  ref={fileInputRef2}
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  className="hidden"
+                  onChange={(e) => { handleUpload(e.target.files); e.target.value = ''; showToast('새 파일이 업로드되었습니다.'); }}
+                />
                 <div className="flex items-center justify-between px-5 py-3.5 border-b border-outline-variant shrink-0">
                   <p className="text-sm font-bold text-on-surface">업로드한 문서 미리보기</p>
-                  <button className="flex items-center gap-1.5 text-xs text-primary font-bold border border-primary/30 px-3 py-1.5 rounded-lg hover:bg-primary/5 transition-colors">
+                  <button
+                    onClick={() => fileInputRef2.current.click()}
+                    className="flex items-center gap-1.5 text-xs text-primary font-bold border border-primary/30 px-3 py-1.5 rounded-lg hover:bg-primary/5 transition-colors"
+                  >
                     <span className="material-symbols-outlined text-sm">upload</span>
                     다른 파일 업로드
                   </button>
                 </div>
                 <div className="px-5 py-2.5 border-b border-outline-variant/50 shrink-0">
-                  <p className="text-xs text-on-surface-variant">교통사고_사실확인서.jpg</p>
+                  <p className="text-xs text-on-surface-variant">{uploadedFile ? uploadedFile.name : '교통사고_사실확인서.jpg'}</p>
                 </div>
-                <div className="flex-1 bg-surface-container-low/40 flex items-center justify-center p-4 overflow-hidden">
-                  <div className="bg-white border border-outline-variant rounded-lg shadow-md w-full max-w-xs aspect-[3/4] flex flex-col items-center justify-center gap-3 p-6">
-                    <span className="material-symbols-outlined text-on-surface-variant/30 text-6xl">description</span>
-                    <div className="space-y-1.5 w-full">
-                      {[80,65,90,55,70,60,75,50].map((w, i) => (
-                        <div key={i} className="h-2 bg-surface-container rounded-full" style={{ width: `${w}%` }} />
-                      ))}
+                <div
+                  className={`flex-1 flex items-center justify-center p-4 overflow-hidden transition-colors ${dragOverStep2 ? 'bg-primary/5 border-2 border-dashed border-primary' : 'bg-surface-container-low/40'}`}
+                  onDragOver={(e) => { e.preventDefault(); setDragOverStep2(true); }}
+                  onDragLeave={() => setDragOverStep2(false)}
+                  onDrop={(e) => { e.preventDefault(); setDragOverStep2(false); handleUpload(e.dataTransfer.files); showToast('새 파일이 업로드되었습니다.'); }}
+                >
+                  {dragOverStep2 ? (
+                    <div className="flex flex-col items-center gap-2 text-primary">
+                      <span className="material-symbols-outlined text-5xl">cloud_upload</span>
+                      <p className="text-sm font-bold">여기에 놓으세요</p>
                     </div>
-                    <p className="text-xs text-on-surface-variant text-center mt-2">교통사고 사실확인서</p>
-                    <div className="w-16 h-16 border-2 border-outline-variant rounded flex items-center justify-center">
-                      <span className="material-symbols-outlined text-on-surface-variant/30">qr_code_2</span>
+                  ) : (
+                    <div
+                      className="bg-white border border-outline-variant rounded-lg shadow-md w-full max-w-xs aspect-[3/4] flex flex-col items-center justify-center gap-3 p-6 transition-transform"
+                      style={{ transform: `scale(${zoom2 / 100})`, transformOrigin: 'center center' }}
+                    >
+                      <span className="material-symbols-outlined text-on-surface-variant/30 text-6xl">description</span>
+                      <div className="space-y-1.5 w-full">
+                        {[80,65,90,55,70,60,75,50].map((w, i) => (
+                          <div key={i} className="h-2 bg-surface-container rounded-full" style={{ width: `${w}%` }} />
+                        ))}
+                      </div>
+                      <p className="text-xs text-on-surface-variant text-center mt-2">교통사고 사실확인서 · {step2Page + 1}페이지</p>
+                      <div className="w-16 h-16 border-2 border-outline-variant rounded flex items-center justify-center">
+                        <span className="material-symbols-outlined text-on-surface-variant/30">qr_code_2</span>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
                 <div className="px-5 py-3 border-t border-outline-variant/50 flex items-center justify-center gap-4 shrink-0">
-                  <button className="w-7 h-7 rounded-lg border border-outline-variant flex items-center justify-center hover:bg-surface-container-low transition-colors">
+                  <button
+                    onClick={() => setZoom2((z) => Math.max(50, z - 25))}
+                    disabled={zoom2 <= 50}
+                    className="w-7 h-7 rounded-lg border border-outline-variant flex items-center justify-center hover:bg-surface-container-low transition-colors disabled:opacity-30"
+                  >
                     <span className="material-symbols-outlined text-base text-on-surface-variant">zoom_out</span>
                   </button>
-                  <span className="text-xs text-on-surface-variant font-medium">100%</span>
-                  <button className="w-7 h-7 rounded-lg border border-outline-variant flex items-center justify-center hover:bg-surface-container-low transition-colors">
+                  <span className="text-xs text-on-surface-variant font-medium w-10 text-center">{zoom2}%</span>
+                  <button
+                    onClick={() => setZoom2((z) => Math.min(200, z + 25))}
+                    disabled={zoom2 >= 200}
+                    className="w-7 h-7 rounded-lg border border-outline-variant flex items-center justify-center hover:bg-surface-container-low transition-colors disabled:opacity-30"
+                  >
                     <span className="material-symbols-outlined text-base text-on-surface-variant">zoom_in</span>
                   </button>
-                  <button className="w-7 h-7 rounded-lg border border-outline-variant flex items-center justify-center hover:bg-surface-container-low transition-colors ml-2">
+                  <button
+                    onClick={() => setStep2Fullscreen(true)}
+                    className="w-7 h-7 rounded-lg border border-outline-variant flex items-center justify-center hover:bg-surface-container-low transition-colors ml-2"
+                  >
                     <span className="material-symbols-outlined text-base text-on-surface-variant">fullscreen</span>
                   </button>
                 </div>
                 <div className="px-5 py-3 border-t border-outline-variant/50 flex items-center gap-2 overflow-x-auto shrink-0">
                   {[1,2,3,4,5,6].map((n) => (
-                    <div key={n} className={`w-12 h-14 rounded border-2 shrink-0 flex items-center justify-center cursor-pointer ${n === 4 ? 'border-primary' : 'border-outline-variant'} bg-surface-container-low`}>
+                    <button
+                      key={n}
+                      onClick={() => setStep2Page(n - 1)}
+                      className={`w-12 h-14 rounded border-2 shrink-0 flex items-center justify-center cursor-pointer transition-colors ${step2Page === n - 1 ? 'border-primary bg-primary/5' : 'border-outline-variant bg-surface-container-low hover:border-primary/50'}`}
+                    >
                       <span className="text-[10px] font-bold text-on-surface-variant">{n}</span>
-                    </div>
+                    </button>
                   ))}
-                  <p className="text-[10px] text-on-surface-variant shrink-0 ml-1">4/6</p>
+                  <p className="text-[10px] text-on-surface-variant shrink-0 ml-1">{step2Page + 1}/6</p>
                 </div>
               </div>
 
@@ -244,7 +340,10 @@ function DocumentOCR() {
               <div className="col-span-7 bg-white rounded-2xl border border-outline-variant shadow-sm flex flex-col overflow-hidden">
                 <div className="flex items-center justify-between px-5 py-3.5 border-b border-outline-variant shrink-0">
                   <p className="text-sm font-bold text-on-surface">OCR 추출 결과</p>
-                  <button className="flex items-center gap-1.5 text-xs font-bold text-primary hover:underline shrink-0">
+                  <button
+                    onClick={() => showToast('OCR 재추출 중입니다... 잠시만 기다려 주세요.')}
+                    className="flex items-center gap-1.5 text-xs font-bold text-primary hover:underline shrink-0"
+                  >
                     <span className="material-symbols-outlined text-base">refresh</span>
                     재추출
                   </button>
@@ -294,10 +393,12 @@ function DocumentOCR() {
                         <h4 className="text-xs font-bold text-primary">{section.section}</h4>
                       </div>
                       <div className="space-y-2">
-                        {section.fields.map((f) => (
+                        {section.fields.map((f) => {
+                          const isReadonly = section.section === '첨부 정보';
+                          return (
                           <div key={f.key} className="flex items-center justify-between gap-2 py-1.5 px-2 rounded-lg hover:bg-surface-container transition-colors">
                             <span className="text-xs text-on-surface-variant shrink-0 w-24">{f.label}</span>
-                            {editingKey === f.key ? (
+                            {!isReadonly && editingKey === f.key ? (
                               <input
                                 autoFocus
                                 value={fieldValues[f.key]}
@@ -306,16 +407,20 @@ function DocumentOCR() {
                                 className="flex-1 text-xs border border-primary rounded-lg px-2 py-1 outline-none"
                               />
                             ) : (
-                              <span className="flex-1 text-xs font-medium text-on-surface text-right truncate">{fieldValues[f.key]}</span>
+                              <span className={`flex-1 text-xs font-medium text-right truncate ${isReadonly ? 'text-on-surface-variant' : 'text-on-surface'}`}>{fieldValues[f.key]}</span>
                             )}
-                            <button
-                              onClick={() => setEditingKey(editingKey === f.key ? null : f.key)}
-                              className="w-6 h-6 rounded-lg hover:bg-primary/10 flex items-center justify-center shrink-0"
-                            >
-                              <span className="material-symbols-outlined text-primary text-sm">edit</span>
-                            </button>
+                            {!isReadonly && (
+                              <button
+                                onClick={() => setEditingKey(editingKey === f.key ? null : f.key)}
+                                className="w-6 h-6 rounded-lg hover:bg-primary/10 flex items-center justify-center shrink-0"
+                              >
+                                <span className="material-symbols-outlined text-primary text-sm">edit</span>
+                              </button>
+                            )}
+                            {isReadonly && <div className="w-6 shrink-0" />}
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   ))}
@@ -650,12 +755,15 @@ function DocumentOCR() {
             <div className="flex gap-2">
               {currentStep === 4 ? (
                 <>
-                  <button className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl border border-outline-variant text-sm font-bold text-on-surface hover:bg-surface-container-low transition-colors">
+                  <button
+                    onClick={() => setShowSaveDialog(true)}
+                    className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl border border-outline-variant text-sm font-bold text-on-surface hover:bg-surface-container-low transition-colors"
+                  >
                     <span className="material-symbols-outlined text-base text-red-500">picture_as_pdf</span>
                     PDF 생성
                   </button>
                   <button
-                    onClick={() => navigate('/my-complaints')}
+                    onClick={() => navigate('/chatbot', { state: { autoSubmit: true, ocrData: fieldValues } })}
                     className="flex items-center gap-1.5 bg-primary text-white px-6 py-2.5 rounded-xl text-sm font-bold hover:brightness-95 transition-all shadow-sm"
                   >
                     <span className="material-symbols-outlined text-base">send</span>
@@ -665,7 +773,8 @@ function DocumentOCR() {
               ) : (
                 <button
                   onClick={() => setCurrentStep((s) => Math.min(4, s + 1))}
-                  className="flex items-center gap-1.5 bg-primary text-white px-6 py-2.5 rounded-xl text-sm font-bold hover:brightness-95 transition-all shadow-sm"
+                  disabled={currentStep === 1 && !uploadedFile}
+                  className="flex items-center gap-1.5 bg-primary text-white px-6 py-2.5 rounded-xl text-sm font-bold hover:brightness-95 transition-all shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   다음 단계<span className="material-symbols-outlined text-base">arrow_forward</span>
                 </button>
@@ -674,13 +783,13 @@ function DocumentOCR() {
           </div>
         </div>
       </div>
-      {/* 전체보기 모달 */}
+      {/* Step 4 전체화면 모달 */}
       {fullscreenPage !== null && (() => {
         const b = '1px solid #000';
         const th = (s, extra={}) => ({ border:b, background:'#f0f0f0', padding: s?'3px 6px':'2px 4px', fontWeight:700, textAlign:'center', fontSize:s?9:7, verticalAlign:'middle', whiteSpace:'nowrap', ...extra });
         const td = (s, extra={}) => ({ border:b, padding: s?'3px 6px':'2px 4px', fontSize:s?9:7, verticalAlign:'middle', ...extra });
         const pages = [
-          { content: (s) => (
+          { label: '기본 정보', content: (s) => (
             <div style={{ fontFamily:"'Malgun Gothic','Noto Sans KR',sans-serif", color:'#000' }}>
               <p style={{ fontSize:s?7:5, color:'#555', marginBottom:s?4:2, borderBottom:'1px solid #ccc', paddingBottom:s?3:2 }}>□ 서울교통법원 사용고지 &nbsp;[별지 제44호 서식]</p>
               <table style={{ width:'100%', borderCollapse:'collapse', marginBottom:s?6:4 }}><tbody><tr>
@@ -695,7 +804,7 @@ function DocumentOCR() {
               </tbody></table>
             </div>
           )},
-          { content: (s) => (
+          { label: '사고개요', content: (s) => (
             <div style={{ fontFamily:"'Malgun Gothic','Noto Sans KR',sans-serif", color:'#000' }}>
               <p style={{ fontSize:s?7:5, color:'#555', marginBottom:s?4:2, borderBottom:'1px solid #ccc', paddingBottom:s?3:2 }}>□ 서울교통법원 사용고지 &nbsp;[별지 제44호 서식] — 사고개요</p>
               <table style={{ width:'100%', borderCollapse:'collapse', fontSize:s?9:7 }}><tbody>
@@ -705,7 +814,7 @@ function DocumentOCR() {
               </tbody></table>
             </div>
           )},
-          { content: (s) => (
+          { label: '확인·서명', content: (s) => (
             <div style={{ fontFamily:"'Malgun Gothic','Noto Sans KR',sans-serif", color:'#000' }}>
               <p style={{ fontSize:s?7:5, color:'#555', marginBottom:s?4:2, borderBottom:'1px solid #ccc', paddingBottom:s?3:2 }}>□ 서울교통법원 사용고지 &nbsp;[별지 제44호 서식] — 확인 및 서명</p>
               <div style={{ border:b, padding:s?'8px 10px':'5px 6px', marginBottom:s?10:7, fontSize:s?9:7, lineHeight:1.8 }}>위와 같이 교통사고를 확인한 사실이 있음을 확인합니다.</div>
@@ -717,30 +826,197 @@ function DocumentOCR() {
           )},
         ];
         return (
-          <div className="fixed inset-0 bg-black/70 z-50 flex flex-col items-center justify-center" onClick={() => setFullscreenPage(null)}>
-            <div className="bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col" style={{ width: '600px', maxHeight: '90vh' }} onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center justify-between px-5 py-3.5 border-b border-outline-variant shrink-0">
-                <p className="text-sm font-bold text-on-surface">페이지 {fullscreenPage + 1} / {pages.length}</p>
-                <button onClick={() => setFullscreenPage(null)} className="w-8 h-8 rounded-full hover:bg-surface-container flex items-center justify-center transition-colors">
-                  <span className="material-symbols-outlined text-on-surface-variant">close</span>
-                </button>
-              </div>
-              <div className="overflow-y-auto p-8">
-                <div className="bg-white border border-slate-200 rounded p-8 shadow-md">
-                  {pages[fullscreenPage]?.content(true)}
+          <div className="fixed inset-0 bg-black/80 z-50 flex flex-col" onClick={() => setFullscreenPage(null)}>
+            {/* 상단 헤더 */}
+            <div className="flex items-center justify-between px-6 py-4 shrink-0" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center gap-3">
+                <span className="text-white text-sm font-bold">
+                  PDF 미리보기 — {fullscreenPage + 1} / {pages.length}페이지
+                </span>
+                <div className="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-1.5">
+                  <button
+                    onClick={() => setZoom((z) => Math.max(50, z - 25))}
+                    disabled={zoom <= 50}
+                    className="text-white disabled:opacity-30 hover:text-primary transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-base">zoom_out</span>
+                  </button>
+                  <span className="text-white text-xs font-medium w-10 text-center">{zoom}%</span>
+                  <button
+                    onClick={() => setZoom((z) => Math.min(200, z + 25))}
+                    disabled={zoom >= 200}
+                    className="text-white disabled:opacity-30 hover:text-primary transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-base">zoom_in</span>
+                  </button>
                 </div>
               </div>
-              <div className="flex items-center justify-center gap-3 px-5 py-3 border-t border-outline-variant shrink-0">
-                <button onClick={() => setFullscreenPage((p) => Math.max(0, p - 1))} disabled={fullscreenPage === 0} className="px-4 py-1.5 text-xs font-bold border border-outline-variant rounded-lg hover:bg-surface-container disabled:opacity-30 transition-colors">이전</button>
-                {pages.map((_, i) => (
-                  <button key={i} onClick={() => setFullscreenPage(i)} className={`w-6 h-6 rounded-full text-xs font-bold transition-colors ${i === fullscreenPage ? 'bg-primary text-white' : 'bg-surface-container text-on-surface-variant hover:bg-primary/10'}`}>{i + 1}</button>
-                ))}
-                <button onClick={() => setFullscreenPage((p) => Math.min(pages.length - 1, p + 1))} disabled={fullscreenPage === pages.length - 1} className="px-4 py-1.5 text-xs font-bold border border-outline-variant rounded-lg hover:bg-surface-container disabled:opacity-30 transition-colors">다음</button>
+              <button
+                onClick={() => setFullscreenPage(null)}
+                className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors"
+              >
+                <span className="material-symbols-outlined text-white">close</span>
+              </button>
+            </div>
+
+            {/* 본문 — 실제 PDF 내용 */}
+            <div className="flex-1 overflow-auto flex items-start justify-center px-6 py-4" onClick={(e) => e.stopPropagation()}>
+              <div
+                className="bg-white rounded border border-slate-300 shadow-2xl"
+                style={{
+                  padding: '40px',
+                  width: '480px',
+                  transformOrigin: 'top center',
+                  transform: `scale(${zoom / 100})`,
+                }}
+              >
+                {pages[fullscreenPage]?.content(true)}
               </div>
+            </div>
+
+            {/* 하단 썸네일 */}
+            <div className="flex items-center justify-center gap-3 pb-5 shrink-0" onClick={(e) => e.stopPropagation()}>
+              {pages.map((p, i) => (
+                <button
+                  key={i}
+                  onClick={() => setFullscreenPage(i)}
+                  className={`flex flex-col items-center gap-1.5 transition-all`}
+                >
+                  <div
+                    className={`w-16 h-20 rounded border-2 flex items-center justify-center text-[9px] font-bold transition-colors overflow-hidden ${
+                      i === fullscreenPage
+                        ? 'border-primary bg-white text-on-surface'
+                        : 'border-white/30 bg-white/10 text-white hover:border-primary/60'
+                    }`}
+                    style={{ padding: '6px' }}
+                  >
+                    <div style={{ transform: 'scale(0.28)', transformOrigin: 'top center', width: '480px', pointerEvents: 'none' }}>
+                      {p.content(true)}
+                    </div>
+                  </div>
+                  <span className={`text-[10px] font-bold ${i === fullscreenPage ? 'text-primary' : 'text-white/60'}`}>
+                    {i + 1} · {p.label}
+                  </span>
+                </button>
+              ))}
             </div>
           </div>
         );
       })()}
+
+      {/* Step 2 전체화면 모달 */}
+      {step2Fullscreen && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex flex-col" onClick={() => setStep2Fullscreen(false)}>
+          <div className="flex items-center justify-between px-6 py-4 shrink-0" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3">
+              <span className="text-white text-sm font-bold">문서 미리보기 — {step2Page + 1} / 6페이지</span>
+              <div className="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-1.5">
+                <button
+                  onClick={() => setZoom2((z) => Math.max(50, z - 25))}
+                  disabled={zoom2 <= 50}
+                  className="text-white disabled:opacity-30 hover:text-primary transition-colors"
+                >
+                  <span className="material-symbols-outlined text-base">zoom_out</span>
+                </button>
+                <span className="text-white text-xs font-medium w-10 text-center">{zoom2}%</span>
+                <button
+                  onClick={() => setZoom2((z) => Math.min(200, z + 25))}
+                  disabled={zoom2 >= 200}
+                  className="text-white disabled:opacity-30 hover:text-primary transition-colors"
+                >
+                  <span className="material-symbols-outlined text-base">zoom_in</span>
+                </button>
+              </div>
+            </div>
+            <button
+              onClick={() => setStep2Fullscreen(false)}
+              className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors"
+            >
+              <span className="material-symbols-outlined text-white">close</span>
+            </button>
+          </div>
+          <div className="flex-1 overflow-auto flex items-center justify-center p-6" onClick={(e) => e.stopPropagation()}>
+            <div
+              className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-sm aspect-[3/4] flex flex-col items-center justify-center gap-4"
+              style={{ transform: `scale(${zoom2 / 100})`, transformOrigin: 'top center' }}
+            >
+              <span className="material-symbols-outlined text-on-surface-variant/30 text-7xl">description</span>
+              <div className="space-y-2 w-full">
+                {[80,65,90,55,70,60,75,50,60,70].map((w, i) => (
+                  <div key={i} className="h-2 bg-surface-container rounded-full" style={{ width: `${w}%` }} />
+                ))}
+              </div>
+              <p className="text-sm text-on-surface-variant text-center mt-2">교통사고 사실확인서 · {step2Page + 1}페이지</p>
+            </div>
+          </div>
+          <div className="flex items-center justify-center gap-2 pb-5 shrink-0" onClick={(e) => e.stopPropagation()}>
+            {[1,2,3,4,5,6].map((n) => (
+              <button
+                key={n}
+                onClick={() => setStep2Page(n - 1)}
+                className={`w-10 h-12 rounded border-2 flex items-center justify-center text-[10px] font-bold transition-colors ${step2Page === n - 1 ? 'border-primary bg-primary text-white' : 'border-white/30 bg-white/10 text-white hover:border-primary/50'}`}
+              >{n}</button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* PDF 저장 다이얼로그 */}
+      {showSaveDialog && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center" onClick={() => setShowSaveDialog(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3 px-6 py-4 border-b border-outline-variant">
+              <span className="material-symbols-outlined text-red-500 text-xl">picture_as_pdf</span>
+              <p className="text-sm font-bold text-on-surface">PDF 저장</p>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="text-xs font-bold text-on-surface-variant block mb-1.5">저장 위치</label>
+                <div className="flex gap-2">
+                  <div className="flex-1 flex items-center gap-2 px-3 py-2.5 bg-surface-container-low rounded-xl border border-outline-variant text-sm text-on-surface-variant truncate">
+                    <span className="material-symbols-outlined text-base shrink-0">folder</span>
+                    <span className="truncate text-xs">C:\Users\사용자\다운로드</span>
+                  </div>
+                  <button
+                    onClick={() => showToast('폴더 선택 기능은 연동 후 사용 가능합니다.')}
+                    className="px-3 py-2 text-xs font-bold border border-outline-variant rounded-xl hover:bg-surface-container-low transition-colors shrink-0"
+                  >
+                    찾아보기
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-on-surface-variant block mb-1.5">파일 이름</label>
+                <input
+                  value={saveFileName}
+                  onChange={(e) => setSaveFileName(e.target.value)}
+                  className="w-full px-3 py-2.5 border border-outline-variant rounded-xl text-sm outline-none focus:border-primary transition-colors"
+                />
+              </div>
+              <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 rounded-xl border border-blue-200">
+                <span className="material-symbols-outlined text-blue-500 text-base">info</span>
+                <p className="text-xs text-blue-700">PDF 형식으로 저장됩니다 (A4, 컬러)</p>
+              </div>
+            </div>
+            <div className="flex gap-2 px-6 py-4 border-t border-outline-variant">
+              <button
+                onClick={() => setShowSaveDialog(false)}
+                className="flex-1 py-2.5 rounded-xl border border-outline-variant text-sm font-bold text-on-surface-variant hover:bg-surface-container-low transition-colors"
+              >
+                취소
+              </button>
+              <button
+                onClick={() => { setShowSaveDialog(false); showToast(`PDF가 저장되었습니다: ${saveFileName}`); }}
+                className="flex-1 py-2.5 rounded-xl bg-primary text-white text-sm font-bold hover:brightness-95 transition-all flex items-center justify-center gap-1.5"
+              >
+                <span className="material-symbols-outlined text-base">save</span>
+                저장
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </CitizenLayout>
   );
 }

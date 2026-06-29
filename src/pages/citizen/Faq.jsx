@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import CitizenLayout from '../../layouts/CitizenLayout';
 
 const FAQ_DATA = [
@@ -102,8 +103,10 @@ const FAQ_DATA = [
 const ALL_CATEGORIES = ['전체', ...FAQ_DATA.map((f) => f.category)];
 
 export default function Faq() {
+  const location = useLocation();
+  const initCategory = location.state?.category ?? '전체';
   const [search, setSearch]       = useState('');
-  const [category, setCategory]   = useState('전체');
+  const [category, setCategory]   = useState(initCategory);
   const [openKey, setOpenKey]     = useState(null);
 
   const filtered = FAQ_DATA

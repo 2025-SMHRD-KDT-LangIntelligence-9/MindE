@@ -1,5 +1,5 @@
 ﻿import { useState, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import CitizenLayout from '../../layouts/CitizenLayout';
 import { CATEGORY_STYLE } from '../../store/AppContext';
 
@@ -173,6 +173,7 @@ function MessageBubble({ msg, isSpeaking, onSpeak }) {
 
 function Chatbot() {
   const navigate  = useNavigate();
+  const location  = useLocation();
   const [view, setView]                   = useState('chat');
   const [messages, setMessages]           = useState([GREETING]);
   const [viewingHistory, setViewingHistory] = useState(null);
@@ -184,15 +185,72 @@ function Chatbot() {
   const [isSpeaking, setIsSpeaking]       = useState(false);
   const [attachedFiles, setAttachedFiles] = useState([]);
   const [isDragging, setIsDragging]       = useState(false);
-  const recognitionRef = useRef(null);
-  const messagesEndRef = useRef(null);
-  const textareaRef    = useRef(null);
-  const imageInputRef  = useRef(null);
-  const fileInputRef   = useRef(null);
+  const recognitionRef   = useRef(null);
+  const messagesEndRef   = useRef(null);
+  const textareaRef      = useRef(null);
+  const imageInputRef    = useRef(null);
+  const fileInputRef     = useRef(null);
+  const autoSubmitDone   = useRef(false);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
+
+  useEffect(() => {
+    if (!location.state?.autoSubmit || autoSubmitDone.current) return;
+    autoSubmitDone.current = true;
+    const data = location.state.ocrData ?? {};
+    const t = () => {
+      const d = new Date();
+      const h = d.getHours(), m = d.getMinutes();
+      return `${h < 12 ? '오전' : '오후'} ${h % 12 || 12}:${String(m).padStart(2, '0')}`;
+    };
+    const userMsg = {
+      role: 'user', time: t(),
+      text: `OCR 문서화로 작성된 서류를 민원 접수 요청합니다.\n\n📄 문서명: ${data.docname ?? '교통사고_사실확인서.jpg'}\n• 성명: ${data.name ?? '홍길동'}\n• 민원 유형: ${data.type ?? '교통사고 사실 확인'}\n• 발생 일시: ${data.date ?? '2024-05-20 14:30'}\n• 발생 장소: ${data.location ?? '서울특별시 강남구 테헤란로 1길 12'}`,
+    };
+    setTimeout(() => {
+      setMessages((prev) => [...prev, userMsg]);
+      setIsTyping(true);
+      setTimeout(() => {
+        const aiMsg = {
+          role: 'ai', time: t(),
+          text: `OCR 서류 기반 민원 접수 요청을 확인했습니다. ✅\n\n📌 **접수 내용 요약**\n• 민원 유형: ${data.type ?? '교통사고 사실 확인'}\n• 신청인: ${data.name ?? '홍길동'}\n• 발생 장소: ${data.location ?? '서울특별시 강남구 테헤란로 1길 12'}\n• 발생 일시: ${data.date ?? '2024-05-20 14:30'}\n\n담당 부서(**도로교통과**)로 자동 분류하여 접수 처리하였습니다.\n처리 진행 상황은 알림으로 안내드리겠습니다. 😊`,
+        };
+        setMessages((prev) => [...prev, aiMsg]);
+        setIsTyping(false);
+      }, 1200);
+    }, 600);
+    window.history.replaceState({}, '');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!location.state?.supplement || autoSubmitDone.current) return;
+    autoSubmitDone.current = true;
+    const { complaintId, complaintTitle } = location.state;
+    const t = () => {
+      const d = new Date();
+      const h = d.getHours(), m = d.getMinutes();
+      return `${h < 12 ? '오전' : '오후'} ${h % 12 || 12}:${String(m).padStart(2, '0')}`;
+    };
+    setTimeout(() => {
+      setMessages((prev) => [...prev, {
+        role: 'user', time: t(),
+        text: `민원 번호 ${complaintId} '${complaintTitle}' 건에 대해 보완 서류를 제출하겠습니다.`,
+      }]);
+      setIsTyping(true);
+      setTimeout(() => {
+        setMessages((prev) => [...prev, {
+          role: 'ai', time: t(),
+          text: `보완 서류 제출 요청을 확인했습니다. ✅\n\n📌 **대상 민원**\n• 민원 번호: ${complaintId}\n• 제목: ${complaintTitle}\n\n보완하실 서류나 추가 내용을 아래에 입력해 주세요.\n담당자에게 전달하여 빠르게 처리될 수 있도록 도와드리겠습니다. 😊`,
+        }]);
+        setIsTyping(false);
+      }, 1200);
+    }, 600);
+    window.history.replaceState({}, '');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const startListening = () => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;

@@ -22,11 +22,13 @@ function StaffLayout({ pageTitle, activeMenu, children }) {
     .slice(0, 10)
     .map((c) => ({
       id: c.id,
-      title: '새 민원 접수',
+      complaintId: c.id,
+      urgency: c.urgency,
+      title: c.urgency === '긴급' ? '긴급 민원 접수' : '새 민원 접수',
       desc: c.title,
-      icon: 'inbox',
-      color: 'text-primary',
-      iconBg: 'bg-primary/10',
+      icon: c.urgency === '긴급' ? 'notification_important' : 'inbox',
+      color: c.urgency === '긴급' ? 'text-red-500' : 'text-primary',
+      iconBg: c.urgency === '긴급' ? 'bg-red-50' : 'bg-primary/10',
       time: c.receivedAt,
     }));
 
@@ -60,7 +62,11 @@ function StaffLayout({ pageTitle, activeMenu, children }) {
         </nav>
 
         <div className="flex items-center gap-2 shrink-0 pl-4">
-          <NotificationDropdown items={notifItems} onMarkAllRead={handleMarkAllRead} />
+          <NotificationDropdown
+            items={notifItems}
+            onMarkAllRead={handleMarkAllRead}
+            onClickItem={(n) => navigate(n.urgency === '긴급' ? `/staff/urgent?id=${n.complaintId}` : `/staff?id=${n.complaintId}`)}
+          />
           <div className="flex items-center gap-2 pl-3 border-l border-slate-300">
             <div className="hidden sm:flex flex-col items-end">
               <span className="text-sm font-bold text-slate-700">{currentUser.name || '담당자'}</span>

@@ -3,16 +3,9 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import CitizenLayout from '../../layouts/CitizenLayout';
 import { useApp, CATEGORY_STYLE } from '../../store/AppContext';
 import EmptyState from '../../components/EmptyState';
+import { STATUS_STYLE as statusConfig } from '../../utils/statusStyle';
 
 const steps = ['접수', '검토', '처리', '완료'];
-
-const statusConfig = {
-  '접수':     { bg: 'bg-blue-50',    text: 'text-blue-600',    dot: 'bg-blue-400',    label: '접수됨' },
-  '처리 중':  { bg: 'bg-amber-50',   text: 'text-amber-600',   dot: 'bg-amber-400',   label: '처리중' },
-  '보완 요청':{ bg: 'bg-purple-50',  text: 'text-purple-600',  dot: 'bg-purple-400',  label: '보완 요청' },
-  '완료':     { bg: 'bg-emerald-50', text: 'text-emerald-600', dot: 'bg-emerald-500', label: '완료' },
-  '반려':     { bg: 'bg-red-50',     text: 'text-red-600',     dot: 'bg-red-400',     label: '반려' },
-};
 
 const statusToStep = { '접수': 1, '처리 중': 2, '보완 요청': 2, '완료': 4, '반려': 4 };
 
@@ -22,7 +15,7 @@ const statusFilterOptions   = ['전체 상태', '접수', '처리 중', '보완 
 function MyComplaints() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { stats, notifications } = useApp();
+  const { stats, notifications, staffFiles } = useApp();
   const complaints = stats.myComplaints;
 
   const [filterType,   setFilterType]   = useState('전체 유형');
@@ -62,6 +55,12 @@ function MyComplaints() {
     const c   = selectedData;
     const cfg = statusConfig[c.status] ?? statusConfig['접수'];
     const step = statusToStep[c.status] ?? 1;
+
+    // 이 민원과 관련된 알림 이력 (담당자 처리 기록)
+    const complaintHistory = notifications
+      .filter((n) => n.complaintId === c.id)
+      .slice(0, 10);
+
     return (
       <CitizenLayout pageTitle="민원 상세" activeMenu="complaints">
         <div className="max-w-3xl mx-auto">
@@ -70,6 +69,8 @@ function MyComplaints() {
             <span className="material-symbols-outlined text-lg">arrow_back</span>목록으로
           </button>
           <div className="bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden">
+
+            {/* 헤더 */}
             <div className="px-8 py-6 border-b border-outline-variant">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -80,11 +81,17 @@ function MyComplaints() {
                     <span>접수일 {c.receivedAt}</span>
                   </div>
                 </div>
-                <span className={`text-xs font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5 shrink-0 ${cfg.bg} ${cfg.text}`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />{cfg.label}
-                </span>
+                <div className="flex flex-col items-end gap-1.5 shrink-0">
+                  <span className={`text-xs font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5 ${cfg.bg} ${cfg.text}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />{cfg.label}
+                  </span>
+                  {c.updatedAt && (
+                    <p className="text-[10px] text-on-surface-variant">최종 수정 {c.updatedAt}</p>
+                  )}
+                </div>
               </div>
             </div>
+
             {/* 진행 단계 */}
             <div className="px-8 py-6 border-b border-outline-variant bg-surface-container-low/40">
               <p className="text-xs font-bold text-on-surface-variant mb-4">처리 진행 현황</p>
@@ -110,11 +117,89 @@ function MyComplaints() {
                 })}
               </div>
             </div>
-            {/* 내용 */}
+
+            {/* 반려 사유 (반려 상태일 때) */}
+            {c.status === '반려' && c.memo && (
+              <div className="px-8 py-5 border-b border-outline-variant">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="material-symbols-outlined text-red-500 text-base">cancel</span>
+                  <p className="text-xs font-bold text-red-600">반려 사유</p>
+                </div>
+                <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                  <p className="text-sm text-red-800 leading-relaxed">{c.memo}</p>
+                </div>
+              </div>
+            )}
+
+            {/* 보완 요청 안내 (보완 요청 상태일 때) */}
+            {c.status === '보완 요청' && (
+              <div className="px-8 py-5 border-b border-outline-variant">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="material-symbols-outlined text-purple-500 text-base">edit_note</span>
+                  <p className="text-xs font-bold text-purple-600">보완 요청</p>
+                </div>
+                <div className="bg-purple-50 border border-purple-200 rounded-xl px-4 py-3">
+                  <p className="text-sm text-purple-800 leading-relaxed">
+                    {c.memo || '담당자가 추가 서류 또는 정보 보완을 요청하였습니다. 아래 추가 상담 버튼을 눌러 내용을 확인하세요.'}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* 민원 내용 */}
             <div className="px-8 py-6 border-b border-outline-variant">
               <p className="text-xs font-bold text-on-surface-variant mb-3">민원 내용</p>
               <p className="text-sm text-on-surface leading-relaxed">{c.content}</p>
             </div>
+
+            {/* 처리 이력 (담당자 상태 변경 기록) */}
+            {complaintHistory.length > 0 && (
+              <div className="px-8 py-6 border-b border-outline-variant">
+                <p className="text-xs font-bold text-on-surface-variant mb-4">처리 이력</p>
+                <div className="relative pl-5">
+                  {/* 세로 라인 */}
+                  <div className="absolute left-[7px] top-2 bottom-2 w-px bg-outline-variant/60" />
+                  <div className="space-y-4">
+                    {complaintHistory.map((n, idx) => (
+                      <div key={n.id} className="relative flex gap-3">
+                        {/* 점 */}
+                        <div className={`absolute -left-5 mt-0.5 w-3.5 h-3.5 rounded-full border-2 border-white shadow-sm shrink-0 ${
+                          idx === 0 ? 'bg-primary' : 'bg-outline-variant'
+                        }`} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`material-symbols-outlined text-sm ${n.color}`}>{n.icon}</span>
+                            <span className="text-xs font-bold text-on-surface">{n.title}</span>
+                            {n.tag && (
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                statusConfig[n.tag]?.bg ?? 'bg-surface-container'
+                              } ${statusConfig[n.tag]?.text ?? 'text-on-surface-variant'}`}>
+                                {n.tag}
+                              </span>
+                            )}
+                            <span className="text-[10px] text-on-surface-variant ml-auto">{n.time}</span>
+                          </div>
+                          <p className="text-[11px] text-on-surface-variant mt-1 leading-relaxed">{n.desc}</p>
+                        </div>
+                      </div>
+                    ))}
+                    {/* 최초 접수 */}
+                    <div className="relative flex gap-3">
+                      <div className="absolute -left-5 mt-0.5 w-3.5 h-3.5 rounded-full border-2 border-white bg-outline-variant shadow-sm shrink-0" />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="material-symbols-outlined text-sm text-primary">inbox</span>
+                          <span className="text-xs font-bold text-on-surface">민원 접수</span>
+                          <span className="text-[10px] text-on-surface-variant ml-auto">{c.receivedAt}</span>
+                        </div>
+                        <p className="text-[11px] text-on-surface-variant mt-1">민원이 정상적으로 접수되었습니다.</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* 담당 부서 답변 */}
             <div className="px-8 py-6 border-b border-outline-variant">
               <div className="flex items-center gap-2 mb-3">
@@ -144,6 +229,45 @@ function MyComplaints() {
                 </div>
               )}
             </div>
+
+            {/* 담당자 첨부파일 */}
+            {(staffFiles[c.id] ?? []).length > 0 && (
+              <div className="px-8 py-6 border-b border-outline-variant">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="material-symbols-outlined text-primary text-base">attach_file</span>
+                  <p className="text-xs font-bold text-on-surface-variant">담당자 첨부 파일</p>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary">{staffFiles[c.id].length}개</span>
+                </div>
+                <div className="flex flex-col gap-2">
+                  {staffFiles[c.id].map((file, idx) => {
+                    const ext = file.name.split('.').pop().toLowerCase();
+                    const isImg = file.type?.startsWith('image/') || ['jpg','jpeg','png','gif','webp'].includes(ext);
+                    return (
+                      <div key={idx} className="flex items-center gap-3 bg-surface-container-low rounded-xl px-3 py-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                          <span className="material-symbols-outlined text-primary text-sm">
+                            {isImg ? 'image' : ext === 'pdf' ? 'picture_as_pdf' : 'description'}
+                          </span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold text-on-surface truncate">{file.name}</p>
+                          <p className="text-[11px] text-on-surface-variant">
+                            {file.size < 1024 ? `${file.size}B` : file.size < 1024*1024 ? `${(file.size/1024).toFixed(1)}KB` : `${(file.size/(1024*1024)).toFixed(1)}MB`}
+                          </p>
+                        </div>
+                        {isImg && file.url && (
+                          <a href={file.url} target="_blank" rel="noreferrer" className="shrink-0 text-[11px] font-bold text-primary hover:underline flex items-center gap-1">
+                            <span className="material-symbols-outlined text-sm">open_in_new</span>보기
+                          </a>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* 담당 부서 */}
             <div className="px-8 py-6 border-b border-outline-variant">
               <p className="text-xs font-bold text-on-surface-variant mb-3">담당 부서</p>
               <div className="flex items-center gap-3">
@@ -156,11 +280,25 @@ function MyComplaints() {
                 </div>
               </div>
             </div>
+
+            {/* 하단 버튼 */}
             <div className="px-8 py-5 flex gap-3">
-              <button onClick={() => navigate('/chatbot')} className="flex items-center gap-2 text-sm font-bold text-primary border border-primary/40 px-5 py-2.5 rounded-xl hover:bg-primary/5 transition-colors">
+              <button
+                onClick={() => navigate('/chatbot')}
+                className="flex items-center gap-2 text-sm font-bold text-primary border border-primary/40 px-5 py-2.5 rounded-xl hover:bg-primary/5 transition-colors"
+              >
                 <span className="material-symbols-outlined text-lg">chat_bubble</span>추가 상담
               </button>
+              {c.status === '보완 요청' && (
+                <button
+                  onClick={() => navigate('/chatbot', { state: { supplement: true, complaintId: c.id, complaintTitle: c.title } })}
+                  className="flex items-center gap-2 text-sm font-bold text-white bg-purple-600 px-5 py-2.5 rounded-xl hover:brightness-95 transition-all"
+                >
+                  <span className="material-symbols-outlined text-lg">upload_file</span>서류 보완 제출
+                </button>
+              )}
             </div>
+
           </div>
         </div>
       </CitizenLayout>
