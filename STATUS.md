@@ -1,98 +1,113 @@
 # 진행 상황 (Resume용)
 
-마지막 업데이트: 2026-06-26
+마지막 업데이트: 2026-06-29
 
 ## ✅ 완료된 작업
 
 ### 모델 (Hugging Face Private)
-- `atti433/minde-classifier` (KLUE BERT 11-class, F1 0.873) + README.md 모델 카드
-- `atti433/minde-urgency` (KLUE BERT 이진, F1 0.93) + README.md 모델 카드
+- `atti433/minde-classifier` (KLUE BERT 11-class, F1 0.873)
+- `atti433/minde-urgency` (KLUE BERT 이진, F1 0.93)
+- 둘 다 모델 카드 포함
 
-### 데이터 적재
-- 법령 26개 → 5,441 조항 → `rag_documents` (source_type='law')
-- 부서 description 39개 → `rag_documents` (source_type='dept')
-- 모두 KoSimCSE-roberta 768차원 임베딩
-
-### DB 구축
-- 12 테이블 (PostgreSQL + pgvector 0.7.0)
-- `departments` 39개 (본청 17 + 동부지역본부 12 + 소방본부 7 + 특수기관 3)
-  - 전화번호 + description 모두 채워짐
+### DB 구축 (PostgreSQL + pgvector)
+- 12 테이블, 모두 시드 적용
+- `departments` 39개 (전화/description 채움) — 본청 17 + 동부 12 + 소방 7 + 특수 3
 - `category_department_mapping` 32개 (priority 순)
 - `urgency_keywords` 29개
+- `complaint_clusters.centroid vector(768)` 컬럼 추가
+
+### RAG 적재 (`rag_documents`)
+| source_type | 건수 | 임베딩 |
+|---|---:|---:|
+| law (법령 조항) | 5,441 | ✅ |
+| dept (부서 description) | 39 | ✅ |
+| case (epeople 사례) | **0** | ⏳ 미적재 |
+| faq (moe FAQ) | **0** | ⏳ 미적재 |
+
+### chatbot_service (백엔드 import용)
+| 함수 | 용도 |
+|---|---|
+| `classify_complaint(text, top_k)` | 11 카테고리 분류 |
+| `check_urgency(text)` | 긴급 + DB 키워드 매칭 |
+| `search_laws(query, category_id?, limit)` | 법령 RAG |
+| `search_cases(query, category_id?, limit)` | 사례 RAG (데이터 없음) |
+| `search_faq(query, limit)` | FAQ RAG (데이터 없음) |
+| `search_dept(query, category_id?, limit)` | 부서 의미 검색 |
+| `lookup_dept_by_category(category_id)` | 카테고리 → 부서 priority 순 |
+| `match_or_create_cluster(text, threshold=0.75)` | 클러스터링 + urgency_bonus |
+| `get_categories()` | 11 카테고리 메타 |
+
+### MCP 서버 (Claude Desktop용)
+- 도구 10개 (chatbot_service의 함수들 + lookup_dept_intro/phone CSV)
 
 ### AI 인계 패키지 (GitHub `ai` 브랜치)
-- `chatbot_service.py` — 백엔드 import용 8개 함수
-- `mcp_server.py` — Claude Desktop용
-- `classifier.py` — BERT wrapper
-- `docs/`, `db/schema.sql`, `models/README.md`
+- 최신 커밋: `f9f6821` (match_or_create_cluster + search_dept category filter)
 
-### 백엔드 (별도 팀, `backend` 브랜치)
+### 백엔드 (`backend` 브랜치, 별도 팀)
 - FastAPI + 인증 + 민원 CRUD + 알림 + 첨부파일
-- AI 모델 직접 연동 (HF에서 다운로드)
-- RAG `/rag/ask` 엔드포인트 — gpt-4o-mini
+- RAG `/rag/ask` 엔드포인트 (gpt-4o-mini)
+- 모델 직접 연동 (HF에서 다운로드)
 
-## ⏳ 진행 중 / 보류
+## ⏳ 보류 / 미완
 
-### 크롤링 결과 (적재 대기)
-- `crawl_epeople/epeople_cases.jsonl` — **25,668건 unique** (dedupe 완료)
-- 다음 세션: `load_cases.py` 작성 → rag_documents에 source_type='case' 적재 → 임베딩
+### 데이터 적재 (기능 자체는 됨, 데이터만 비어있음)
+- **epeople 사례** — 크롤링 `25,919건 unique` 완료, DB 적재 대기
+- **moe FAQ 416건** — `edu_dataset.jsonl`에서 적재 대기
 
-### 미적재 RAG 데이터
-- moe FAQ 416건 (`edu_dataset.jsonl`) — source_type='faq'로 적재 대기
-- 부족 카테고리 6개 법령 보강 — 보건/환경/농축산/복지/상하수도/문화_여가 (보류 검토)
+### 백엔드 통보 필요
+- 오늘 추가/변경된 것 백엔드한테 안 알림:
+  - `departments.description` 컬럼 추가
+  - `complaint_clusters.centroid` 컬럼 추가
+  - `search_dept` 함수 + category_id 파라미터
+  - `match_or_create_cluster` 함수 → 민원 INSERT 흐름에 호출 추가 권장
+- 통합 가이드: 민원 INSERT 시
+  ```python
+  cluster = svc.match_or_create_cluster(text)
+  complaints.insert(..., cluster_id=cluster['cluster_id'],
+                    urgency_score=base + cluster['urgency_bonus'])
+  ```
 
-### search_dept 정밀도 개선 (선택)
-description 풍부화는 완료했지만 짧은 키워드("주차", "가로등")엔 약함. 옵션:
-- **A** (추천): `search_dept`에 `category_id` 필터 추가 → 분류기 결과로 좁힘
-- B: 키워드(BM25) + 벡터 하이브리드 검색
-- C: description에 자주 쓰는 짧은 키워드 수동 추가
-- D: 더 강한 임베딩 모델 (BGE-M3)
+### 미적용 후보
+- 클러스터 답변 재활용 (`get_cluster_context`) — 운영 데이터 쌓이면 검토
+- 부족 카테고리 6개 법령 (보건/환경/농축산/복지/상하수도/문화_여가)
+- search_dept 정밀도 (짧은 키워드에 약함) — 임계값/하이브리드 검색
 
-## 📌 다음 세션 시작 시 빠른 체크
+## 📌 다음 세션 빠른 체크
 
 ```bash
-# 1. 환경 확인 (Python 3.11)
+# 1. Python
 "C:/Users/smhrd/AppData/Local/Programs/Python/Python311/python.exe" --version
 
 # 2. 크롤링 상태
 wc -l "C:/Users/smhrd/Desktop/데이터/crawl_epeople/epeople_cases.jsonl"
-# → 25668 (dedupe 완료)
 
-# 3. DB 상태 (한 줄로)
+# 3. DB 상태
 "C:/Users/smhrd/AppData/Local/Programs/Python/Python311/python.exe" -c "
 import psycopg2
 conn = psycopg2.connect(host='project-db-campus.smhrd.com', port=3310,
   user='mp_24k_li9_p3_3', password='smhrd3', dbname='mp_24k_li9_p3_3')
 cur = conn.cursor()
 cur.execute('SELECT source_type, COUNT(*) FROM rag_documents GROUP BY source_type')
-for r in cur.fetchall(): print(r)
+print(cur.fetchall())
 "
-# → ('law', 5441), ('dept', 39)
 ```
 
-## 🎯 다음에 할 일 (우선순위)
+## 🎯 다음 우선순위
 
-1. **search_dept에 category_id 필터 추가** (5분)
-   - chatbot_service.py + mcp_server.py 둘 다 수정
-   - 분류기 결과로 카테고리 좁힘 → 정밀도 ↑
-2. **epeople 사례 25,668건 → rag_documents 적재 + 임베딩** (30분)
-   - `load_cases.py` 작성
-   - 임베딩 ~10분 (GPU)
-3. **moe FAQ 416 적재 + 임베딩** (5분)
-4. **백엔드 변경사항 통보**
-   - departments 39개, mappings 32개, description 컬럼 추가
-   - rag_documents에 source_type='dept' 39행 추가됨
-   - 새 함수 `search_dept` 사용 가능
+1. **백엔드 통보** — 오늘 변경사항 슬랙/대면 전달
+2. **epeople 사례 적재 + 임베딩** (30분) — search_cases 활성화
+3. **moe FAQ 적재** (5분) — search_faq 활성화
+4. (선택) search_dept 정밀도 개선
+5. (선택) 클러스터 답변 재활용 기능
 
-## 🔗 환경/접속 정보
+## 🔗 환경/접속
 
 - Python 3.11: `C:\Users\smhrd\AppData\Local\Programs\Python\Python311\python.exe`
-- 작업 폴더: `C:\Users\smhrd\Desktop\데이터\` (개발용)
-- 인계 패키지: `C:\Users\smhrd\Desktop\실전 프로젝트\` (GitHub `ai` 브랜치)
-- DB: `project-db-campus.smhrd.com:3310/mp_24k_li9_p3_3` (.env 참조)
-- HF: `atti433` (현재 토큰: 노출됐으니 회전 권장)
+- 작업: `C:\Users\smhrd\Desktop\데이터\`
+- 인계: `C:\Users\smhrd\Desktop\실전 프로젝트\` ↔ GitHub `ai` 브랜치
+- DB: `project-db-campus.smhrd.com:3310/mp_24k_li9_p3_3`
+- HF: `atti433` (토큰 회전 권장 — 대화 노출)
 - GitHub: https://github.com/2025-SMHRD-KDT-LangIntelligence-9/MindE
 
-## ⚠️ 보안 미해결
-- HF 토큰 한 개 대화 노출됨 → **회전 필요** (HF Settings > Tokens > Revoke)
-- OpenAI API 키도 노출 위험 — `.env` 한 번 확인
+## ⚠️ 보안
+- HF 토큰 대화 노출 → 회전 권장
