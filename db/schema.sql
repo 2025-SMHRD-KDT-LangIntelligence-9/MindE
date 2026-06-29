@@ -61,6 +61,7 @@ CREATE TABLE complaint_clusters (
     complaint_count INTEGER NOT NULL DEFAULT 1,
     first_seen_at TIMESTAMP NOT NULL DEFAULT now(),
     last_seen_at TIMESTAMP NOT NULL DEFAULT now(),
+    centroid vector(768),
     PRIMARY KEY (cluster_id)
 );
 
@@ -161,7 +162,7 @@ INSERT INTO categories (category_id, name) VALUES (9, '세무') ON CONFLICT DO NOT
 INSERT INTO categories (category_id, name) VALUES (10, '상하수도') ON CONFLICT DO NOTHING;
 INSERT INTO categories (category_id, name) VALUES (11, '경제') ON CONFLICT DO NOTHING;
 
--- 39 부서 (description 포함)
+-- 39 부서
 INSERT INTO departments (department_id, name, contact_email, contact_phone, description) VALUES (1, '교통행정과', NULL, '061-286-7450', '교통행정과 업무 총괄; 교통기획팀 업무 총괄; 시외버스 인허가, 버스 재정지원; 택시, 교통약자 이동 지원; 과 서무·예산, 충무계획, K-패스; 도시형,농촌형 교통모델, 벽지노선; 교통관리팀 업무 총괄; 교통안전 시행계획 수립; 자동차 관리, 건설기계 동원, 주차장; 물류정책팀 업무 총괄; 물류기본계획, 교통영향평가; 화물자동차 공영차고지') ON CONFLICT DO NOTHING;
 INSERT INTO departments (department_id, name, contact_email, contact_phone, description) VALUES (2, '도로정책과', NULL, '061-286-7410', '도로정책과 업무 전반; 도로계획 업무 전반; 국지도 건설공사 총괄; SOC 예산확보 및 협의, 연륙연도교사업; 대도시권 광역도로, 국지도 건설공사 추진; 과서무, 국지도 건설공사 추진; 도로시설 업무 전반; 지방도 중장기 계획; 지방도 노선조정; 지방도 예산 및 관급자재; 연결허가, 비관리청 허가, 수해대책, 시설물 관리; 철도 업무 전반; 철도업무 추진; 공항업무 추진; 공항업무 지원; 철도업무 지원') ON CONFLICT DO NOTHING;
 INSERT INTO departments (department_id, name, contact_email, contact_phone, description) VALUES (3, '건축개발과', NULL, '061-286-7710', '건축개발과 업무 총괄; 주거복지팀 업무 전반; 전남형 만원주택, 주거정책심의위원회 운용, 
@@ -336,7 +337,6 @@ INSERT INTO urgency_keywords (keyword_id, keyword, category_id, weight) VALUES (
 INSERT INTO urgency_keywords (keyword_id, keyword, category_id, weight) VALUES (28, '연기', NULL, 0.85) ON CONFLICT DO NOTHING;
 INSERT INTO urgency_keywords (keyword_id, keyword, category_id, weight) VALUES (29, '전선 끊', NULL, 0.85) ON CONFLICT DO NOTHING;
 
--- 시퀀스 재설정
 SELECT setval(pg_get_serial_sequence('categories', 'category_id'), (SELECT MAX(category_id) FROM categories));
 SELECT setval(pg_get_serial_sequence('departments', 'department_id'), (SELECT MAX(department_id) FROM departments));
 SELECT setval(pg_get_serial_sequence('category_department_mapping', 'mapping_id'), (SELECT MAX(mapping_id) FROM category_department_mapping));

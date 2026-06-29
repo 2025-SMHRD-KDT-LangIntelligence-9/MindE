@@ -338,17 +338,20 @@ def search_faq(query: str, limit: int = 5) -> list[dict]:
     return _search_rag(query, 'faq', None, limit)
 
 
-def search_dept(query: str, limit: int = 5) -> list[dict]:
+def search_dept(query: str, category_id: Optional[int] = None, limit: int = 5) -> list[dict]:
     """부서 의미 검색 (담당업무 기반).
 
-    사용자 질문을 부서 description과 매칭. 카테고리 매핑이 없는 부서
-    (소방본부/특수기관)까지 포함해서 검색되므로 일반 응대에 유용.
+    사용자 질문을 부서 description과 매칭.
+    category_id를 주면 해당 카테고리에 매핑된 부서들 중에서만 검색 (정밀도 ↑).
+    None이면 39개 부서 전체에서 검색 (카테고리 매핑 없는 소방본부/특수기관 포함).
 
-    예시 질문:
-        '주차 위반 어디다 신고?', '소방 안전점검 문의', '여순사건 신고'
+    권장 흐름:
+      1. classify_complaint(text) → category_id
+      2. search_dept(text, category_id=...) → 그 카테고리 내 부서 정렬
 
     Args:
         query: 자연어 질의
+        category_id: 카테고리 필터 (1~11, 선택)
         limit: 1~20, 기본 5
 
     Returns:
@@ -363,7 +366,114 @@ def search_dept(query: str, limit: int = 5) -> list[dict]:
           ...
         ]
     """
-    return _search_rag(query, 'dept', None, limit)
+    return _search_rag(query, 'dept', category_id, limit)
+
+
+def match_or_create_cluster(text: str, similarity_threshold: float = 0.75) -> dict:
+    """비슷한 민원 그룹(클러스터)을 찾거나 새로 생성.
+
+    동작:
+      1. 입력 텍스트를 KoSimCSE로 임베딩 (벡터)
+      2. 기존 complaint_clusters의 centroid와 cosine 유사도 비교
+      3. similarity_threshold 이상이면 기존 클러스터에 매칭:
+         - complaint_count++
+         - last_seen_at 갱신
+         - centroid를 EMA(0.9) 가중 평균으로 업데이트
+      4. 미만이면 신규 클러스터 INSERT:
+         - representative_content = text
+         - centroid = 새 벡터
+         - count = 1
+
+    Args:
+        text: 민원 본문
+        similarity_threshold: 매칭 임계값 (기본 0.75)
+
+    Returns:
+        {
+          'cluster_id': 12,
+          'similarity': 0.85,         # 매칭된 유사도 (신규면 0)
+          'is_new': False,            # True면 새 클러스터 생성
+          'complaint_count': 5,       # 매칭 후 총 멤버 수
+          'representative_content': '...',
+          'urgency_bonus': 0.0,       # 클러스터 누적 건수 기반 가산점 (0~0.3)
+        }
+
+    백엔드 사용 예:
+        cluster = svc.match_or_create_cluster(text)
+        complaints.insert(..., cluster_id=cluster['cluster_id'],
+                          urgency_score=base_urgency + cluster['urgency_bonus'])
+    """
+    import numpy as np
+    from datetime import datetime
+    text = (text or '').strip()
+    if not text:
+        return {'cluster_id': None, 'similarity': 0.0, 'is_new': False,
+                'complaint_count': 0, 'representative_content': '', 'urgency_bonus': 0.0}
+
+    vec = _get_embed().encode(text, normalize_embeddings=True).astype(np.float32)
+    conn = _get_db()
+    with conn.cursor() as c:
+        # 1) 기존 클러스터 중 가장 가까운 것 (centroid 있는 것만)
+        c.execute("""
+            SELECT cluster_id, representative_content, complaint_count, centroid,
+                   1 - (centroid <=> %s::vector) AS sim
+            FROM complaint_clusters
+            WHERE centroid IS NOT NULL
+            ORDER BY centroid <=> %s::vector
+            LIMIT 1
+        """, (vec.tolist(), vec.tolist()))
+        best = c.fetchone()
+
+        if best and float(best[4]) >= similarity_threshold:
+            cid, rep, count, old_cent, sim = best
+            new_count = count + 1
+            # EMA centroid 갱신 (alpha=0.1)
+            old_arr = np.array(old_cent, dtype=np.float32)
+            new_cent = (old_arr * 0.9 + vec * 0.1)
+            # 재정규화 (L2)
+            norm = np.linalg.norm(new_cent)
+            if norm > 0:
+                new_cent = new_cent / norm
+            c.execute("""
+                UPDATE complaint_clusters
+                SET complaint_count=%s, last_seen_at=NOW(), centroid=%s
+                WHERE cluster_id=%s
+            """, (new_count, new_cent.tolist(), cid))
+            conn.commit()
+            return {
+                'cluster_id': int(cid),
+                'similarity': round(float(sim), 4),
+                'is_new': False,
+                'complaint_count': int(new_count),
+                'representative_content': rep,
+                'urgency_bonus': _cluster_urgency_bonus(new_count),
+            }
+        else:
+            # 신규 클러스터
+            c.execute("""
+                INSERT INTO complaint_clusters
+                (representative_content, complaint_count, centroid, first_seen_at, last_seen_at)
+                VALUES (%s, 1, %s, NOW(), NOW())
+                RETURNING cluster_id
+            """, (text[:500], vec.tolist()))
+            new_id = c.fetchone()[0]
+            conn.commit()
+            return {
+                'cluster_id': int(new_id),
+                'similarity': 0.0,
+                'is_new': True,
+                'complaint_count': 1,
+                'representative_content': text[:500],
+                'urgency_bonus': 0.0,
+            }
+
+
+def _cluster_urgency_bonus(count: int) -> float:
+    """클러스터 누적 건수 → urgency_score 가산점 (0~0.3)."""
+    if count >= 100: return 0.30
+    if count >= 50:  return 0.20
+    if count >= 10:  return 0.10
+    return 0.0
 
 
 def lookup_dept_by_category(category_id: int) -> list[dict]:

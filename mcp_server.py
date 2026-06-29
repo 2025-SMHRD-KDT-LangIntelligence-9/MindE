@@ -113,17 +113,34 @@ async def list_tools() -> list[types.Tool]:
             name='search_dept',
             description=(
                 '부서 의미 검색 (담당업무 description 기반). '
-                '카테고리에 매핑되지 않은 부서(소방본부/여순사건지원단/기획홍보담당관 등)도 검색됨. '
-                '"주차 위반 신고", "소방 안전점검", "여순사건 신고" 같은 질문에 유용. '
-                '결과에 부서명/담당업무/전화번호 모두 포함.'
+                'category_id를 주면 해당 카테고리 매핑 부서 안에서만 검색 (정밀도 ↑). '
+                'None이면 39개 부서 전체에서 검색 (카테고리 매핑 없는 소방본부 등 포함). '
+                '권장: classify_complaint으로 카테고리 먼저 받고 category_id로 좁혀서 호출.'
             ),
             inputSchema={
                 'type': 'object',
                 'properties': {
                     'query': {'type': 'string'},
+                    'category_id': {'type': 'integer', 'description': '카테고리 필터 1~11 (선택)'},
                     'limit': {'type': 'integer', 'default': 5},
                 },
                 'required': ['query'],
+            },
+        ),
+        types.Tool(
+            name='match_or_create_cluster',
+            description=(
+                '비슷한 민원 그룹(클러스터)을 찾거나 신규 생성. '
+                '백엔드가 민원 INSERT 시 호출 → 반환된 cluster_id를 complaints.cluster_id에 저장. '
+                'complaint_count가 임계치(10/50/100) 넘으면 urgency_bonus 가산점 반환 → urgency_score에 더하기.'
+            ),
+            inputSchema={
+                'type': 'object',
+                'properties': {
+                    'text': {'type': 'string', 'description': '민원 본문'},
+                    'similarity_threshold': {'type': 'number', 'default': 0.75},
+                },
+                'required': ['text'],
             },
         ),
         types.Tool(
@@ -167,7 +184,17 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
         elif name == 'search_faq':
             return reply(svc.search_faq(arguments.get('query', ''), int(arguments.get('limit', 5))))
         elif name == 'search_dept':
-            return reply(svc.search_dept(arguments.get('query', ''), int(arguments.get('limit', 5))))
+            cat = arguments.get('category_id')
+            return reply(svc.search_dept(
+                arguments.get('query', ''),
+                int(cat) if cat else None,
+                int(arguments.get('limit', 5)),
+            ))
+        elif name == 'match_or_create_cluster':
+            return reply(svc.match_or_create_cluster(
+                arguments.get('text', ''),
+                float(arguments.get('similarity_threshold', 0.75)),
+            ))
         elif name == 'lookup_dept_by_category':
             return reply(svc.lookup_dept_by_category(int(arguments.get('category_id', 0))))
         elif name == 'get_categories':
