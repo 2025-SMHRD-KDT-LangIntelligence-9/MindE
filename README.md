@@ -1,7 +1,7 @@
 # MindE (마음이) — Frontend
 
 > AI 기반 공공 민원 서비스 **마음이**의 프론트엔드입니다.
-> 현재 백엔드 연동 전 단계로, 임시 데이터(Context API)로 동작합니다.
+> React + Vite 기반이며 백엔드 API와 실시간 연동됩니다.
 
 ---
 
@@ -34,6 +34,8 @@ npm run build
 npm run preview
 ```
 
+> 백엔드 서버가 `http://localhost:8000` 에서 실행 중이어야 합니다.
+
 ---
 
 ## 프로젝트 구조
@@ -41,41 +43,50 @@ npm run preview
 ```
 src/
 ├── api/
-│   └── axiosInstance.js          # Axios 공통 인스턴스 (백엔드 연동 시 baseURL 설정)
+│   ├── client.js              # Axios 공통 인스턴스 (baseURL, 토큰 인터셉터)
+│   ├── auth.js                # 로그인 / 회원가입 / 내 정보 / 탈퇴
+│   ├── complaints.js          # 민원 CRUD / 상태변경 / 메모 / 답변 / 첨부파일
+│   ├── notifications.js       # 알림 조회 / 읽음 처리
+│   ├── admin.js               # 사용자 목록 / 승인 / 거절 / 부서 배정 / 부서 조회
+│   ├── chat.js                # 챗봇 질문 / 이미지 분석 / 대화 초기화
+│   └── statusMap.js           # 백엔드 status 영문 ↔ 한국어 변환
 ├── assets/
-│   └── logo.png                  # 마음이 로고
+│   └── logo.png
 ├── components/
-│   ├── EmptyState.jsx            # 목록이 비어있을 때 공통 표시 컴포넌트
-│   └── NotificationDropdown.jsx  # 헤더 알림 드롭다운
+│   ├── EmptyState.jsx
+│   ├── FilePreviewModal.jsx
+│   └── NotificationDropdown.jsx
 ├── layouts/
-│   ├── CitizenLayout.jsx         # 시민용 사이드바 + 헤더 레이아웃
-│   ├── StaffLayout.jsx           # 담당자용 레이아웃
-│   └── AdminLayout.jsx           # 관리자용 레이아웃
+│   ├── CitizenLayout.jsx
+│   ├── StaffLayout.jsx
+│   └── AdminLayout.jsx
 ├── pages/
 │   ├── citizen/
-│   │   ├── Landing.jsx           # 랜딩 페이지 (h-screen 한 화면, 챗봇 UI 목업)
-│   │   ├── Login.jsx             # 로그인 (이메일 자동완성 드롭다운 포함)
-│   │   ├── Register.jsx          # 회원가입 (시민 / 담당자 탭 구분)
-│   │   ├── Home.jsx              # 시민 홈 (최근 민원 + 빠른 접수)
-│   │   ├── Chatbot.jsx           # AI 민원 상담 챗봇 (음성입력/TTS/파일첨부/상담내역)
-│   │   ├── DocumentOCR.jsx       # 문서 이미지 업로드 → OCR 텍스트 추출 → 민원 접수
-│   │   ├── MyComplaints.jsx      # 내 민원 현황 목록 + 상세 보기
-│   │   ├── Notifications.jsx     # 알림 센터 (읽음/안읽음 탭, 날짜 그룹핑)
-│   │   ├── Faq.jsx               # 자주 묻는 질문 (카테고리 필터 + 검색 + 아코디언)
-│   │   └── Settings.jsx          # 계정 설정
+│   │   ├── Landing.jsx        # 랜딩 페이지
+│   │   ├── Login.jsx          # 로그인 (JWT 인증)
+│   │   ├── Register.jsx       # 회원가입 (시민 / 담당자)
+│   │   ├── Home.jsx           # 시민 홈
+│   │   ├── Chatbot.jsx        # AI 민원 상담 챗봇 (STT / TTS / 이미지 / 파일)
+│   │   ├── DocumentOCR.jsx    # 문서 업로드 → AI OCR → 민원 접수
+│   │   ├── MyComplaints.jsx   # 내 민원 현황
+│   │   ├── Notifications.jsx  # 알림 센터
+│   │   ├── Faq.jsx            # 자주 묻는 질문
+│   │   └── Settings.jsx       # 계정 설정 (프로필 / 비밀번호 / 탈퇴)
 │   ├── staff/
-│   │   ├── StaffComplaints.jsx   # 담당자 민원 목록 (부서 필터, 상태 변경, 답변 등록)
-│   │   ├── StaffUrgent.jsx       # 긴급 민원 별도 관리
-│   │   └── StaffStats.jsx        # 부서별 민원 통계
+│   │   ├── StaffComplaints.jsx  # 담당자 민원 처리
+│   │   ├── StaffUrgent.jsx      # 긴급 민원 관리
+│   │   └── StaffStats.jsx       # 부서별 통계
 │   └── admin/
-│       ├── AdminDashboard.jsx    # 관리자 대시보드 (전체 현황 요약)
-│       ├── AdminUsers.jsx        # 사용자 목록 (시민/담당자 전환)
-│       ├── AdminSettings.jsx     # 시스템 설정 (카테고리 / 부서 / 사용자 승인)
-│       ├── AdminMonitoring.jsx   # 실시간 모니터링
-│       └── AdminStats.jsx        # 전체 통계 대시보드
+│       ├── AdminDashboard.jsx   # 관리자 대시보드
+│       ├── AdminUsers.jsx       # 사용자 관리 / 승인
+│       ├── AdminSettings.jsx    # 시스템 설정 (카테고리 / 부서 / 사용자)
+│       ├── AdminMonitoring.jsx  # 실시간 민원 모니터링
+│       └── AdminStats.jsx       # 전체 통계
 ├── store/
-│   └── AppContext.jsx            # 전역 상태 관리 (민원, 알림, 사용자, 통계)
-└── App.jsx                       # 라우팅 정의
+│   └── AppContext.jsx           # 전역 상태 관리 (Context API)
+├── utils/
+│   └── statusStyle.js           # 상태별 색상/뱃지 스타일
+└── App.jsx                      # 라우팅 정의
 ```
 
 ---
@@ -90,40 +101,37 @@ src/
 
 ---
 
-## 테스트 계정
+## 주요 기능
 
-| 역할 | 이메일 | 비밀번호 |
-|------|--------|----------|
-| 시민 | user@test.com | 1234 |
-| 관리자 | admin@test.com | admin |
-| 담당자 (도로교통과) | road@test.com | staff1 |
-| 담당자 (환경위생과) | env@test.com | staff2 |
-| 담당자 (도시시설과) | infra@test.com | staff3 |
+### 시민
+- **AI 챗봇 민원 상담** — 텍스트/이미지 입력 → GPT-4o 분석 → 자동 카테고리/부서 분류
+- **음성 입력 (STT)** — 브라우저 SpeechRecognition API (Chrome 권장)
+- **음성 답변 (TTS)** — AI 답변 말풍선 하단 "음성으로 듣기" 버튼
+- **OCR 민원 접수** — 문서 이미지 업로드 → GPT-4o Vision으로 필드 자동 입력 → 민원 접수
+- **내 민원 현황** — 접수/처리 중/완료 상태 추적, 담당자 공식 답변 확인
+- **알림 센터** — 민원 상태 변경 시 알림 수신, 읽음 처리 (로그아웃 후 재로그인 유지)
+- **계정 설정** — 프로필 수정 / 비밀번호 변경 / 회원 탈퇴
 
-> 로그인 화면 이메일 입력란의 드롭다운에서 계정을 빠르게 선택할 수 있습니다.
+### 담당자
+- **민원 목록** — 소관 부서 민원 자동 필터링 (deptGroup 기반)
+- **상태 변경** — 접수 / 배정 / 처리 중 / 보완 요청 / 반려 / 완료
+- **메모 저장** — 내부 처리 메모 (시민 미노출)
+- **공식 답변 등록** — 시민에게 공개되는 답변 등록
+- **첨부파일 업로드** — 민원 관련 파일 첨부
+
+### 관리자
+- **대시보드** — 최근 7일 민원 접수 현황 그래프, 긴급 민원 목록
+- **사용자 관리** — 전체 회원 조회, 담당자 가입 승인/거절, 부서 배정
+- **시스템 설정** — 민원 카테고리 / 조직 및 부서 관리
+- **모니터링** — 실시간 전체 민원 현황 조회 및 부서 변경
 
 ---
 
-## 주요 기능 상세
+## 인증 방식
 
-### 시민
-- **AI 챗봇 민원 상담** — 자연어 입력 시 키워드 기반 자동 분류 및 담당 부서 안내. 음성 입력(Web Speech API), TTS 읽기, 이미지/파일 첨부, 드래그 앤 드롭 지원
-- **상담 내역** — 이전 상담 목록 조회, 제목/내용 검색, 상태 필터
-- **OCR 민원 접수** — 문서 이미지 업로드 시 텍스트 자동 추출 후 민원 접수
-- **내 민원 현황** — 접수 → 처리 중 → 완료 상태 추적, 담당자 공식 답변 확인
-- **알림 센터** — 민원 상태 변경 시 자동 알림 생성, 읽음 처리, 날짜별 그룹핑
-- **FAQ** — 카테고리 필터, 키워드 검색, 아코디언 형태
-
-### 담당자
-- **민원 목록** — deptGroup 기반 소관 부서 민원 자동 필터링
-- **상태 변경** — 접수 / 처리 중 / 보완 요청 / 반려 / 완료
-- **메모 저장** — 내부 처리 메모 (시민에게 미노출)
-- **공식 답변 등록** — 등록 시 민원 상태 자동 완료 처리 + 시민 알림 생성
-
-### 관리자
-- **사용자 관리** — 시민/담당자 목록 조회, 담당자 가입 승인/거절, 부서 변경
-- **민원 카테고리 설정** — 카테고리 목록 관리
-- **조직/부서 관리** — 부서별 담당자 수, 처리 현황 조회
+- 로그인 성공 시 JWT 토큰을 `localStorage`에 저장
+- Axios 인터셉터가 모든 요청에 `Authorization: Bearer {token}` 헤더 자동 추가
+- 앱 시작 시 토큰이 있으면 `/users/me` 호출로 세션 자동 복원
 
 ---
 
@@ -133,16 +141,37 @@ src/
 
 | 상태 | 설명 |
 |------|------|
-| `complaints` | 전체 민원 목록 |
-| `notifications` | 알림 목록 |
-| `users` | 사용자 목록 (시민 + 담당자) |
-| `currentUser` | 현재 로그인 사용자 (role, name, dept, deptGroup) |
-| `stats` | 파생 통계 (접수/처리중/완료/긴급 건수 등) |
+| `complaints` | 전체 민원 목록 (API에서 로드) |
+| `notifications` | 알림 목록 (API에서 로드) |
+| `users` | 사용자 목록 (관리자 전용, API에서 로드) |
+| `currentUser` | 현재 로그인 사용자 (role / name / dept / deptGroup) |
+| `stats` | 파생 통계 (접수 / 처리중 / 완료 / 긴급 건수 등) |
 | `myDeptComplaints` | 담당자 본인 부서 민원 (deptGroup 기반 필터) |
 
 ---
 
-## 백엔드 연동 예정
+## 민원 상태 값
 
-- 현재 로그인은 이메일만으로 역할을 판단하는 임시 구조입니다. 백엔드 연동 시 JWT 인증으로 교체됩니다.
-- `src/api/axiosInstance.js`에 `baseURL` 및 인터셉터 설정 후 각 페이지에서 API 호출로 대체할 예정입니다.
+| 화면 표시 | 백엔드 값 |
+|-----------|-----------|
+| 접수 | `received` |
+| 배정 | `assigned` |
+| 처리 중 | `in_progress` |
+| 보완 요청 | `needs_more_info` |
+| 답변완료 | `answered` |
+| 완료 | `closed` |
+| 반려 | `rejected` |
+
+---
+
+## 백엔드 미구현 항목 (연동 대기 중)
+
+| 항목 | 엔드포인트 | 현재 동작 |
+|------|-----------|-----------|
+| 부서 목록 조회 | `GET /admin/departments` | 드롭다운 비어있음 |
+| 부서 CRUD | `POST/PATCH/DELETE /admin/departments` | 새로고침 시 초기화 |
+| 카테고리 CRUD | `GET/POST/PATCH/DELETE /admin/categories` | 새로고침 시 초기화 |
+| 회원 강제 탈퇴 | `DELETE /admin/users/{id}` | 새로고침 시 복원 |
+| 알림 설정 저장 | `PATCH /users/me/notifications` | 새로고침 시 초기화 |
+| 채팅 세션 저장 | `POST/GET /chat/sessions` | 새로고침 시 사라짐 |
+| 담당자 첨부파일 권한 | `routers/attachments.py` 수정 | 403 오류 |
