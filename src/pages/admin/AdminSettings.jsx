@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AdminLayout from '../../layouts/AdminLayout';
 import { useApp } from '../../store/AppContext';
+import { getDepartmentsApi } from '../../api/admin';
 
 const roleStyle = {
   citizen: { label: '일반 시민', bg: 'bg-blue-50',    text: 'text-blue-600',   icon: 'person' },
@@ -19,7 +20,6 @@ function AdminSettings() {
     const tab = searchParams.get('tab');
     if (tab) setActiveTab(tab);
   }, [searchParams]);
-  const DEPT_LIST = ['도로교통과', '환경위생과', '도시시설과', '교통행정과', '청소행정과', '공원녹지과', '상수도과', '사회복지과'];
 
   const [search, setSearch]             = useState('');
   const [toast, setToast]               = useState('');
@@ -32,6 +32,11 @@ function AdminSettings() {
 
   // 부서 state
   const [departments, setDepartments] = useState([]);
+  useEffect(() => {
+    getDepartmentsApi()
+      .then((data) => setDepartments(data))
+      .catch(() => {});
+  }, []);
   const [deptModal, setDeptModal] = useState({ open: false, mode: 'add', idx: null, name: '', type: '', status: '정상' });
 
   // 삭제 확인 모달
@@ -504,9 +509,16 @@ function AdminSettings() {
                             <td className="px-4 py-3.5 align-middle text-center text-on-surface-variant text-xs truncate">{user.joinedAt}</td>
                             <td className="px-4 py-3.5 align-middle text-center" onClick={(e) => e.stopPropagation()}>
                               <select value={user.dept || ''}
-                                onChange={(e) => { updateUserDept(user.id, e.target.value); showToast(`${user.name}님의 부서가 '${e.target.value}'(으)로 변경되었습니다.`); }}
+                                onChange={(e) => {
+                                  const dept = departments.find((d) => d.name === e.target.value);
+                                  if (dept) {
+                                    updateUserDept(user.id, dept.department_id, dept.name);
+                                    showToast(`${user.name}님의 부서가 '${dept.name}'(으)로 변경되었습니다.`);
+                                  }
+                                }}
                                 className="h-7 px-2 rounded-lg border border-outline-variant text-xs text-on-surface bg-white outline-none focus:border-primary">
-                                {DEPT_LIST.map((d) => <option key={d}>{d}</option>)}
+                                <option value="">부서 선택</option>
+                                {departments.map((d) => <option key={d.department_id} value={d.name}>{d.name}</option>)}
                               </select>
                             </td>
                           </tr>

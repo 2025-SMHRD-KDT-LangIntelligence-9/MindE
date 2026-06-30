@@ -9,8 +9,11 @@ const transform = (n) => ({
   color:       'text-primary',
   tag:         n.status  ?? '',
   time:        n.sent_at ? new Date(n.sent_at).toLocaleString('ko-KR') : '',
-  read:        n.status === 'read',
+  read:        n.is_read ?? false,
 });
 
 export const getNotificationsApi = () =>
   client.get('/notifications').then((r) => r.data.map(transform));
+
+export const markAllReadApi = () =>
+  client.patch('/notifications/read-all').then((r) => r.data);

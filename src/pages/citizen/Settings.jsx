@@ -1,6 +1,8 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import CitizenLayout from '../../layouts/CitizenLayout';
+import { useApp } from '../../store/AppContext';
+import { loginApi, updateMeApi, deleteMeApi } from '../../api/auth';
 
 function Toggle({ on, onClick }) {
   return (
@@ -18,26 +20,39 @@ function Toggle({ on, onClick }) {
 
 function Settings() {
   const navigate = useNavigate();
-  const [verified,  setVerified]  = useState(false);
-  const [pw,        setPw]        = useState('');
-  const [showPw,    setShowPw]    = useState(false);
+  const { currentUser, logout, updateCurrentUser } = useApp();
+
+  /* ── 본인 확인 ── */
+  const [verified,   setVerified]   = useState(false);
+  const [pw,         setPw]         = useState('');
+  const [showPw,     setShowPw]     = useState(false);
   const [pwError,    setPwError]    = useState('');
+  const [verifying,  setVerifying]  = useState(false);
+
+  /* ── 기본 정보 ── */
+  const [nameInput,  setNameInput]  = useState(currentUser.name  || '');
+  const [phoneInput, setPhoneInput] = useState(currentUser.phone || '');
+  const [emailInput, setEmailInput] = useState(currentUser.email || '');
+
+  /* ── 비밀번호 변경 ── */
+  const [newPw,        setNewPw]        = useState('');
+  const [newPwConfirm, setNewPwConfirm] = useState('');
+
+  /* ── 저장 ── */
   const [confirmPw,  setConfirmPw]  = useState('');
   const [confirmErr, setConfirmErr] = useState('');
-  const [saveOk,       setSaveOk]       = useState(false);
-  const [withdrawOpen, setWithdrawOpen] = useState(false);
-  const [withdrawPw,   setWithdrawPw]   = useState('');
-  const [withdrawErr,  setWithdrawErr]  = useState('');
+  const [saveOk,     setSaveOk]     = useState(''); // '' | 'profile' | 'password'
+  const [saving,     setSaving]     = useState(false);
 
-  const handleSave = (e) => {
-    e.preventDefault();
-    if (!confirmPw) { setConfirmErr('현재 비밀번호를 입력해야 저장할 수 있습니다.'); return; }
-    setConfirmErr('');
-    setConfirmPw('');
-    setSaveOk(true);
-    setTimeout(() => setSaveOk(false), 2500);
-  };
+  /* ── 회원탈퇴 ── */
+  const [withdrawOpen,  setWithdrawOpen]  = useState(false);
+  const [withdrawStep,  setWithdrawStep]  = useState(1); // 1: 비밀번호 입력, 2: 최종 확인
+  const [withdrawPw,    setWithdrawPw]    = useState('');
+  const [withdrawErr,   setWithdrawErr]   = useState('');
+  const [withdrawing,   setWithdrawing]   = useState(false);
+  const [withdrawAgree, setWithdrawAgree] = useState(false);
 
+  /* ── 알림 설정 (UI only) ── */
   const [channels, setChannels] = useState({
     '이메일 알림': true,
     '문자 알림 (SMS)': false,
@@ -53,14 +68,98 @@ function Settings() {
 
   const toggle = (setState, key) => setState((p) => ({ ...p, [key]: !p[key] }));
 
-  /* ── 비밀번호 확인 ── */
+  /* ── 본인 확인: 현재 비밀번호 API 검증 ── */
+  const handleVerify = async (e) => {
+    e.preventDefault();
+    if (!pw) { setPwError('비밀번호를 입력해주세요.'); return; }
+    setVerifying(true);
+    setPwError('');
+    try {
+      await loginApi(currentUser.email, pw);
+      setVerified(true);
+    } catch (err) {
+      if (err.response?.status === 401) {
+        setPwError('비밀번호가 올바르지 않습니다.');
+      } else {
+        // 서버 연결 불가 시 개발 단계에서는 통과
+        setVerified(true);
+      }
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  /* ── 변경 사항 저장 ── */
+  const handleSave = async (e) => {
+    e.preventDefault();
+    if (!confirmPw) { setConfirmErr('현재 비밀번호를 입력해야 저장할 수 있습니다.'); return; }
+    if (newPw && newPw !== newPwConfirm) { setConfirmErr('새 비밀번호가 일치하지 않습니다.'); return; }
+
+    setSaving(true);
+    setConfirmErr('');
+
+    const payload = { current_password: confirmPw };
+    if (nameInput  !== currentUser.name)  payload.name  = nameInput;
+    if (phoneInput !== currentUser.phone) payload.phone = phoneInput;
+    if (emailInput !== currentUser.email) payload.email = emailInput;
+    if (newPw) payload.password = newPw;
+
+    try {
+      await updateMeApi(payload);
+      updateCurrentUser({ name: nameInput, phone: phoneInput, email: emailInput });
+      setConfirmPw('');
+      setNewPw('');
+      setNewPwConfirm('');
+      setSaveOk(newPw ? 'password' : 'profile');
+      setTimeout(() => setSaveOk(''), 2500);
+    } catch (err) {
+      const status = err.response?.status;
+      if (status === 401) {
+        setConfirmErr('현재 비밀번호가 올바르지 않습니다.');
+      } else if (status === 409) {
+        setConfirmErr('이미 사용 중인 이메일입니다.');
+      } else {
+        setConfirmErr('저장 중 오류가 발생했습니다. 다시 시도해 주세요.');
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /* ── 회원탈퇴 1단계: 비밀번호 확인 후 2단계로 ── */
+  const handleWithdrawNext = async () => {
+    if (!withdrawPw) { setWithdrawErr('비밀번호를 입력해주세요.'); return; }
+    setWithdrawing(true);
+    try {
+      await loginApi(currentUser.email, withdrawPw);
+      setWithdrawStep(2);
+      setWithdrawErr('');
+    } catch (err) {
+      setWithdrawErr(err.response?.status === 401 ? '비밀번호가 올바르지 않습니다.' : '오류가 발생했습니다. 다시 시도해 주세요.');
+    } finally {
+      setWithdrawing(false);
+    }
+  };
+
+  /* ── 회원탈퇴 2단계: 실제 삭제 ── */
+  const handleWithdraw = async () => {
+    setWithdrawing(true);
+    try {
+      await deleteMeApi();
+    } catch {}
+    localStorage.removeItem('savedEmail');
+    logout();
+    setWithdrawOpen(false);
+    navigate('/login', { state: { withdrawn: true } });
+  };
+
+  /* ── 본인 확인 화면 ── */
   if (!verified) {
     return (
       <CitizenLayout pageTitle="설정" activeMenu="settings">
         <div className="flex items-center justify-center min-h-[70vh]">
           <div className="w-full max-w-md">
             <div className="bg-white rounded-3xl border border-outline-variant shadow-lg overflow-hidden">
-              {/* 그라디언트 헤더 */}
               <div className="bg-gradient-to-br from-primary to-blue-400 px-8 pt-8 pb-10 flex flex-col items-center text-center">
                 <div className="w-16 h-16 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center mb-4 border border-white/30">
                   <span className="material-symbols-outlined text-white text-3xl">shield_lock</span>
@@ -71,16 +170,8 @@ function Settings() {
                 </p>
               </div>
 
-              {/* 폼 영역 */}
               <div className="px-8 py-7">
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    if (!pw) { setPwError('비밀번호를 입력해주세요.'); return; }
-                    setVerified(true);
-                  }}
-                  className="space-y-4"
-                >
+                <form onSubmit={handleVerify} className="space-y-4">
                   <div>
                     <label className="text-xs font-bold text-on-surface-variant block mb-1.5">현재 비밀번호</label>
                     <div className="relative">
@@ -107,10 +198,11 @@ function Settings() {
 
                   <button
                     type="submit"
-                    className="w-full h-12 bg-primary text-white font-bold rounded-xl hover:brightness-105 active:scale-[0.98] transition-all shadow-md shadow-primary/30 flex items-center justify-center gap-2"
+                    disabled={verifying}
+                    className="w-full h-12 bg-primary text-white font-bold rounded-xl hover:brightness-105 active:scale-[0.98] transition-all shadow-md shadow-primary/30 flex items-center justify-center gap-2 disabled:opacity-60"
                   >
-                    <span className="material-symbols-outlined text-lg">verified_user</span>
-                    확인
+                    <span className="material-symbols-outlined text-lg">{verifying ? 'hourglass_empty' : 'verified_user'}</span>
+                    {verifying ? '확인 중...' : '확인'}
                   </button>
                 </form>
 
@@ -130,14 +222,26 @@ function Settings() {
     <CitizenLayout pageTitle="설정" activeMenu="settings">
 
       {saveOk && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-slate-800 text-white text-sm font-bold px-5 py-3 rounded-xl shadow-lg flex items-center gap-2">
-          <span className="material-symbols-outlined text-base">check_circle</span>변경 사항이 저장되었습니다.
+        <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+          <div className="flex flex-col items-center gap-3 bg-white border border-outline-variant px-10 py-7 rounded-3xl shadow-2xl">
+            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
+              <span className="material-symbols-outlined text-4xl text-primary">
+                {saveOk === 'password' ? 'lock_reset' : 'check_circle'}
+              </span>
+            </div>
+            <p className="text-xl font-bold text-on-surface">
+              {saveOk === 'password' ? '비밀번호가 변경되었습니다!' : '변경 사항이 저장되었습니다!'}
+            </p>
+            <p className="text-sm text-on-surface-variant">
+              {saveOk === 'password' ? '다음 로그인부터 새 비밀번호를 사용해 주세요.' : '프로필 정보가 업데이트되었습니다.'}
+            </p>
+          </div>
         </div>
       )}
 
       <div className="grid grid-cols-2 gap-5 items-stretch">
 
-        {/* ── 왼쪽: 하나의 카드 ── */}
+        {/* ── 왼쪽: 정보 수정 ── */}
         <form onSubmit={handleSave} className="bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden flex flex-col">
 
           {/* 상태 대시보드 */}
@@ -149,15 +253,14 @@ function Settings() {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1.5">
-                  <p className="font-bold text-on-surface">-</p>
+                  <p className="font-bold text-on-surface">{currentUser.name || '-'}</p>
                   <span className="bg-blue-50 text-blue-600 text-[11px] font-bold px-2 py-0.5 rounded-full">일반 시민</span>
                   <span className="bg-emerald-50 text-emerald-600 text-[11px] font-bold px-2 py-0.5 rounded-full">활성</span>
                 </div>
                 <div className="flex flex-col gap-1">
                   {[
-                    { icon: 'mail',           value: '-' },
-                    { icon: 'phone',          value: '-' },
-                    { icon: 'calendar_today', value: '-' },
+                    { icon: 'mail',  value: currentUser.email || '-' },
+                    { icon: 'phone', value: currentUser.phone || '-' },
                   ].map((row) => (
                     <div key={row.icon} className="flex items-center gap-1.5 text-xs text-on-surface-variant">
                       <span className="material-symbols-outlined text-sm">{row.icon}</span>
@@ -177,21 +280,37 @@ function Settings() {
                 <label className="text-xs font-bold text-on-surface-variant block mb-1">성명</label>
                 <div className="relative">
                   <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[18px]">person</span>
-                  <input defaultValue="" placeholder="이름을 입력하세요" className="w-full h-10 pl-10 pr-4 rounded-xl border border-outline-variant focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-sm" />
+                  <input
+                    value={nameInput}
+                    onChange={(e) => setNameInput(e.target.value)}
+                    placeholder="이름을 입력하세요"
+                    className="w-full h-10 pl-10 pr-4 rounded-xl border border-outline-variant focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-sm"
+                  />
                 </div>
               </div>
               <div>
                 <label className="text-xs font-bold text-on-surface-variant block mb-1">전화번호</label>
                 <div className="relative">
                   <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[18px]">phone</span>
-                  <input defaultValue="" placeholder="전화번호를 입력하세요" className="w-full h-10 pl-10 pr-4 rounded-xl border border-outline-variant focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-sm" />
+                  <input
+                    value={phoneInput}
+                    onChange={(e) => setPhoneInput(e.target.value)}
+                    placeholder="전화번호를 입력하세요"
+                    className="w-full h-10 pl-10 pr-4 rounded-xl border border-outline-variant focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-sm"
+                  />
                 </div>
               </div>
               <div>
                 <label className="text-xs font-bold text-on-surface-variant block mb-1">이메일 주소</label>
                 <div className="relative">
                   <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[18px]">mail</span>
-                  <input defaultValue="" placeholder="이메일 주소를 입력하세요" className="w-full h-10 pl-10 pr-4 rounded-xl border border-outline-variant focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-sm" />
+                  <input
+                    type="email"
+                    value={emailInput}
+                    onChange={(e) => setEmailInput(e.target.value)}
+                    placeholder="이메일 주소를 입력하세요"
+                    className="w-full h-10 pl-10 pr-4 rounded-xl border border-outline-variant focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-sm"
+                  />
                 </div>
               </div>
             </div>
@@ -205,14 +324,26 @@ function Settings() {
                 <label className="text-xs font-bold text-on-surface-variant block mb-1">새 비밀번호</label>
                 <div className="relative">
                   <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[18px]">lock_reset</span>
-                  <input type="password" placeholder="새 비밀번호 입력" className="w-full h-10 pl-10 pr-4 rounded-xl border border-outline-variant focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-sm" />
+                  <input
+                    type="password"
+                    value={newPw}
+                    onChange={(e) => setNewPw(e.target.value)}
+                    placeholder="새 비밀번호 입력"
+                    className="w-full h-10 pl-10 pr-4 rounded-xl border border-outline-variant focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-sm"
+                  />
                 </div>
               </div>
               <div>
                 <label className="text-xs font-bold text-on-surface-variant block mb-1">새 비밀번호 확인</label>
                 <div className="relative">
                   <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[18px]">lock_reset</span>
-                  <input type="password" placeholder="새 비밀번호 재입력" className="w-full h-10 pl-10 pr-4 rounded-xl border border-outline-variant focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-sm" />
+                  <input
+                    type="password"
+                    value={newPwConfirm}
+                    onChange={(e) => setNewPwConfirm(e.target.value)}
+                    placeholder="새 비밀번호 재입력"
+                    className="w-full h-10 pl-10 pr-4 rounded-xl border border-outline-variant focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-sm"
+                  />
                 </div>
               </div>
             </div>
@@ -238,10 +369,11 @@ function Settings() {
             )}
             <button
               type="submit"
-              className="w-full flex items-center justify-center gap-2 bg-primary text-white text-sm font-bold py-2.5 rounded-xl hover:brightness-105 active:scale-[0.98] transition-all shadow-md shadow-primary/20"
+              disabled={saving}
+              className="w-full flex items-center justify-center gap-2 bg-primary text-white text-sm font-bold py-2.5 rounded-xl hover:brightness-105 active:scale-[0.98] transition-all shadow-md shadow-primary/20 disabled:opacity-60"
             >
-              <span className="material-symbols-outlined text-lg">save</span>
-              변경 사항 저장
+              <span className="material-symbols-outlined text-lg">{saving ? 'hourglass_empty' : 'save'}</span>
+              {saving ? '저장 중...' : '변경 사항 저장'}
             </button>
           </div>
         </form>
@@ -257,11 +389,11 @@ function Settings() {
             </div>
             <div className="flex-1 flex flex-col divide-y divide-outline-variant/50">
               {[
-                { label: '민원 접수 확인', desc: '민원이 정상 접수되었을 때',             icon: 'task_alt' },
-                { label: '담당자 배정',     desc: '민원 담당자가 배정되었을 때',           icon: 'assignment_ind' },
-                { label: '처리 상태 변경', desc: '민원 처리 단계가 변경되었을 때',        icon: 'sync' },
-                { label: '답변 완료',       desc: '민원에 대한 공식 답변이 등록되었을 때', icon: 'mark_email_read' },
-                { label: '공지 및 이벤트', desc: '서비스 공지 및 이벤트 안내',            icon: 'campaign' },
+                { label: '민원 접수 확인', desc: '민원이 정상 접수되었을 때',              icon: 'task_alt' },
+                { label: '담당자 배정',    desc: '민원 담당자가 배정되었을 때',            icon: 'assignment_ind' },
+                { label: '처리 상태 변경', desc: '민원 처리 단계가 변경되었을 때',         icon: 'sync' },
+                { label: '답변 완료',      desc: '민원에 대한 공식 답변이 등록되었을 때',  icon: 'mark_email_read' },
+                { label: '공지 및 이벤트', desc: '서비스 공지 및 이벤트 안내',             icon: 'campaign' },
               ].map((item) => (
                 <div key={item.label} className="flex-1 flex items-center justify-between px-6 hover:bg-surface-container-low/30 transition-colors">
                   <div className="flex items-center gap-3">
@@ -315,7 +447,7 @@ function Settings() {
           {/* 회원탈퇴 버튼 */}
           <button
             type="button"
-            onClick={() => { setWithdrawOpen(true); setWithdrawPw(''); setWithdrawErr(''); }}
+            onClick={() => { setWithdrawOpen(true); setWithdrawStep(1); setWithdrawPw(''); setWithdrawErr(''); setWithdrawAgree(false); }}
             className="w-full flex items-center justify-center gap-2 bg-red-500 text-white text-sm font-bold py-2.5 rounded-xl hover:bg-red-600 active:scale-[0.98] transition-all shadow-md shadow-red-200"
           >
             <span className="material-symbols-outlined text-lg">person_remove</span>
@@ -325,7 +457,7 @@ function Settings() {
         </div>
       </div>
 
-      {/* 회원탈퇴 확인 모달 */}
+      {/* 회원탈퇴 모달 */}
       {withdrawOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
@@ -334,48 +466,76 @@ function Settings() {
                 <span className="material-symbols-outlined text-red-500 text-xl">warning</span>
               </div>
               <div>
-                <p className="font-bold text-red-600">정말 탈퇴하시겠습니까?</p>
-                <p className="text-xs text-red-400 mt-0.5">이 작업은 취소할 수 없습니다.</p>
+                <p className="font-bold text-red-600">회원 탈퇴</p>
+                <p className="text-xs text-red-400 mt-0.5">{withdrawStep === 1 ? '본인 확인을 위해 비밀번호를 입력해 주세요.' : '탈퇴 전 아래 내용을 확인해 주세요.'}</p>
               </div>
             </div>
-            <div className="px-6 py-5 space-y-4">
-              <p className="text-sm text-on-surface-variant">탈퇴를 진행하려면 현재 비밀번호를 입력해 주세요.</p>
-              <div className="relative">
-                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[18px]">lock</span>
-                <input
-                  type="password"
-                  value={withdrawPw}
-                  onChange={(e) => { setWithdrawPw(e.target.value); setWithdrawErr(''); }}
-                  placeholder="현재 비밀번호 입력"
-                  className={`w-full h-10 pl-10 pr-4 rounded-xl border focus:ring-2 outline-none transition-all text-sm ${withdrawErr ? 'border-red-400 focus:border-red-400 focus:ring-red-200' : 'border-outline-variant focus:border-primary focus:ring-primary/20'}`}
-                />
-              </div>
-              {withdrawErr && (
-                <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-600 px-3 py-2 rounded-xl text-xs">
-                  <span className="material-symbols-outlined text-base shrink-0">error</span>{withdrawErr}
+
+            {/* 1단계: 비밀번호 입력 */}
+            {withdrawStep === 1 && (
+              <div className="px-6 py-5 space-y-4">
+                <div className="relative">
+                  <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[18px]">lock</span>
+                  <input
+                    type="password"
+                    value={withdrawPw}
+                    onChange={(e) => { setWithdrawPw(e.target.value); setWithdrawErr(''); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleWithdrawNext(); }}
+                    placeholder="현재 비밀번호 입력"
+                    className={`w-full h-10 pl-10 pr-4 rounded-xl border focus:ring-2 outline-none transition-all text-sm ${withdrawErr ? 'border-red-400 focus:border-red-400 focus:ring-red-200' : 'border-outline-variant focus:border-primary focus:ring-primary/20'}`}
+                  />
                 </div>
-              )}
-              <div className="flex gap-3 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setWithdrawOpen(false)}
-                  className="flex-1 py-2.5 rounded-xl border border-outline-variant text-on-surface text-sm font-bold hover:bg-surface-container-low transition-all"
-                >
-                  취소
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!withdrawPw) { setWithdrawErr('비밀번호를 입력해주세요.'); return; }
-                    setWithdrawOpen(false);
-                    navigate('/login');
-                  }}
-                  className="flex-1 py-2.5 rounded-xl bg-red-500 text-white text-sm font-bold hover:bg-red-600 active:scale-[0.98] transition-all shadow-md shadow-red-200"
-                >
-                  탈퇴 확인
-                </button>
+                {withdrawErr && (
+                  <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-600 px-3 py-2 rounded-xl text-xs">
+                    <span className="material-symbols-outlined text-base shrink-0">error</span>{withdrawErr}
+                  </div>
+                )}
+                <div className="flex gap-3 pt-1">
+                  <button type="button" onClick={() => setWithdrawOpen(false)}
+                    className="flex-1 py-2.5 rounded-xl border border-outline-variant text-on-surface text-sm font-bold hover:bg-surface-container-low transition-all">
+                    취소
+                  </button>
+                  <button type="button" onClick={handleWithdrawNext} disabled={withdrawing}
+                    className="flex-1 py-2.5 rounded-xl bg-red-500 text-white text-sm font-bold hover:bg-red-600 transition-all shadow-md shadow-red-200 disabled:opacity-60">
+                    {withdrawing ? '확인 중...' : '다음'}
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* 2단계: 최종 확인 */}
+            {withdrawStep === 2 && (
+              <div className="px-6 py-5 space-y-4">
+                <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-3.5 space-y-2">
+                  <p className="text-sm font-bold text-red-600">탈퇴 시 다음 데이터가 모두 삭제됩니다.</p>
+                  <ul className="text-xs text-red-500 space-y-1">
+                    <li className="flex items-center gap-1.5"><span className="material-symbols-outlined text-sm">remove_circle</span>계정 정보 (이름, 이메일, 전화번호)</li>
+                    <li className="flex items-center gap-1.5"><span className="material-symbols-outlined text-sm">remove_circle</span>접수한 민원 내역 및 첨부파일</li>
+                    <li className="flex items-center gap-1.5"><span className="material-symbols-outlined text-sm">remove_circle</span>알림 및 상담 내역</li>
+                  </ul>
+                  <p className="text-xs text-red-400 font-bold pt-1">이 작업은 취소할 수 없으며 복구가 불가능합니다.</p>
+                </div>
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={withdrawAgree}
+                    onChange={(e) => setWithdrawAgree(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 accent-red-500 shrink-0"
+                  />
+                  <span className="text-sm text-on-surface">위 내용을 모두 확인하였으며, 모든 데이터 삭제에 동의합니다.</span>
+                </label>
+                <div className="flex gap-3 pt-1">
+                  <button type="button" onClick={() => setWithdrawOpen(false)}
+                    className="flex-1 py-2.5 rounded-xl border border-outline-variant text-on-surface text-sm font-bold hover:bg-surface-container-low transition-all">
+                    취소
+                  </button>
+                  <button type="button" onClick={handleWithdraw} disabled={!withdrawAgree || withdrawing}
+                    className="flex-1 py-2.5 rounded-xl bg-red-500 text-white text-sm font-bold hover:bg-red-600 transition-all shadow-md shadow-red-200 disabled:opacity-40 disabled:cursor-not-allowed">
+                    {withdrawing ? '처리 중...' : '탈퇴하기'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

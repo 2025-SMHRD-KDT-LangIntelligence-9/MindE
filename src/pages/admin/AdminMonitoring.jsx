@@ -3,11 +3,17 @@ import { useSearchParams } from 'react-router-dom';
 import AdminLayout from '../../layouts/AdminLayout';
 import { useApp, CATEGORY_STYLE, URGENCY_STYLE } from '../../store/AppContext';
 import { STATUS_STYLE as statusStyle } from '../../utils/statusStyle';
+import { getDepartmentsApi } from '../../api/admin';
 
 function AdminMonitoring() {
   const { complaints, stats, updateComplaintStatus, updateComplaintDept } = useApp();
   const [searchParams] = useSearchParams();
-  const DEPT_LIST = ['도로교통과', '환경위생과', '도시시설과', '교통행정과', '청소행정과', '공원녹지과', '상수도과', '사회복지과'];
+  const [deptList, setDeptList] = useState([]);
+  useEffect(() => {
+    getDepartmentsApi()
+      .then((data) => setDeptList(data))
+      .catch(() => {});
+  }, []);
   const [search,       setSearch]       = useState('');
   const [filterStatus, setFilterStatus] = useState('전체');
   const [filterUrgent, setFilterUrgent] = useState('전체');
@@ -160,10 +166,16 @@ function AdminMonitoring() {
                   <td className="px-4 py-3">
                     <select
                       value={r.dept}
-                      onChange={(e) => { updateComplaintDept(r.id, e.target.value); showToast(`담당부서가 '${e.target.value}'(으)로 변경되었습니다.`); }}
+                      onChange={(e) => {
+                        const dept = deptList.find((d) => d.name === e.target.value);
+                        if (dept) {
+                          updateComplaintDept(r.id, dept.department_id, dept.name);
+                          showToast(`담당부서가 '${dept.name}'(으)로 변경되었습니다.`);
+                        }
+                      }}
                       className="h-7 px-2 rounded-lg border border-outline-variant text-xs text-on-surface bg-white outline-none focus:border-primary"
                     >
-                      {DEPT_LIST.map((d) => <option key={d}>{d}</option>)}
+                      {deptList.map((d) => <option key={d.department_id} value={d.name}>{d.name}</option>)}
                     </select>
                   </td>
                 </tr>

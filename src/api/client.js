@@ -13,7 +13,9 @@ client.interceptors.request.use((config) => {
 client.interceptors.response.use(
   (res) => res,
   (err) => {
-    if (err.response?.status === 401) {
+    const url = err.config?.url ?? '';
+    const isAuthExcluded = url.includes('/users/login') || url.includes('/users/me');
+    if (err.response?.status === 401 && localStorage.getItem('token') && !isAuthExcluded) {
       localStorage.removeItem('token');
       window.location.href = '/login';
     }

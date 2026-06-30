@@ -2,6 +2,7 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import CitizenLayout from '../../layouts/CitizenLayout';
 import { CATEGORY_STYLE, useApp } from '../../store/AppContext';
+import { chatAskApi, chatImageApi, chatResetApi } from '../../api/chat';
 
 const quickReplies = [
   { icon: 'description',         label: '필요 서류 안내' },
@@ -87,7 +88,7 @@ function MessageBubble({ msg, isSpeaking, onSpeak }) {
 function Chatbot() {
   const navigate  = useNavigate();
   const location  = useLocation();
-  const { chatSessions, currentUser, saveChatSession } = useApp();
+  const { chatSessions, currentUser, saveChatSession, addComplaint } = useApp();
 
   const makeGreeting = () => {
     const d = new Date();
@@ -103,6 +104,11 @@ function Chatbot() {
   const [view, setView]                   = useState('chat');
   const [messages, setMessages]           = useState(() => [makeGreeting()]);
   const [summary, setSummary]             = useState({ category: null, dept: null, urgency: null });
+
+  /* ── 민원 접수 모달 ── */
+  const [submitModal, setSubmitModal] = useState({ open: false, title: '', content: '' });
+  const [submitting, setSubmitting]   = useState(false);
+  const [submitDone, setSubmitDone]   = useState(null); // { title, category, dept } | null
   const [viewingHistory, setViewingHistory] = useState(null);
   const [input, setInput]                 = useState('');
   const [isTyping, setIsTyping]           = useState(false);
@@ -219,6 +225,7 @@ function Chatbot() {
       type: f.type,
       url: URL.createObjectURL(f),
       isImage: f.type.startsWith('image/'),
+      file: f,
     }));
     setAttachedFiles(prev => [...prev, ...files]);
   };
@@ -251,19 +258,40 @@ function Chatbot() {
     });
   };
 
-  const handleSend = () => {
+  const handleSend = async () => {
     const text = input.trim();
     if ((!text && attachedFiles.length === 0) || isTyping || viewingHistory) return;
-    const userMsg = { role: 'user', time: now(), text, files: attachedFiles };
+
+    const sentFiles = attachedFiles;
+    const userMsg = { role: 'user', time: now(), text, files: sentFiles };
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setAttachedFiles([]);
     setIsTyping(true);
-    setTimeout(() => {
-      const aiMsg = { role: 'ai', time: now(), text: getAIReply(text) };
-      setMessages(prev => [...prev, aiMsg]);
+
+    try {
+      const imageFile = sentFiles.find(f => f.isImage);
+      const result = imageFile
+        ? await chatImageApi(imageFile.file, text)
+        : await chatAskApi(text);
+
+      const md = result.metadata;
+      if (md?.tool_used) {
+        setSummary({
+          category: md.classification?.category ?? md.classification?.category_id ?? null,
+          dept:     md.departments?.[0]?.name ?? md.departments?.[0]?.department_id ?? null,
+          urgency:  md.urgency?.probability_urgent >= 0.7 ? '긴급'
+                  : md.urgency?.probability_urgent >= 0.4 ? '보통' : '낮음',
+        });
+      }
+
+      setMessages(prev => [...prev, { role: 'ai', time: now(), text: result.answer }]);
+    } catch {
+      // 백엔드 연결 실패 시 로컬 응답으로 폴백
+      setMessages(prev => [...prev, { role: 'ai', time: now(), text: getAIReply(text) }]);
+    } finally {
       setIsTyping(false);
-    }, 900);
+    }
   };
 
   const handleKeyDown = (e) => {
@@ -276,12 +304,75 @@ function Chatbot() {
     setView('chat');
   };
 
+  const buildSession = (status) => {
+    const userMsgs = messages.filter(m => m.role === 'user' && m.text?.trim());
+    if (userMsgs.length === 0) return null;
+    const firstText = userMsgs[0].text.replace(/\n/g, ' ').trim();
+    const lastMsg   = messages[messages.length - 1];
+    const d = new Date();
+    return {
+      id:           `session-${Date.now()}`,
+      title:        firstText.length > 30 ? firstText.slice(0, 30) + '…' : firstText,
+      preview:      (lastMsg?.text ?? '').replace(/\n/g, ' ').slice(0, 50),
+      date:         `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`,
+      time:         `${d.getHours() < 12 ? '오전' : '오후'} ${d.getHours() % 12 || 12}:${String(d.getMinutes()).padStart(2,'0')}`,
+      status:       status,
+      category:     summary.category ?? '기타',
+      messages:     userMsgs.length,
+      conversation: messages,
+    };
+  };
+
   const startNewChat = () => {
+    if (!viewingHistory) {
+      const session = buildSession('상담 완료');
+      if (session) saveChatSession(session);
+    }
+    chatResetApi().catch(() => {});
     setViewingHistory(null);
     setMessages([makeGreeting()]);
     setSummary({ category: null, dept: null, urgency: null });
     setView('chat');
   };
+
+  const openSubmitModal = () => {
+    const userMsgs = messages.filter(m => m.role === 'user' && m.text?.trim());
+    if (userMsgs.length === 0) return;
+    const firstText = userMsgs[0].text.replace(/\n/g, ' ').trim();
+    const title = firstText.length > 30 ? firstText.slice(0, 30) + '…' : firstText;
+    const content = userMsgs.map(m => m.text).join('\n\n');
+    setSubmitModal({ open: true, title, content });
+  };
+
+  const handleComplaintSubmit = async () => {
+    if (!submitModal.title.trim() || !submitModal.content.trim()) return;
+    setSubmitting(true);
+    try {
+      await addComplaint({
+        title: submitModal.title.trim(),
+        content: submitModal.content.trim(),
+        category: summary.category ?? '기타',
+      });
+      setSubmitModal({ open: false, title: '', content: '' });
+      const doneInfo = {
+        title: submitModal.title.trim(),
+        category: summary.category ?? '기타',
+        dept: summary.dept ?? null,
+      };
+      setSubmitDone(doneInfo);
+      const session = buildSession('민원 접수');
+      if (session) saveChatSession({ ...session, title: doneInfo.title, category: doneInfo.category });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!submitDone) return;
+    const handler = (e) => { if (e.key === 'Escape') setSubmitDone(null); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [submitDone]);
 
   const filteredHistory = chatSessions.filter(h => {
     const matchSearch = h.title.includes(historySearch) || h.preview.includes(historySearch);
@@ -498,6 +589,9 @@ function Chatbot() {
                       </button>
                     </div>
                   </div>
+                  <p className="text-[10px] text-on-surface-variant/40 text-center px-4 pb-2 leading-relaxed">
+                    마음이 AI는 참고용 정보만 제공하며, 법적 효력이 없습니다. 중요한 사항은 담당 기관에 직접 확인하세요.
+                  </p>
                   </>
                 )}
               </div>
@@ -616,8 +710,9 @@ function Chatbot() {
                 <p className="text-xs text-on-surface-variant/50 text-center py-2">상담 내용 분석 후 표시됩니다.</p>
               </div>
               <button
-                onClick={() => navigate('/my-complaints')}
-                className="w-full mt-1 bg-primary text-white text-sm font-bold py-3 rounded-xl hover:brightness-95 transition-all flex items-center justify-center gap-1.5 shadow-sm"
+                onClick={openSubmitModal}
+                disabled={messages.filter(m => m.role === 'user').length === 0}
+                className="w-full mt-1 bg-primary text-white text-sm font-bold py-3 rounded-xl hover:brightness-95 transition-all flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <span className="material-symbols-outlined text-base">edit_document</span>
                 민원 접수하기
@@ -641,6 +736,119 @@ function Chatbot() {
         </aside>
 
       </div>
+
+      {/* 민원 접수 모달 */}
+      {submitModal.open && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center" onClick={() => setSubmitModal(p => ({ ...p, open: false }))}>
+          <div className="bg-white rounded-2xl shadow-2xl w-[480px] overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="px-6 pt-6 pb-4 border-b border-outline-variant/50 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
+                  <span className="material-symbols-outlined text-primary text-lg">edit_document</span>
+                </div>
+                <div>
+                  <h3 className="font-bold text-on-surface text-base">민원 접수</h3>
+                  <p className="text-xs text-on-surface-variant">상담 내용을 바탕으로 자동 작성되었습니다.</p>
+                </div>
+              </div>
+              <button onClick={() => setSubmitModal(p => ({ ...p, open: false }))} className="text-on-surface-variant hover:text-on-surface">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            <div className="px-6 py-5 flex flex-col gap-4">
+              <div>
+                <label className="text-xs font-bold text-on-surface-variant block mb-1.5">민원 제목</label>
+                <input
+                  type="text"
+                  value={submitModal.title}
+                  onChange={e => setSubmitModal(p => ({ ...p, title: e.target.value }))}
+                  className="w-full h-11 px-3.5 border-2 border-outline-variant rounded-xl focus:border-primary outline-none text-sm text-on-surface"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-on-surface-variant block mb-1.5">민원 내용</label>
+                <textarea
+                  value={submitModal.content}
+                  onChange={e => setSubmitModal(p => ({ ...p, content: e.target.value }))}
+                  rows={6}
+                  className="w-full px-3.5 py-3 border-2 border-outline-variant rounded-xl focus:border-primary outline-none text-sm text-on-surface resize-none"
+                />
+              </div>
+              {summary.category && (
+                <div className="flex items-center gap-2 text-xs text-on-surface-variant bg-surface-container-low/60 px-3 py-2 rounded-xl">
+                  <span className="material-symbols-outlined text-base text-primary">category</span>
+                  분류: <span className="font-bold text-primary">{summary.category}</span>
+                  {summary.dept && <> · 담당: <span className="font-bold text-on-surface">{summary.dept}</span></>}
+                </div>
+              )}
+              <div className="flex gap-2 pt-1">
+                <button
+                  onClick={() => setSubmitModal(p => ({ ...p, open: false }))}
+                  className="flex-1 py-2.5 rounded-xl border border-outline-variant text-sm font-bold text-on-surface-variant hover:bg-slate-50"
+                >
+                  취소
+                </button>
+                <button
+                  onClick={handleComplaintSubmit}
+                  disabled={submitting || !submitModal.title.trim()}
+                  className="flex-1 py-2.5 rounded-xl bg-primary text-white text-sm font-bold hover:brightness-105 shadow-md shadow-primary/25 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {submitting ? '접수 중...' : '접수하기'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 민원 접수 완료 팝업 */}
+      {submitDone && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center" onClick={() => setSubmitDone(null)}>
+          <div className="flex flex-col items-center gap-4 bg-white border border-outline-variant px-10 py-8 rounded-3xl shadow-2xl w-[360px]" onClick={e => e.stopPropagation()}>
+            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
+              <span className="material-symbols-outlined text-4xl text-primary">check_circle</span>
+            </div>
+            <div className="text-center">
+              <p className="text-xl font-bold text-on-surface mb-1">민원 접수 완료!</p>
+              <p className="text-sm text-on-surface-variant">담당 부서에서 검토 후 안내드리겠습니다.</p>
+            </div>
+            <div className="w-full bg-surface-container-low/60 rounded-2xl px-5 py-4 flex flex-col gap-2.5 text-sm">
+              <div className="flex items-start gap-2">
+                <span className="material-symbols-outlined text-base text-primary shrink-0 mt-0.5">edit_document</span>
+                <div>
+                  <p className="text-[11px] text-on-surface-variant font-medium">민원 제목</p>
+                  <p className="font-bold text-on-surface">{submitDone.title}</p>
+                </div>
+              </div>
+              {submitDone.category && (
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-base text-primary shrink-0">category</span>
+                  <div>
+                    <p className="text-[11px] text-on-surface-variant font-medium">민원 유형</p>
+                    <p className="font-bold text-on-surface">{submitDone.category}</p>
+                  </div>
+                </div>
+              )}
+              {submitDone.dept && (
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-base text-primary shrink-0">business</span>
+                  <div>
+                    <p className="text-[11px] text-on-surface-variant font-medium">담당 부서</p>
+                    <p className="font-bold text-on-surface">{submitDone.dept}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+            <button
+              onClick={() => setSubmitDone(null)}
+              className="w-full py-3 rounded-xl bg-primary text-white font-bold text-sm hover:brightness-105 shadow-md shadow-primary/25"
+            >
+              확인
+            </button>
+            <p className="text-xs text-on-surface-variant/50">ESC 또는 확인을 눌러 닫기</p>
+          </div>
+        </div>
+      )}
     </CitizenLayout>
   );
 }

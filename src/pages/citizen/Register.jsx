@@ -43,20 +43,18 @@ function Register() {
 
     setLoading(true);
     try {
-      const deptOption = DEPT_OPTIONS.find((d) => d.dept === selectedDept);
       await registerApi({
         name,
         email,
         password,
         phone: phone || '',
-        user_type: isStaff ? 'staff' : 'citizen',
-        ...(isStaff && { dept: deptOption.dept }),
+        apply_as_staff: isStaff,
       });
 
       if (isStaff) {
-        setDone(true);
+        navigate('/login', { state: { staffRegistered: true } });
       } else {
-        navigate('/login');
+        navigate('/login', { state: { registered: true } });
       }
     } catch (err) {
       if (err.response?.status === 409) {
@@ -166,16 +164,30 @@ function Register() {
                   {isStaff ? '담당 부서를 선택하고 정보를 입력해주세요.' : '정보를 입력하고 마음이 서비스를 시작하세요.'}
                 </p>
 
-                {/* 담당자 가입 완료 → 승인 대기 안내 */}
+                {/* 가입 완료 화면 */}
                 {done ? (
                   <div className="flex flex-col items-center justify-center py-8 text-center gap-4">
-                    <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center">
-                      <span className="material-symbols-outlined text-amber-500 text-3xl">schedule</span>
-                    </div>
-                    <div>
-                      <p className="font-bold text-on-surface text-base">가입 신청 완료</p>
-                      <p className="text-sm text-on-surface-variant mt-1">관리자 승인 후 로그인할 수 있습니다.</p>
-                    </div>
+                    {isStaff ? (
+                      <>
+                        <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center">
+                          <span className="material-symbols-outlined text-amber-500 text-3xl">schedule</span>
+                        </div>
+                        <div>
+                          <p className="font-bold text-on-surface text-base">가입 신청 완료</p>
+                          <p className="text-sm text-on-surface-variant mt-1">관리자 승인 후 로그인할 수 있습니다.</p>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center">
+                          <span className="material-symbols-outlined text-emerald-500 text-3xl">check_circle</span>
+                        </div>
+                        <div>
+                          <p className="font-bold text-on-surface text-base">회원가입 완료!</p>
+                          <p className="text-sm text-on-surface-variant mt-1">마음이 서비스에 오신 것을 환영합니다.</p>
+                        </div>
+                      </>
+                    )}
                     <button
                       type="button"
                       onClick={() => navigate('/login')}

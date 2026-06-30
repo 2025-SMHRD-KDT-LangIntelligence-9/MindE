@@ -1,6 +1,7 @@
-﻿import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import AdminLayout from '../../layouts/AdminLayout';
 import { useApp } from '../../store/AppContext';
+import { getDepartmentsApi } from '../../api/admin';
 
 const roleStyle = {
   citizen: { label: '일반 시민', bg: 'bg-blue-50',    text: 'text-blue-600',   icon: 'person' },
@@ -8,20 +9,42 @@ const roleStyle = {
 };
 
 function AdminUsers() {
-  const { users, approveUser, rejectUser } = useApp();
+  const { users, approveUser, rejectUser, updateUserDept } = useApp();
   const [search, setSearch] = useState('');
   const [toast, setToast] = useState('');
+  const [pendingDepts, setPendingDepts] = useState({});
+  const [editingDept, setEditingDept] = useState({});
+  const [departments, setDepartments] = useState([]);
+
+  useEffect(() => {
+    getDepartmentsApi()
+      .then((data) => setDepartments(data))
+      .catch(() => {});
+  }, []);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 2500); };
 
-  const handleApprove = (user) => {
-    approveUser(user.id);
+  const findDept = (name) => departments.find((d) => d.name === name);
+
+  const handleApprove = async (user) => {
+    await approveUser(user.id);
+    const deptName = pendingDepts[user.id] ?? '';
+    const dept = findDept(deptName);
+    if (dept) await updateUserDept(user.id, dept.department_id, dept.name);
     showToast(`${user.name}님의 담당자 가입을 승인했습니다.`);
   };
 
   const handleReject = (user) => {
     rejectUser(user.id);
     showToast(`${user.name}님의 가입 신청을 거절했습니다.`);
+  };
+
+  const handleDeptChange = async (user, deptName) => {
+    const dept = findDept(deptName);
+    if (!dept) return;
+    await updateUserDept(user.id, dept.department_id, dept.name);
+    setEditingDept((p) => ({ ...p, [user.id]: undefined }));
+    showToast(`${user.name}님의 담당 부서가 변경되었습니다.`);
   };
 
   const pending = users.filter((u) => u.status === 'pending');
@@ -57,8 +80,19 @@ function AdminUsers() {
                     <p className="font-bold text-sm text-on-surface">{user.name}
                       <span className="ml-2 text-xs font-normal text-on-surface-variant">{user.email}</span>
                     </p>
-                    <p className="text-xs text-amber-700 mt-0.5">담당자 가입 신청 · {user.dept} · {user.joinedAt}</p>
+                    <p className="text-xs text-amber-700 mt-0.5">담당자 가입 신청 · {user.joinedAt}</p>
                   </div>
+                  {/* 부서 선택 드롭다운 */}
+                  <select
+                    value={pendingDepts[user.id] ?? ''}
+                    onChange={(e) => setPendingDepts((p) => ({ ...p, [user.id]: e.target.value }))}
+                    className="h-8 px-2 text-xs border border-amber-300 rounded-lg bg-white outline-none focus:border-primary"
+                  >
+                    <option value="">부서 선택</option>
+                    {departments.map((d) => (
+                      <option key={d.department_id} value={d.name}>{d.name}</option>
+                    ))}
+                  </select>
                   <div className="flex gap-2 shrink-0">
                     <button
                       onClick={() => handleReject(user)}
@@ -93,7 +127,6 @@ function AdminUsers() {
                 </span>
               </div>
             </div>
-            {/* 검색 */}
             <div className="relative w-56">
               <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-base">search</span>
               <input
@@ -124,6 +157,7 @@ function AdminUsers() {
                   </tr>
                 ) : active.map((user) => {
                   const r = roleStyle[user.role] ?? roleStyle.citizen;
+                  const isEditing = editingDept[user.id] !== undefined;
                   return (
                     <tr key={user.id} className="hover:bg-slate-50 transition-colors">
                       <td className="px-5 py-3.5 font-bold text-on-surface">{user.name}</td>
@@ -135,7 +169,38 @@ function AdminUsers() {
                           {r.label}
                         </span>
                       </td>
-                      <td className="px-5 py-3.5 text-on-surface-variant text-xs">{user.dept || '-'}</td>
+                      <td className="px-5 py-3.5">
+                        {user.role === 'staff' ? (
+                          isEditing ? (
+                            <div className="flex items-center gap-1.5">
+                              <select
+                                value={editingDept[user.id]}
+                                onChange={(e) => setEditingDept((p) => ({ ...p, [user.id]: e.target.value }))}
+                                className="h-7 px-1.5 text-xs border border-primary rounded-lg outline-none"
+                              >
+                                <option value="">선택</option>
+                                {departments.map((d) => (
+                                  <option key={d.department_id} value={d.name}>{d.name}</option>
+                                ))}
+                              </select>
+                              <button onClick={() => handleDeptChange(user, editingDept[user.id])}
+                                className="text-xs font-bold text-primary hover:underline">저장</button>
+                              <button onClick={() => setEditingDept((p) => ({ ...p, [user.id]: undefined }))}
+                                className="text-xs text-on-surface-variant hover:underline">취소</button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setEditingDept((p) => ({ ...p, [user.id]: user.dept ?? '' }))}
+                              className="flex items-center gap-1 text-xs text-on-surface-variant hover:text-primary group"
+                            >
+                              {user.dept || '미지정'}
+                              <span className="material-symbols-outlined text-sm opacity-0 group-hover:opacity-100 transition-opacity">edit</span>
+                            </button>
+                          )
+                        ) : (
+                          <span className="text-xs text-on-surface-variant">-</span>
+                        )}
+                      </td>
                       <td className="px-5 py-3.5 text-on-surface-variant text-xs">{user.joinedAt}</td>
                     </tr>
                   );

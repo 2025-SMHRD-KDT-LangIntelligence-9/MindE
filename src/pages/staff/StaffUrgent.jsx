@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import StaffLayout from '../../layouts/StaffLayout';
 import { useApp, CATEGORY_STYLE } from '../../store/AppContext';
 import { STATUS_STYLE as statusStyle } from '../../utils/statusStyle';
+import { uploadAttachmentApi } from '../../api/complaints';
 import FilePreviewModal from '../../components/FilePreviewModal';
 
 const STATUS_OPTIONS = ['접수', '처리 중', '보완 요청', '반려', '완료'];
@@ -73,7 +74,10 @@ function StaffUrgent() {
   const currentFiles = selectedData ? (staffFiles[selectedData.id] ?? []) : [];
 
   const addFiles = (fileList) => {
-    Array.from(fileList).forEach((f) => addStaffFile(selectedData.id, f));
+    Array.from(fileList).forEach((f) => {
+      addStaffFile(selectedData.id, f);
+      uploadAttachmentApi(selectedData.id, f).catch(() => {});
+    });
   };
 
   const removeFile = (index) => {

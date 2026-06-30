@@ -5,6 +5,7 @@ import { useApp, CATEGORY_STYLE, URGENCY_STYLE } from '../../store/AppContext';
 import EmptyState from '../../components/EmptyState';
 import { STATUS_STYLE as statusStyle } from '../../utils/statusStyle';
 import FilePreviewModal from '../../components/FilePreviewModal';
+import { uploadAttachmentApi } from '../../api/complaints';
 
 const STATUS_OPTIONS = ['접수', '처리 중', '보완 요청', '반려', '완료'];
 
@@ -78,7 +79,10 @@ function StaffComplaints() {
   const currentFiles = selectedData ? (staffFiles[selectedData.id] ?? []) : [];
 
   const addFiles = (fileList) => {
-    Array.from(fileList).forEach((f) => addStaffFile(selectedData.id, f));
+    Array.from(fileList).forEach((f) => {
+      addStaffFile(selectedData.id, f);
+      uploadAttachmentApi(selectedData.id, f).catch(() => {});
+    });
   };
 
   const removeFile = (index) => {

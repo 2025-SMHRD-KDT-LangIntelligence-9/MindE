@@ -1,36 +1,54 @@
-﻿import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+﻿import { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import logo from '../../assets/logo.png';
 import { useApp } from '../../store/AppContext';
 import { loginApi, getMeApi } from '../../api/auth';
 
 function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { login, stats } = useApp();
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('savedEmail');
+    if (saved) { setEmail(saved); setRememberMe(true); }
+  }, []);
   const [showPw, setShowPw]     = useState(false);
   const [error, setError]       = useState('');
   const [loading, setLoading]   = useState(false);
   const [showForgot, setShowForgot] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotSent, setForgotSent] = useState(false);
+  const [toastType, setToastType] = useState(
+    location.state?.registered ? 'citizen' :
+    location.state?.staffRegistered ? 'staff' :
+    location.state?.withdrawn ? 'withdrawn' : ''
+  );
+
+  const toast = toastType !== '';
+
+  useEffect(() => {
+    if (!toastType) return;
+    window.history.replaceState({}, '');
+    const t = setTimeout(() => setToastType(''), 3000);
+    return () => clearTimeout(t);
+  }, [toastType]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    setError('');
+    setToastType('');
     try {
       const data = await loginApi(email, password);
       localStorage.setItem('token', data.access_token);
+      if (rememberMe) localStorage.setItem('savedEmail', email);
+      else localStorage.removeItem('savedEmail');
       const me = await getMeApi();
       const type = me.user_type;
 
-      if (type === 'pending_staff') {
-        localStorage.removeItem('token');
-        setError('pending');
-        return;
-      }
       if (type === 'admin') {
         login('admin', { name: me.name });
         navigate('/admin');
@@ -44,6 +62,9 @@ function Login() {
     } catch (err) {
       if (err.response?.status === 401) {
         setError('이메일 또는 비밀번호가 올바르지 않습니다.');
+      } else if (err.response?.status === 403) {
+        localStorage.removeItem('token');
+        setError('pending');
       } else if (err.code === 'ERR_NETWORK') {
         setError('서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.');
       } else {
@@ -56,6 +77,39 @@ function Login() {
 
   return (
     <>
+    {toast && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+        <div className="flex flex-col items-center gap-3 bg-white border border-outline-variant px-10 py-7 rounded-3xl shadow-2xl">
+          {toastType === 'staff' ? (
+            <>
+              <div className="w-16 h-16 rounded-full bg-amber-50 flex items-center justify-center">
+                <span className="material-symbols-outlined text-4xl text-amber-500">schedule</span>
+              </div>
+              <p className="text-xl font-bold text-on-surface">가입 신청 완료!</p>
+              <p className="text-sm text-on-surface-variant text-center">관리자 승인 완료 시<br/>로그인하실 수 있습니다.</p>
+            </>
+          ) : toastType === 'withdrawn' ? (
+            <>
+              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
+                <span className="material-symbols-outlined text-4xl text-primary">favorite</span>
+              </div>
+              <p className="text-xl font-bold text-on-surface">감사합니다</p>
+              <p className="text-sm text-on-surface-variant text-center">
+                그동안 마음이 서비스를 이용해 주셔서<br />진심으로 감사드립니다.
+              </p>
+            </>
+          ) : (
+            <>
+              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
+                <span className="material-symbols-outlined text-4xl text-primary">check_circle</span>
+              </div>
+              <p className="text-xl font-bold text-on-surface">회원가입 완료!</p>
+              <p className="text-sm text-on-surface-variant">마음이 서비스에 오신 것을 환영합니다.</p>
+            </>
+          )}
+        </div>
+      </div>
+    )}
     <div className="h-screen flex items-center justify-center bg-white overflow-hidden relative">
       <div className="flex items-stretch mx-auto gap-6 px-10 py-4 relative z-10">
 
@@ -142,7 +196,7 @@ function Login() {
                 </div>
 
                 {/* 폼 영역 */}
-                <div className="px-10 py-8 flex flex-col gap-6">
+                <form onSubmit={handleSubmit} className="px-10 py-8 flex flex-col gap-6">
 
                   <div>
                     <div className="flex items-center gap-2 mb-6">
@@ -159,7 +213,7 @@ function Login() {
                           <input
                             type="email"
                             value={email}
-                            onChange={(e) => { setEmail(e.target.value); setError(''); }}
+                            onChange={(e) => setEmail(e.target.value)}
                             placeholder="이메일을 입력하세요"
                             className="w-full h-12 pl-11 pr-4 border-2 border-outline-variant rounded-xl focus:border-primary outline-none transition-all text-on-surface text-sm bg-surface-container-low/40 focus:bg-white"
                           />
@@ -174,7 +228,7 @@ function Login() {
                           <input
                             type={showPw ? 'text' : 'password'}
                             value={password}
-                            onChange={(e) => { setPassword(e.target.value); setError(''); }}
+                            onChange={(e) => setPassword(e.target.value)}
                             placeholder="비밀번호를 입력하세요"
                             className="w-full h-12 pl-11 pr-10 border-2 border-outline-variant rounded-xl focus:border-primary outline-none transition-all text-on-surface text-sm bg-surface-container-low/40 focus:bg-white"
                           />
@@ -189,7 +243,7 @@ function Login() {
                   {/* 기억하기 / 찾기 */}
                   <div className="flex items-center justify-between mt-2">
                     <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="checkbox" className="w-4 h-4 accent-primary" />
+                      <input type="checkbox" className="w-4 h-4 accent-primary" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} />
                       <span className="text-sm text-on-surface-variant">아이디 기억하기</span>
                     </label>
                     <button type="button" onClick={() => { setShowForgot(true); setForgotEmail(''); setForgotSent(false); }} className="text-sm text-primary font-bold hover:underline">비밀번호 찾기</button>
@@ -214,7 +268,6 @@ function Login() {
                   {/* 로그인 버튼 */}
                   <button
                     type="submit"
-                    onClick={handleSubmit}
                     disabled={loading}
                     className="w-full py-3.5 font-bold rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-base bg-primary text-white hover:brightness-105 shadow-lg shadow-primary/25 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
@@ -228,7 +281,7 @@ function Login() {
                       회원가입
                     </button>
                   </p>
-                </div>
+                </form>
 
                 {/* 하단 서비스 특징 */}
                 <div className="px-10 py-5 border-t border-outline-variant/50 bg-slate-50/80">

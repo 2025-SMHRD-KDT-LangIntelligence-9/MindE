@@ -15,7 +15,7 @@ function AdminDashboard() {
     const d = new Date();
     d.setDate(d.getDate() - (6 - i));
     const dateStr = d.toISOString().slice(0, 10);
-    const count = complaints.filter((c) => c.receivedAt?.startsWith(dateStr)).length;
+    const count = complaints.filter((c) => c.createdDate === dateStr).length;
     return { date: dateStr.slice(5).replace('-', '/'), count };
   });
   const hasRecentData = last7Days.some((d) => d.count > 0);
@@ -75,45 +75,24 @@ function AdminDashboard() {
               <p className="text-xs text-on-surface-variant mt-0.5">날짜별 민원 접수 건수</p>
             </div>
           </div>
-          {hasRecentData ? (
-            <div className="space-y-2">
-              {last7Days.map((d) => (
-                <div key={d.date} className="flex items-center gap-3">
-                  <span className="text-xs text-on-surface-variant w-12 shrink-0">{d.date}</span>
-                  <div className="flex-1 h-6 bg-surface-container-low rounded-lg overflow-hidden flex items-center">
+          <div className="flex items-end justify-between gap-2 h-44 pt-2">
+            {last7Days.map((d) => {
+              const maxCount = Math.max(...last7Days.map((x) => x.count), 1);
+              const heightPct = d.count > 0 ? Math.max((d.count / maxCount) * 100, 8) : 0;
+              return (
+                <div key={d.date} className="flex-1 flex flex-col items-center gap-1.5">
+                  <span className="text-xs font-bold text-primary">{d.count > 0 ? `${d.count}건` : ''}</span>
+                  <div className="w-full flex items-end justify-center" style={{ height: '120px' }}>
                     <div
-                      className="h-full bg-primary/70 rounded-lg transition-all"
-                      style={{ width: `${Math.max((d.count / Math.max(...last7Days.map(x => x.count), 1)) * 100, d.count > 0 ? 4 : 0)}%` }}
+                      className="w-full rounded-t-lg bg-primary/75 transition-all duration-500"
+                      style={{ height: `${heightPct}%` }}
                     />
                   </div>
-                  <span className="text-xs font-bold text-on-surface w-8 text-right shrink-0">{d.count}건</span>
+                  <span className="text-[11px] text-on-surface-variant">{d.date}</span>
                 </div>
-              ))}
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center h-36 gap-2 text-on-surface-variant">
-              <span className="material-symbols-outlined text-3xl text-outline">bar_chart</span>
-              <p className="text-sm">최근 7일간 접수된 민원이 없습니다.</p>
-              <div className="mt-2 w-full">
-                <table className="w-full text-xs text-center border-collapse">
-                  <thead>
-                    <tr className="border-b border-outline-variant">
-                      {last7Days.map((d) => (
-                        <th key={d.date} className="py-1.5 px-2 font-medium text-on-surface-variant">{d.date}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      {last7Days.map((d) => (
-                        <td key={d.date} className="py-1.5 px-2 font-bold text-on-surface">{d.count}</td>
-                      ))}
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
+              );
+            })}
+          </div>
         </div>
 
         <div className="col-span-4 bg-white rounded-2xl border border-outline-variant p-6 shadow-sm">

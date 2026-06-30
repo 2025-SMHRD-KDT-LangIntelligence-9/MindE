@@ -1,6 +1,7 @@
-﻿import { useState, useRef } from 'react';
+﻿import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import CitizenLayout from '../../layouts/CitizenLayout';
+import { chatImageApi } from '../../api/chat';
 
 const steps = [
   { key: 'upload',  label: '업로드', icon: 'upload_file' },
@@ -60,14 +61,43 @@ function DocumentOCR() {
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [saveFileName, setSaveFileName] = useState('민원서류_작성완료.pdf');
   const [toast, setToast] = useState('');
+  const [isOcrLoading, setIsOcrLoading] = useState(false);
   const fileInputRef1 = useRef(null);
   const fileInputRef2 = useRef(null);
+  const ocrDoneRef = useRef(false);
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 2500); };
+
+  const runOcr = async (file) => {
+    if (!file || isOcrLoading) return;
+    setIsOcrLoading(true);
+    ocrDoneRef.current = true;
+    try {
+      const prompt = '이 문서의 정보를 다음 JSON 형식으로만 추출해주세요: {"name":"성명","rrn":"주민등록번호","phone":"연락처","type":"민원유형","date":"발생일시(YYYY-MM-DD HH:mm)","location":"발생장소","summary":"사고개요","address":"주소"} 모르는 필드는 빈 문자열로 채워주세요. JSON 외 다른 텍스트는 포함하지 마세요.';
+      const result = await chatImageApi(file, prompt);
+      const jsonMatch = result.answer.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const data = JSON.parse(jsonMatch[0]);
+        setFieldValues((prev) => ({ ...prev, ...data }));
+      }
+    } catch {
+      // OCR 실패 시 빈 필드 유지
+    } finally {
+      setIsOcrLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (currentStep === 2 && uploadedFile && !ocrDoneRef.current) {
+      runOcr(uploadedFile);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStep]);
 
   const handleUpload = (files) => {
     if (files && files[0]) {
       const f = files[0];
       setUploadedFile(f);
+      ocrDoneRef.current = false;
       const sizeMB = (f.size / 1024 / 1024).toFixed(2);
       setFieldValues((prev) => ({ ...prev, docname: f.name, size: `${sizeMB} MB` }));
     }
@@ -341,17 +371,25 @@ function DocumentOCR() {
                 <div className="flex items-center justify-between px-5 py-3.5 border-b border-outline-variant shrink-0">
                   <p className="text-sm font-bold text-on-surface">OCR 추출 결과</p>
                   <button
-                    onClick={() => showToast('OCR 재추출 중입니다... 잠시만 기다려 주세요.')}
-                    className="flex items-center gap-1.5 text-xs font-bold text-primary hover:underline shrink-0"
+                    onClick={() => { ocrDoneRef.current = false; runOcr(uploadedFile); }}
+                    disabled={isOcrLoading}
+                    className="flex items-center gap-1.5 text-xs font-bold text-primary hover:underline shrink-0 disabled:opacity-40"
                   >
-                    <span className="material-symbols-outlined text-base">refresh</span>
+                    <span className={`material-symbols-outlined text-base ${isOcrLoading ? 'animate-spin' : ''}`}>refresh</span>
                     재추출
                   </button>
                 </div>
-                <div className="mx-5 mt-4 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2 shrink-0">
-                  <span className="material-symbols-outlined text-emerald-500 text-base">check_circle</span>
-                  <p className="text-xs font-bold text-emerald-700">문서에서 18개의 항목을 인식했습니다.</p>
-                </div>
+                {isOcrLoading ? (
+                  <div className="mx-5 mt-4 px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center gap-2 shrink-0">
+                    <span className="material-symbols-outlined text-blue-500 text-base animate-spin">autorenew</span>
+                    <p className="text-xs font-bold text-blue-700">AI가 문서를 분석하고 있습니다...</p>
+                  </div>
+                ) : (
+                  <div className="mx-5 mt-4 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2 shrink-0">
+                    <span className="material-symbols-outlined text-emerald-500 text-base">check_circle</span>
+                    <p className="text-xs font-bold text-emerald-700">문서에서 정보를 추출했습니다. 내용을 확인해 주세요.</p>
+                  </div>
+                )}
                 <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
                   {ocrFields.map((section) => (
                     <div key={section.section}>
@@ -363,7 +401,7 @@ function DocumentOCR() {
                         {section.fields.map((f) => (
                           <div key={f.key} className="flex items-center gap-2 py-2 px-3 rounded-xl bg-surface-container-low/40">
                             <span className="w-28 shrink-0 text-xs text-on-surface-variant">{f.label}</span>
-                            <span className="flex-1 text-xs font-medium text-on-surface">{f.value}</span>
+                            <span className="flex-1 text-xs font-medium text-on-surface">{fieldValues[f.key] || (isOcrLoading ? '...' : '-')}</span>
                           </div>
                         ))}
                       </div>

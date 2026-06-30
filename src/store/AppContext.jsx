@@ -1,7 +1,8 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { getMeApi } from '../api/auth';
-import { getComplaintsApi, addComplaintApi, updateComplaintStatusApi } from '../api/complaints';
-import { getNotificationsApi } from '../api/notifications';
+import { getComplaintsApi, getAllComplaintsApi, addComplaintApi, updateComplaintStatusApi, saveMemoApi, saveResponseApi, updateComplaintDeptApi } from '../api/complaints';
+import { getNotificationsApi, markAllReadApi } from '../api/notifications';
+import { getUsersApi, approveStaffApi, rejectStaffApi, updateUserDeptApi } from '../api/admin';
 
 /* 긴급도 공통 색상 */
 export const URGENCY_STYLE = {
@@ -75,11 +76,17 @@ export function AppProvider({ children }) {
       .catch(() => localStorage.removeItem('token'));
   }, []);
 
-  // 로그인 후 민원·알림 API에서 로드
+  // 로그인 후 민원·알림 API에서 로드 (staff/admin은 전체 목록, citizen은 본인 목록)
   useEffect(() => {
     if (currentUser.role === 'guest') return;
-    getComplaintsApi().then(setComplaints).catch(() => {});
+    const fetchComplaints = currentUser.role === 'citizen'
+      ? getComplaintsApi
+      : getAllComplaintsApi;
+    fetchComplaints().then(setComplaints).catch(() => {});
     getNotificationsApi().then(setNotifications).catch(() => {});
+    if (currentUser.role === 'admin') {
+      getUsersApi().then(setUsers).catch(() => {});
+    }
   }, [currentUser.role]);
 
   const login = (role, userInfo = null) => {
@@ -95,10 +102,14 @@ export function AppProvider({ children }) {
     setCurrentUser({ role: 'guest', name: '', dept: '', deptGroup: [] });
   };
 
+  const updateCurrentUser = (updates) => {
+    setCurrentUser((prev) => ({ ...prev, ...updates }));
+  };
+
   // 상태 변경 + 알림 생성
   const updateComplaintStatus = async (id, newStatus, memo) => {
     try {
-      await updateComplaintStatusApi(id, newStatus);
+      await updateComplaintStatusApi(id, newStatus, memo || null);
     } catch {
       // 백엔드 실패해도 로컬 상태는 업데이트
     }
@@ -136,21 +147,30 @@ export function AppProvider({ children }) {
   };
 
   // 담당 부서 변경
-  const updateComplaintDept = (id, newDept) => {
+  const updateComplaintDept = async (id, departmentId, deptName) => {
+    try {
+      await updateComplaintDeptApi(id, departmentId);
+    } catch {}
     setComplaints((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, dept: newDept } : c))
+      prev.map((c) => (c.id === id ? { ...c, dept: deptName } : c))
     );
   };
 
   // 메모만 저장 (상태 변경 없이)
-  const saveMemo = (id, memo) => {
+  const saveMemo = async (id, memo) => {
+    try {
+      await saveMemoApi(id, memo);
+    } catch {}
     setComplaints((prev) =>
       prev.map((c) => (c.id === id ? { ...c, memo } : c))
     );
   };
 
   // 담당자 공식 답변 등록 (상태 변경 없음 - 상태는 민원처리 버튼으로 별도 변경)
-  const saveReply = (id, reply) => {
+  const saveReply = async (id, reply) => {
+    try {
+      await saveResponseApi(id, reply);
+    } catch {}
     setComplaints((prev) =>
       prev.map((c) =>
         c.id === id
@@ -236,14 +256,20 @@ export function AppProvider({ children }) {
   };
 
   // 담당자 가입 승인
-  const approveUser = (userId) => {
+  const approveUser = async (userId) => {
+    try {
+      await approveStaffApi(userId);
+    } catch {}
     setUsers((prev) => prev.map((u) =>
       u.id === userId ? { ...u, status: 'active' } : u
     ));
   };
 
   // 가입 거절 (목록에서 제거)
-  const rejectUser = (userId) => {
+  const rejectUser = async (userId) => {
+    try {
+      await rejectStaffApi(userId);
+    } catch {}
     setUsers((prev) => prev.filter((u) => u.id !== userId));
   };
 
@@ -253,23 +279,12 @@ export function AppProvider({ children }) {
   };
 
   // 담당자 부서 변경
-  const updateUserDept = (userId, newDept) => {
-    const deptGroupMap = {
-      '도로교통과': ['도로교통과', '교통행정과', '교통지도과'],
-      '교통행정과': ['도로교통과', '교통행정과', '교통지도과'],
-      '교통지도과': ['도로교통과', '교통행정과', '교통지도과'],
-      '환경위생과': ['도시환경과', '청소행정과', '도시녹지과', '환경위생과'],
-      '도시환경과': ['도시환경과', '청소행정과', '도시녹지과', '환경위생과'],
-      '청소행정과': ['도시환경과', '청소행정과', '도시녹지과', '환경위생과'],
-      '도시녹지과': ['도시환경과', '청소행정과', '도시녹지과', '환경위생과'],
-      '도시시설과': ['도시시설과', '공원녹지과', '상수도과'],
-      '공원녹지과': ['도시시설과', '공원녹지과', '상수도과'],
-      '상수도과':   ['도시시설과', '공원녹지과', '상수도과'],
-    };
+  const updateUserDept = async (userId, departmentId, deptName) => {
+    try {
+      await updateUserDeptApi(userId, departmentId);
+    } catch {}
     setUsers((prev) => prev.map((u) =>
-      u.id === userId
-        ? { ...u, dept: newDept, deptGroup: deptGroupMap[newDept] ?? [newDept] }
-        : u
+      u.id === userId ? { ...u, dept: deptName, departmentId } : u
     ));
   };
 
@@ -298,7 +313,10 @@ export function AppProvider({ children }) {
   };
 
   // 알림 읽음 처리
-  const markAllRead = () => {
+  const markAllRead = async () => {
+    try {
+      await markAllReadApi();
+    } catch {}
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
   };
 
@@ -333,6 +351,7 @@ export function AppProvider({ children }) {
       myDeptComplaints,
       login,
       logout,
+      updateCurrentUser,
       updateComplaintStatus,
       updateComplaintDept,
       saveMemo,
