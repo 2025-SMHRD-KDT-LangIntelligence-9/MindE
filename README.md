@@ -162,16 +162,3 @@ src/
 | 완료 | `closed` |
 | 반려 | `rejected` |
 
----
-
-## 백엔드 미구현 항목 (연동 대기 중)
-
-| 항목 | 엔드포인트 | 현재 동작 |
-|------|-----------|-----------|
-| 부서 목록 조회 | `GET /admin/departments` | 드롭다운 비어있음 |
-| 부서 CRUD | `POST/PATCH/DELETE /admin/departments` | 새로고침 시 초기화 |
-| 카테고리 CRUD | `GET/POST/PATCH/DELETE /admin/categories` | 새로고침 시 초기화 |
-| 회원 강제 탈퇴 | `DELETE /admin/users/{id}` | 새로고침 시 복원 |
-| 알림 설정 저장 | `PATCH /users/me/notifications` | 새로고침 시 초기화 |
-| 채팅 세션 저장 | `POST/GET /chat/sessions` | 새로고침 시 사라짐 |
-| 담당자 첨부파일 권한 | `routers/attachments.py` 수정 | 403 오류 |
