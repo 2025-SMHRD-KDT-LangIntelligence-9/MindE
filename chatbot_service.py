@@ -41,8 +41,11 @@ except ImportError:
 
 # ===== 환경 설정 =====
 ROOT = Path(__file__).parent
-CLASSIFIER_DIR = Path(os.environ.get('CLASSIFIER_DIR', ROOT / 'models' / 'bert-v9' / 'final'))
-URGENCY_DIR = Path(os.environ.get('URGENCY_DIR', ROOT / 'models' / 'urgency-bert' / 'final'))
+# 모델 경로: 로컬 폴더 또는 HuggingFace model_id 둘 다 지원.
+# 기본값은 HF hub (private 저장소, HF_TOKEN env 필요).
+# 로컬 파일 쓰려면 .env에서 CLASSIFIER_DIR / URGENCY_DIR을 절대경로로 오버라이드.
+CLASSIFIER_DIR = os.environ.get('CLASSIFIER_DIR', 'atti433/minde-classifier')
+URGENCY_DIR = os.environ.get('URGENCY_DIR', 'atti433/minde-urgency')
 EMBED_MODEL_NAME = os.environ.get('EMBED_MODEL', 'BM-K/KoSimCSE-roberta')
 
 DB_CONFIG = dict(
@@ -386,7 +389,7 @@ def search_dept(query: str, category_id: Optional[int] = None, limit: int = 5) -
 
 
 def match_or_create_cluster(text: str, keywords: Optional[list] = None,
-                            similarity_threshold: float = 0.75) -> dict:
+                            similarity_threshold: float = 0.70) -> dict:
     """비슷한 민원 그룹(클러스터)을 찾거나 새로 생성.
 
     동작:
@@ -651,7 +654,7 @@ OPENAI_TOOLS = [
                 "type": "object",
                 "properties": {
                     "text": {"type": "string", "description": "민원 본문"},
-                    "similarity_threshold": {"type": "number", "default": 0.75},
+                    "similarity_threshold": {"type": "number", "default": 0.70},
                 },
                 "required": ["text"],
             },
@@ -733,6 +736,19 @@ SYSTEM_PROMPT = """\
    - similar_depts: 부서 의미 검색 결과
 2. 사용자 질문 (자연어)
 
+## 복수 민원 처리 (sub_queries)
+
+metadata.sub_queries는 사용자 텍스트에서 분해된 독립 민원 리스트입니다.
+
+- **1개**: 기존 흐름대로 (아래 다른 규칙 적용)
+- **2개 이상**: 각 서브 민원에 대해 **개별 안내**를 하나의 답변에 모아서 제공.
+  각 서브 민원마다:
+  1. 어떤 민원인지 한 줄로 요약 (그 서브의 카테고리 명시)
+  2. 담당 부서 이름 + 전화번호 (각 서브의 departments[0])
+  3. 필요 시 신고 채널·자료·처리 기한 짧게 안내
+  자연스러운 문단 구조로: "먼저 A 관련 민원은 …, 두 번째로 B 관련 민원은 …"
+  아래의 카테고리·부서·법령·긴급·클러스터 규칙은 각 서브의 metadata를 개별적으로 적용.
+
 ## 카테고리 선택 (LLM이 최종 결정자)
 classification.top_k에는 분류기가 뽑은 3개 후보가 들어있고, 각 후보에 매핑된 departments도 함께 들어있습니다.
 **confidence는 분류기 점수일 뿐, 결정의 절대 기준이 아닙니다.** 분류기는 마스킹 학습된 모델이라 표면 키워드에 끌릴 수 있습니다.
@@ -754,10 +770,12 @@ classification.top_k에는 분류기가 뽑은 3개 후보가 들어있고, 각 
 
 1. **부서명/전화번호**: context.departments 또는 context.similar_depts에 있는 정확한 name·phone만 사용. 없는 부서나 임의 번호(예: 1234-5678) 생성 금지.
 
-2. **법령 조항**: context.laws 배열에 있는 title의 글자 그대로만 인용.
-   - ✅ 올바른 예: context.laws[0].title이 "도로교통법 제33조(주차금지의 장소)"이면 → "도로교통법 제33조에 따르면..."
-   - ❌ 금지: context.laws에 없는 조항 만들어내기 (예: 임의로 "형법 제172조의2")
-   - context.laws가 빈 배열이거나 모든 similarity가 0.4 미만이면 **법령 인용 자체를 생략**하세요.
+2. **법령 조항 (매우 엄격)**:
+   - context.laws (또는 sub_queries[N].laws) 배열의 `title` 문자열에 있는 법명·조항만 인용 가능. **그 외 어떤 법령·조항도 절대 만들어내지 마세요.**
+   - ❌ **가장 흔한 실수 — 절대 금지 예시**: "전자정부법 제14조", "지방세법 제OO조", "행정절차법에 따르면...", "형법 제172조의2" 같이 배열에 없는 조항을 임의로 언급하는 것.
+   - context.laws가 빈 배열이거나 모든 similarity가 0.4 미만이면 → **법령 인용 자체를 생략**. "관련 법령이 있습니다"조차 쓰지 마세요.
+   - 일반 상식으로 "이런 법이 있을 것 같다"는 추측 인용도 금지. 확실치 않으면 "법령 근거는 담당 부서에 문의 권장"으로만.
+   - sub_queries가 여러 개일 때도 마찬가지 — 각 서브의 laws에 있는 것만 인용, 다른 서브의 laws나 창작 법령 금지.
 
 3. **사례/통계 수치**: cases 배열이나 cluster.complaint_count 없으면 "사례 N건" 같은 표현 금지.
 
@@ -1008,7 +1026,81 @@ async def analyze_image(image_data: bytes, mime_type: str = "image/jpeg") -> str
     return (resp.choices[0].message.content or "").strip()
 
 
-async def extract_keywords(text: str, max_keywords: int = 5) -> list[str]:
+DECOMPOSE_PROMPT = """\
+당신은 사용자 민원 텍스트가 몇 개의 독립 민원(서로 다른 도메인/담당 부서)을 포함하는지 판단하는 도우미입니다.
+
+## 판단 규칙
+
+**두 개 이상으로 분리하는 경우 (핵심):**
+- 서로 다른 공공 도메인이 병렬로 등장할 때. 도메인 예시: 교통/건축/세무/환경/복지/상하수도/보건위생/문화_여가/농축산/경제/행정
+- "A했는데 B도", "A랑 B", "A하고 B도" 같은 병렬 접속 표현이 다른 도메인을 연결하면 분리
+- 예:
+  - "포트홀 신고했는데 자동차세 감면도 문의드려요" → 2개 (교통 + 세무)
+  - "쓰레기 무단투기랑 노인복지 문의" → 2개 (환경 + 복지)
+  - "도서관 운영시간이랑 재산세 납부" → 2개 (문화_여가 + 세무)
+
+**하나로 유지하는 경우:**
+- 후속 질문 ("그럼 어떻게 신고?", "얼마나 걸려요?", "취소할 수 있어요?")
+- 같은 도메인 안의 원인·피해·상황 설명 ("도로에 포트홀이 나서 차가 망가질 것 같아 신고합니다")
+- 이미지 분석 결과가 포함된 텍스트도 하나로 유지
+
+## 출력 형식
+
+정확히 JSON 객체 하나. 다른 말 절대 금지.
+{"queries": ["질문1", "질문2"]}
+"""
+
+
+async def decompose_query(text: str, history: Optional[list[dict]] = None) -> list[str]:
+    """민원 텍스트를 독립 서브 민원 리스트로 분해.
+
+    - 하나면 [원문] 반환
+    - 여러 개면 각각 자연스러운 문장으로 분리한 리스트 반환
+    - 실패 시 [원문] fallback (안전)
+
+    Args:
+        text: 사용자 현재 발언
+        history: (선택) 이전 대화 — 후속 질문 판단 참고용
+
+    Returns:
+        list[str]: 서브 민원 리스트. 항상 최소 1개.
+    """
+    text = (text or '').strip()
+    if not text:
+        return []
+
+    import json as _json
+    client = _get_openai()
+
+    messages = [{"role": "system", "content": DECOMPOSE_PROMPT}]
+    if history:
+        for m in history[-6:]:  # 최근 3턴만
+            role = m.get("role")
+            content = m.get("content", "")
+            if role in ("user", "assistant") and content:
+                messages.append({"role": role, "content": content})
+    messages.append({"role": "user", "content": text})
+
+    try:
+        resp = await client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=messages,
+            temperature=0,
+            max_tokens=500,
+            response_format={"type": "json_object"},
+        )
+        raw = (resp.choices[0].message.content or '').strip()
+        parsed = _json.loads(raw)
+        queries = parsed.get('queries', [])
+        cleaned = [q.strip() for q in queries if isinstance(q, str) and q.strip()]
+        if not cleaned:
+            return [text]
+        return cleaned
+    except Exception:
+        return [text]
+
+
+async def extract_keywords(text: str, max_keywords: int = 3) -> list[str]:
     """사용자 텍스트에서 핵심 키워드 추출 (OpenAI 호출).
 
     클러스터링 매칭 정확도를 위해 사용. 본문 전체 임베딩보다 핵심 단어 임베딩이
@@ -1136,6 +1228,7 @@ async def answer_chatbot(text: str, history: Optional[list[dict]] = None) -> dic
             'answer': gate_out,
             'metadata': {
                 'tool_used': False,
+                'sub_queries': [],
                 'classification': None,
                 'urgency': None,
                 'cluster': None,
@@ -1147,27 +1240,10 @@ async def answer_chatbot(text: str, history: Optional[list[dict]] = None) -> dic
             },
         }
 
-    # 도구 호출용 query: 후속 질문이면 직전 turn과 합쳐 컨텍스트 유지
-    tool_query = _build_tool_query(text, history)
-
-    # ─── 1단계: 키워드 추출(LLM)을 먼저 시작, 나머지 도구는 키워드 없이 병렬 시작 ───
-    keywords_task = asyncio.create_task(extract_keywords(tool_query))
-
-    cls, urg, laws, cases = await asyncio.gather(
-        asyncio.to_thread(classify_complaint, tool_query, 3),
-        asyncio.to_thread(check_urgency, tool_query),
-        asyncio.to_thread(search_laws, tool_query, None, 5),
-        asyncio.to_thread(search_cases, tool_query, None, 5),
-    )
-    cat_id = cls.get('category_id')
-
-    # 키워드 추출 완료 대기 후 클러스터 매칭
-    keywords = await keywords_task
-    cluster = await asyncio.to_thread(match_or_create_cluster, tool_query, keywords)
-
-    # ─── 2단계: top-3 카테고리 각각의 부서를 병렬 조회 + top-1 의미 검색 ───
-    # LLM이 top-3 후보 중 사용자 의도에 가장 맞는 걸 골라 답할 수 있도록 부서 정보까지 묶어 전달.
-    top_k_items = cls.get('top_k') or []
+    # ─── Query Decomposition: 여러 독립 민원 감지 ───
+    sub_queries = await decompose_query(text, history)
+    if not sub_queries:
+        sub_queries = [text]
 
     async def _fetch_top_depts(item):
         cid = item.get('category_id')
@@ -1176,28 +1252,59 @@ async def answer_chatbot(text: str, history: Optional[list[dict]] = None) -> dic
             return {**item, 'departments': d}
         return {**item, 'departments': []}
 
-    dept_search_task = (
-        asyncio.to_thread(search_dept, tool_query, cat_id, 5)
-        if cat_id else asyncio.sleep(0, result=[])
-    )
-    top_k_with_depts, dept_search = await asyncio.gather(
-        asyncio.gather(*[_fetch_top_depts(it) for it in top_k_items]),
-        dept_search_task,
-    )
-    cls['top_k'] = list(top_k_with_depts)
-    # 백워드 호환: 기존 'departments' 키는 top-1 카테고리 부서 유지
-    depts = top_k_with_depts[0]['departments'] if top_k_with_depts else []
+    async def _process_sub_query(sub_text: str) -> dict:
+        """서브 질문 하나에 대해 모든 도구 호출 병렬 실행 → 결과 dict 반환."""
+        tool_q = _build_tool_query(sub_text, history)
+        keywords_task = asyncio.create_task(extract_keywords(tool_q))
+        cls_r, urg_r, laws_r, cases_r = await asyncio.gather(
+            asyncio.to_thread(classify_complaint, tool_q, 3),
+            asyncio.to_thread(check_urgency, tool_q),
+            asyncio.to_thread(search_laws, tool_q, None, 5),
+            asyncio.to_thread(search_cases, tool_q, None, 5),
+        )
+        kw = await keywords_task
+        cluster_r = await asyncio.to_thread(match_or_create_cluster, sub_text, kw)
+        top_k_items = cls_r.get('top_k') or []
+        cat_id_r = cls_r.get('category_id')
+        dept_search_task = (
+            asyncio.to_thread(search_dept, tool_q, cat_id_r, 5)
+            if cat_id_r else asyncio.sleep(0, result=[])
+        )
+        top_k_with_depts, dept_search_r = await asyncio.gather(
+            asyncio.gather(*[_fetch_top_depts(it) for it in top_k_items]),
+            dept_search_task,
+        )
+        cls_r['top_k'] = list(top_k_with_depts)
+        depts_r = top_k_with_depts[0]['departments'] if top_k_with_depts else []
+        return {
+            'query': sub_text,
+            'classification': cls_r,
+            'urgency': urg_r,
+            'cluster': cluster_r,
+            'keywords': kw,
+            'laws': laws_r,
+            'cases': cases_r,
+            'departments': depts_r,
+            'similar_depts': dept_search_r,
+        }
 
+    # 서브 질문마다 병렬 처리
+    sub_results = await asyncio.gather(*[_process_sub_query(q) for q in sub_queries])
+
+    # 하위 호환: 기존 metadata 스키마의 top-level 필드는 첫 서브 결과 값
+    first = sub_results[0]
     metadata = {
         'tool_used': True,
-        'classification': cls,
-        'urgency': urg,
-        'cluster': cluster,
-        'keywords': keywords,
-        'laws': laws,
-        'cases': cases,
-        'departments': depts,
-        'similar_depts': dept_search,
+        'sub_queries': sub_results,   # 신규 필드 — 서브 질문별 metadata 리스트
+        # 하위 호환 필드 (기존 백엔드 코드가 참조하는 것)
+        'classification': first['classification'],
+        'urgency': first['urgency'],
+        'cluster': first['cluster'],
+        'keywords': first['keywords'],
+        'laws': first['laws'],
+        'cases': first['cases'],
+        'departments': first['departments'],
+        'similar_depts': first['similar_depts'],
     }
 
     # ─── 3단계: 컨텍스트를 LLM에 한 번 전달 ───

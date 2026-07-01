@@ -58,9 +58,16 @@ class ComplaintClassifier:
 
     def __init__(self, model_dir: Union[str, Path, None] = None,
                  device: str = None, max_length: int = 128):
-        self.model_dir = Path(model_dir) if model_dir else self.DEFAULT_MODEL_DIR
-        if not self.model_dir.exists():
-            raise FileNotFoundError(f'모델 폴더 없음: {self.model_dir}')
+        # 로컬 경로 또는 HuggingFace model_id (예: "atti433/minde-classifier") 지원.
+        # HF model_id면 transformers가 자동 다운로드 (HF_TOKEN env 필요, private일 때).
+        _val = model_dir if model_dir else self.DEFAULT_MODEL_DIR
+        _val_str = str(_val)
+        if Path(_val_str).exists():
+            self.model_dir = Path(_val_str)   # 로컬
+        elif '/' in _val_str and not _val_str.startswith(('.', '/', '\\')) and ':' not in _val_str[:3]:
+            self.model_dir = _val_str          # HF model_id (예: "atti433/minde-classifier")
+        else:
+            raise FileNotFoundError(f'모델 폴더/저장소 없음: {_val_str}')
 
         # device 자동 선택 (cuda 가능하면 cuda)
         if device is None:

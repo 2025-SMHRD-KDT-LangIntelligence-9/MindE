@@ -209,9 +209,15 @@ async def handle(text):
 
 ## 모델 정보
 
-- **분류기**: KLUE BERT base 파인튜닝, 11 클래스, **test F1 0.873**
+- **분류기 (v10-relabel)**: KLUE BERT base + LLM 재라벨링, 11 클래스, **test F1 0.896**
+  - HF: `atti433/minde-classifier` (private, HF_TOKEN 필요)
+  - tag `v10-relabel` (기본 main), `v9-final` (롤백용)
 - **긴급 분류**: KLUE BERT base 파인튜닝, 이진, **test F1 (긴급) 0.93**
-- **임베딩**: `BM-K/KoSimCSE-roberta` (사전학습 그대로 사용, 768d)
+  - HF: `atti433/minde-urgency` (private)
+- **임베딩**: `BM-K/KoSimCSE-roberta` (사전학습 그대로 사용, 768d, 공개)
+
+기본값이 HF model_id라 로컬 파일 없이 자동 다운로드. 로컬 파일 쓰려면 `.env`에서
+`CLASSIFIER_DIR`, `URGENCY_DIR`을 로컬 절대경로로 오버라이드.
 
 ## DB 스키마
 
@@ -261,3 +267,10 @@ async def handle(text):
   - `synthesize_speech()` — NAVER CLOVA Voice Premium (TTS) 함수 추가. 활성화 시 즉시 사용 가능.
   - `analyze_image()` — gpt-4o Vision으로 OCR + 장면 이해 + 민원 의도 추정. 결과 텍스트를 `answer_chatbot`에 그대로 전달 가능.
   - 모두 stateless 함수, 백엔드가 파일을 받아 호출 후 텍스트로 answer_chatbot에 연결하는 패턴.
+- 2026-07: **v10-relabel + HF 자동 다운로드 + Query Decomposition**
+  - **분류기 v10-relabel**: gpt-4o-mini로 학습 데이터 재라벨링(198k) → macro F1 0.873 → **0.896**. 특히 "도로/포트홀/구멍" 등 도로 시설물이 교통으로 정확히 분류됨.
+  - **HuggingFace 자동 다운로드**: 로컬 모델 파일 없이 `atti433/minde-classifier`, `atti433/minde-urgency`에서 자동 fetch. `.env`에 `HF_TOKEN` 필요.
+  - **Query Decomposition**: 복합 민원("포트홀 신고 + 자동차세 감면") 자동 분리 → 각 서브 민원별 분류·부서·법령 병렬 처리. `metadata.sub_queries` 신규 필드.
+  - **법령 할루시네이션 방지 강화**: context.laws에 없는 창작 법령 인용 엄격 금지.
+  - **클러스터링 튜닝**: `max_keywords` 5→3, `similarity_threshold` 0.75→0.70. 표현 변형 매칭 정확도 ↑.
+  - **bcrypt 4.0.1 고정** (passlib 호환): backend 통합 시 필요.
