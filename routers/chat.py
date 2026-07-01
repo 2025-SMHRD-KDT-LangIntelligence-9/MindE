@@ -13,9 +13,13 @@ history는 user_id별 in-memory dict로 보관 (발표/데모용).
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from database import get_db
 from auth import get_current_user
 import models
+import schemas
 import chatbot_service as svc
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -116,3 +120,54 @@ async def chat_reset(current_user: models.User = Depends(get_current_user)):
     """현재 사용자의 대화 history 초기화."""
     _SESSIONS.pop(current_user.user_id, None)
     return {"status": "reset"}
+
+
+# ---------- 채팅 세션 (DB 저장) ----------
+@router.post("/sessions", response_model=schemas.ChatSessionDetailOut, status_code=201)
+async def create_chat_session(
+    payload: schemas.ChatSessionCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """상담 내역 저장."""
+    session = models.ChatSession(
+        user_id=current_user.user_id,
+        title=payload.title,
+        status=payload.status,
+        messages=payload.messages,
+    )
+    if payload.created_at:
+        session.created_at = payload.created_at
+    db.add(session)
+    await db.commit()
+    await db.refresh(session)
+    return session
+
+
+@router.get("/sessions", response_model=list[schemas.ChatSessionOut])
+async def list_chat_sessions(
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """내 상담 내역 목록 (최신순)."""
+    result = await db.execute(
+        select(models.ChatSession)
+        .where(models.ChatSession.user_id == current_user.user_id)
+        .order_by(models.ChatSession.created_at.desc())
+    )
+    return result.scalars().all()
+
+
+@router.get("/sessions/{session_id}", response_model=schemas.ChatSessionDetailOut)
+async def get_chat_session(
+    session_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """상담 세션 단건 (messages 포함)."""
+    session = await db.get(models.ChatSession, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다.")
+    if session.user_id != current_user.user_id:
+        raise HTTPException(status_code=403, detail="조회 권한이 없습니다.")
+    return session

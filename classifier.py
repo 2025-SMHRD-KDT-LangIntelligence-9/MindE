@@ -54,13 +54,18 @@ def normalize_text(text: str) -> str:
 class ComplaintClassifier:
     """KLUE BERT 기반 민원 분류기 (v5, 11 클래스)."""
 
-    DEFAULT_MODEL_DIR = Path(__file__).parent / 'bert-v5' / 'final'
+    DEFAULT_MODEL_NAME = 'atti433/minde-classifier'
 
-    def __init__(self, model_dir: Union[str, Path, None] = None,
+    def __init__(self, model_name: str = None, model_dir: Union[str, Path, None] = None,
                  device: str = None, max_length: int = 128):
-        self.model_dir = Path(model_dir) if model_dir else self.DEFAULT_MODEL_DIR
-        if not self.model_dir.exists():
-            raise FileNotFoundError(f'모델 폴더 없음: {self.model_dir}')
+        # model_dir가 있으면 로컬 경로 우선, 없으면 HF 모델명
+        if model_dir:
+            src = str(Path(model_dir))
+            if not Path(model_dir).exists():
+                raise FileNotFoundError(f'모델 폴더 없음: {model_dir}')
+        else:
+            src = model_name or self.DEFAULT_MODEL_NAME
+        self.source = src
 
         # device 자동 선택 (cuda 가능하면 cuda)
         if device is None:
@@ -68,8 +73,8 @@ class ComplaintClassifier:
         self.device = torch.device(device)
         self.max_length = max_length
 
-        self.tokenizer = AutoTokenizer.from_pretrained(str(self.model_dir))
-        self.model = AutoModelForSequenceClassification.from_pretrained(str(self.model_dir))
+        self.tokenizer = AutoTokenizer.from_pretrained(src)
+        self.model = AutoModelForSequenceClassification.from_pretrained(src)
         self.model.to(self.device)
         self.model.eval()
 
@@ -135,7 +140,7 @@ class ComplaintClassifier:
         return results
 
     def __repr__(self):
-        return (f'ComplaintClassifier(model_dir={self.model_dir}, '
+        return (f'ComplaintClassifier(source={self.source}, '
                 f'device={self.device}, num_labels={len(self.labels)})')
 
 

@@ -41,7 +41,7 @@ except ImportError:
 
 # ===== 환경 설정 =====
 ROOT = Path(__file__).parent
-CLASSIFIER_DIR = Path(os.environ.get('CLASSIFIER_DIR', ROOT / 'models' / 'bert-v9' / 'final'))
+CLASSIFIER_NAME = os.environ.get('CLASSIFIER_NAME', 'atti433/minde-classifier')
 URGENCY_DIR = Path(os.environ.get('URGENCY_DIR', ROOT / 'models' / 'urgency-bert' / 'final'))
 EMBED_MODEL_NAME = os.environ.get('EMBED_MODEL', 'BM-K/KoSimCSE-roberta')
 
@@ -96,7 +96,7 @@ def _get_classifier():
         with _loader_lock:
             if _classifier is None:  # double-checked locking
                 from classifier import ComplaintClassifier
-                _classifier = ComplaintClassifier(model_dir=str(CLASSIFIER_DIR))
+                _classifier = ComplaintClassifier(model_name=CLASSIFIER_NAME)
     return _classifier
 
 

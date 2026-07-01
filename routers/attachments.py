@@ -51,12 +51,14 @@ async def upload_attachment(
     current_user: models.User = Depends(get_current_user),  # 로그인 필수
 ):
     """특정 민원에 이미지/문서 파일을 첨부."""
-    # 1) 민원 존재 + 본인 소유 확인
+    # 1) 민원 존재 + 권한 확인 (소유자 또는 staff/admin)
     complaint = await db.get(models.Complaint, complaint_id)
     if not complaint:
         raise HTTPException(status_code=404, detail="민원을 찾을 수 없습니다.")
-    if complaint.user_id != current_user.user_id:
-        raise HTTPException(status_code=403, detail="본인 민원에만 첨부할 수 있습니다.")
+    is_owner = complaint.user_id == current_user.user_id
+    is_staff = current_user.user_type in ("staff", "admin")
+    if not (is_owner or is_staff):
+        raise HTTPException(status_code=403, detail="첨부 권한이 없습니다.")
 
     # 2) 파일 형식 검증 (TER-004)
     file_type = _detect_file_type(file.filename)
@@ -100,8 +102,10 @@ async def list_attachments(
     complaint = await db.get(models.Complaint, complaint_id)
     if not complaint:
         raise HTTPException(status_code=404, detail="민원을 찾을 수 없습니다.")
-    if complaint.user_id != current_user.user_id:
-        raise HTTPException(status_code=403, detail="본인 민원만 조회할 수 있습니다.")
+    is_owner = complaint.user_id == current_user.user_id
+    is_staff = current_user.user_type in ("staff", "admin")
+    if not (is_owner or is_staff):
+        raise HTTPException(status_code=403, detail="조회 권한이 없습니다.")
 
     result = await db.scalars(
         select(models.ComplaintAttachment).where(

@@ -127,3 +127,68 @@ class AttachmentOut(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# ---------- 부서(Department) ----------
+class DepartmentOut(BaseModel):
+    department_id: int
+    name: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DepartmentCreate(BaseModel):
+    name: str
+
+
+class DepartmentUpdate(BaseModel):
+    name: str
+
+
+# ---------- 카테고리(Category) ----------
+class CategoryOut(BaseModel):
+    category_id: int
+    name: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CategoryCreate(BaseModel):
+    name: str
+
+
+class CategoryUpdate(BaseModel):
+    name: str
+
+
+# ---------- 알림 설정 ----------
+class NotificationEnabledUpdate(BaseModel):
+    notification_enabled: bool
+
+
+# ---------- 채팅 세션 ----------
+class ChatSessionCreate(BaseModel):
+    title: str
+    status: str = "active"
+    messages: list | dict = []
+    created_at: datetime | None = None
+
+
+class ChatSessionOut(BaseModel):
+    session_id: int
+    title: str
+    status: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ChatSessionDetailOut(BaseModel):
+    session_id: int
+    user_id: int
+    title: str
+    status: str
+    messages: list | dict
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)

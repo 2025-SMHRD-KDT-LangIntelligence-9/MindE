@@ -99,3 +99,16 @@ async def delete_me(
     await db.delete(current_user)
     await db.commit()
     return
+
+
+@router.patch("/me/notifications", response_model=schemas.UserOut)
+async def update_my_notifications(
+    payload: schemas.NotificationEnabledUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """알림 수신 설정 저장."""
+    current_user.notification_enabled = payload.notification_enabled
+    await db.commit()
+    await db.refresh(current_user)
+    return current_user
