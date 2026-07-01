@@ -52,7 +52,7 @@ function Notifications() {
 
         {/* 헤더 */}
         <div className="bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden mb-4">
-          <div className="px-6 py-5 flex items-center justify-between">
+          <div className="px-4 md:px-6 py-3 md:py-5 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
                 <span className="material-symbols-outlined text-primary text-xl">notifications</span>
@@ -118,7 +118,7 @@ function Notifications() {
             />
           </div>
         ) : (
-          <div className="space-y-5">
+          <div className="space-y-3 md:space-y-5">
             {Object.entries(grouped).map(([group, items]) => (
               <div key={group}>
                 {/* 날짜 구분선 */}
@@ -134,7 +134,7 @@ function Notifications() {
                       <div
                         key={n.id}
                         onClick={() => navigate(`/my-complaints?id=${n.complaintId}`)}
-                        className={`bg-white border rounded-2xl flex gap-4 p-4 transition-all cursor-pointer hover:shadow-md ${
+                        className={`bg-white border rounded-2xl flex gap-3 md:gap-4 p-3 md:p-4 transition-all cursor-pointer hover:shadow-md ${
                           n.read
                             ? 'border-outline-variant/60'
                             : 'border-primary/20 shadow-sm shadow-primary/5'

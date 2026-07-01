@@ -70,7 +70,7 @@ function AdminMonitoring() {
       )}
 
       {/* 통계 탭 카드 */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-3 md:mb-6">
         {[
           { key: 'all',        label: '총 민원',     value: `${stats.total}건`,      icon: 'article',         color: 'text-primary',     bg: 'bg-primary/10',       activeBorder: 'border-primary',     activeRing: 'ring-primary/20' },
           { key: 'urgent',     label: '미처리 긴급', value: `${stats.urgent}건`,     icon: 'pending_actions', color: 'text-error',       bg: 'bg-error-container',  activeBorder: 'border-error',       activeRing: 'ring-error/20' },
@@ -82,18 +82,18 @@ function AdminMonitoring() {
             <button
               key={s.key}
               onClick={() => handleTabClick(s.key)}
-              className={`bg-white rounded-2xl border-2 p-5 shadow-sm flex items-center gap-4 w-full text-left transition-all hover:shadow-md ${
+              className={`bg-white rounded-2xl border-2 p-3 md:p-5 shadow-sm flex items-center gap-2 md:gap-4 w-full text-left transition-all hover:shadow-md ${
                 isActive
                   ? `${s.activeBorder} ring-4 ${s.activeRing}`
                   : 'border-outline-variant hover:border-outline'
               }`}
             >
-              <div className={`w-11 h-11 rounded-xl ${s.bg} flex items-center justify-center shrink-0`}>
-                <span className={`material-symbols-outlined text-xl ${s.color}`}>{s.icon}</span>
+              <div className={`w-8 h-8 md:w-11 md:h-11 rounded-xl ${s.bg} flex items-center justify-center shrink-0`}>
+                <span className={`material-symbols-outlined text-base md:text-xl ${s.color}`}>{s.icon}</span>
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-xs text-on-surface-variant font-medium">{s.label}</p>
-                <p className={`text-xl font-bold ${s.color}`}>{s.value}</p>
+                <p className={`text-base md:text-xl font-bold ${s.color}`}>{s.value}</p>
               </div>
               {isActive && (
                 <span className="material-symbols-outlined text-base text-on-surface-variant shrink-0">filter_alt</span>
@@ -105,7 +105,7 @@ function AdminMonitoring() {
 
       {/* 민원 리스트 */}
       <div className="bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden">
-        <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b border-outline-variant">
+        <div className="flex flex-wrap items-center justify-between gap-2 md:gap-3 px-3 md:px-6 py-3 md:py-4 border-b border-outline-variant">
           <div className="flex items-center gap-2">
             <h3 className="font-bold text-sm text-on-surface">상세 민원 리스트</h3>
             {activeTab !== 'all' && (
@@ -136,6 +136,7 @@ function AdminMonitoring() {
           </div>
         </div>
 
+        <div className="overflow-x-auto">
         <table className="w-full text-left">
           <thead className="border-b border-outline-variant bg-surface-container-low/60">
             <tr>
@@ -183,8 +184,9 @@ function AdminMonitoring() {
             })}
           </tbody>
         </table>
+        </div>
 
-        <div className="px-6 py-3.5 border-t border-outline-variant flex justify-between items-center bg-surface-container-low/30">
+        <div className="px-3 md:px-6 py-2 md:py-3.5 border-t border-outline-variant flex justify-between items-center bg-surface-container-low/30">
           <span className="text-xs text-on-surface-variant">전체 {filtered.length}건 (총 {complaints.length}건)</span>
         </div>
       </div>

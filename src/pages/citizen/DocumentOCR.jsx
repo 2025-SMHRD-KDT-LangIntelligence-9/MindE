@@ -113,7 +113,7 @@ function DocumentOCR() {
       <div className="flex gap-5" style={{ minHeight: 'calc(100vh - 8rem)' }}>
 
         {/* ── 왼쪽 사이드 ── */}
-        <aside className="w-56 shrink-0 flex flex-col gap-4">
+        <aside className="hidden md:flex w-56 shrink-0 flex-col gap-4">
 
           {/* 홈으로 */}
           <button
@@ -196,7 +196,7 @@ function DocumentOCR() {
               </div>
 
               {/* 상단 스텝 인디케이터 */}
-              <div className="flex items-center gap-0 shrink-0">
+              <div className="hidden sm:flex items-center gap-0 shrink-0">
                 {steps.map((s, i) => {
                   const stepNum = i + 1;
                   const done    = currentStep > stepNum;
@@ -277,9 +277,9 @@ function DocumentOCR() {
 
           {/* Step 2: OCR 추출 결과 (읽기 전용) */}
           {currentStep === 2 && (
-            <div className="grid grid-cols-12 gap-4 flex-1">
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 flex-1">
               {/* 문서 미리보기 */}
-              <div className="col-span-5 bg-white rounded-2xl border border-outline-variant shadow-sm flex flex-col overflow-hidden">
+              <div className="col-span-1 md:col-span-5 bg-white rounded-2xl border border-outline-variant shadow-sm flex flex-col overflow-hidden">
                 <input
                   ref={fileInputRef2}
                   type="file"
@@ -367,7 +367,7 @@ function DocumentOCR() {
               </div>
 
               {/* OCR 추출 결과 (읽기 전용) */}
-              <div className="col-span-7 bg-white rounded-2xl border border-outline-variant shadow-sm flex flex-col overflow-hidden">
+              <div className="col-span-1 md:col-span-7 bg-white rounded-2xl border border-outline-variant shadow-sm flex flex-col overflow-hidden">
                 <div className="flex items-center justify-between px-5 py-3.5 border-b border-outline-variant shrink-0">
                   <p className="text-sm font-bold text-on-surface">OCR 추출 결과</p>
                   <button
@@ -423,7 +423,7 @@ function DocumentOCR() {
                 <p className="text-xs text-on-surface-variant">항목을 클릭하여 수정할 수 있습니다.</p>
               </div>
               <div className="overflow-y-auto p-6">
-                <div className="grid grid-cols-2 gap-5">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   {ocrFields.map((section) => (
                     <div key={section.section} className="bg-surface-container-low/50 rounded-xl p-4">
                       <div className="flex items-center gap-1.5 mb-3">
@@ -669,7 +669,7 @@ function DocumentOCR() {
                 const pageOrder = [prev, centerPage, next];
 
                 return (
-                  <div className="flex-1 bg-slate-100 flex items-center justify-center gap-5 px-6 py-6 overflow-hidden relative">
+                  <div className="flex-1 bg-slate-100 flex items-center justify-center gap-5 px-6 py-6 overflow-x-auto relative">
 
                     {/* 왼쪽 화살표 */}
                     <button

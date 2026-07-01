@@ -53,17 +53,17 @@ function StaffStats() {
 
   return (
     <StaffLayout pageTitle="처리 현황" activeMenu="stats">
-      <div className="max-w-6xl mx-auto space-y-5">
+      <div className="max-w-6xl mx-auto space-y-3 md:space-y-5">
 
         {/* 담당 부서 배너 */}
-        <div className="flex items-center gap-3 bg-[#1e3a5f]/8 border border-[#1e3a5f]/20 rounded-xl px-5 py-3">
+        <div className="flex items-center gap-3 bg-[#1e3a5f]/8 border border-[#1e3a5f]/20 rounded-xl px-3 md:px-5 py-2 md:py-3">
           <span className="material-symbols-outlined text-[#1e3a5f] text-lg">business</span>
           <span className="text-sm font-bold text-[#1e3a5f]">{currentUser.dept}</span>
           <span className="text-xs text-on-surface-variant">담당 부서 통계만 집계됩니다.</span>
         </div>
 
         {/* 요약 카드 */}
-        <div className="grid grid-cols-7 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
           {[
             { label: '총 민원', value: total,       icon: 'assignment',   color: 'text-[#1e3a5f]',  bg: 'bg-[#1e3a5f]/8' },
             { label: '접수',    value: received,    icon: 'inbox',        color: 'text-blue-600',   bg: 'bg-blue-50' },
@@ -73,20 +73,20 @@ function StaffStats() {
             { label: '반려',    value: rejected,    icon: 'cancel',       color: 'text-rose-600',   bg: 'bg-rose-50' },
             { label: '완료',    value: done,        icon: 'check_circle', color: 'text-emerald-600',bg: 'bg-emerald-50' },
           ].map((c) => (
-            <div key={c.label} className="bg-white rounded-2xl border border-outline-variant shadow-sm p-4 flex flex-col items-center gap-2">
-              <div className={`w-10 h-10 rounded-xl ${c.bg} flex items-center justify-center shrink-0`}>
-                <span className={`material-symbols-outlined text-xl ${c.color}`}>{c.icon}</span>
+            <div key={c.label} className="bg-white rounded-2xl border border-outline-variant shadow-sm p-2 md:p-4 flex flex-col items-center gap-1 md:gap-2">
+              <div className={`w-7 h-7 md:w-10 md:h-10 rounded-xl ${c.bg} flex items-center justify-center shrink-0`}>
+                <span className={`material-symbols-outlined text-base md:text-xl ${c.color}`}>{c.icon}</span>
               </div>
-              <p className={`text-xl font-bold ${c.color}`}>{c.value}</p>
+              <p className={`text-base md:text-xl font-bold ${c.color}`}>{c.value}</p>
               <p className="text-xs text-on-surface-variant">{c.label}</p>
             </div>
           ))}
         </div>
 
-        <div className="grid grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-5">
           {/* 민원 유형별 분포 */}
-          <div className="bg-white rounded-2xl border border-outline-variant shadow-sm p-5">
-            <div className="flex items-center gap-2 mb-5">
+          <div className="bg-white rounded-2xl border border-outline-variant shadow-sm p-3 md:p-5">
+            <div className="flex items-center gap-2 mb-3 md:mb-5">
               <span className="material-symbols-outlined text-[#1e3a5f] text-lg">donut_large</span>
               <h3 className="font-bold text-sm text-on-surface">민원 유형별 분포</h3>
               <span className="text-xs text-on-surface-variant ml-auto">총 {total}건</span>
@@ -112,8 +112,8 @@ function StaffStats() {
           </div>
 
           {/* 요일별 접수 현황 */}
-          <div className="bg-white rounded-2xl border border-outline-variant shadow-sm p-5">
-            <div className="flex items-center gap-2 mb-5">
+          <div className="bg-white rounded-2xl border border-outline-variant shadow-sm p-3 md:p-5">
+            <div className="flex items-center gap-2 mb-3 md:mb-5">
               <span className="material-symbols-outlined text-[#1e3a5f] text-lg">bar_chart</span>
               <h3 className="font-bold text-sm text-on-surface">이번 주 요일별 접수</h3>
             </div>
@@ -155,8 +155,8 @@ function StaffStats() {
         </div>
 
         {/* 처리 상태 변경 이력 */}
-        <div className="bg-white rounded-2xl border border-outline-variant shadow-sm p-5">
-          <div className="flex items-center gap-2 mb-4">
+        <div className="bg-white rounded-2xl border border-outline-variant shadow-sm p-3 md:p-5">
+          <div className="flex items-center gap-2 mb-3 md:mb-4">
             <span className="material-symbols-outlined text-[#1e3a5f] text-lg">history</span>
             <h3 className="font-bold text-sm text-on-surface">최근 처리 이력</h3>
           </div>

@@ -17,15 +17,15 @@ function Home() {
   return (
     <CitizenLayout pageTitle="대시보드" activeMenu="home" sidebarColor="#aecdfa">
       {/* 환영 히어로 영역 */}
-      <section className="bg-primary/10 rounded-3xl p-10 flex flex-col md:flex-row items-center justify-between gap-6 mb-8">
+      <section className="bg-primary/10 rounded-3xl p-5 md:p-10 flex flex-col md:flex-row items-center justify-between gap-3 md:gap-6 mb-4 md:mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-on-surface mb-2">
+          <h1 className="text-xl md:text-3xl font-bold text-on-surface mb-2">
             {currentUser.name ? `좋은 아침입니다, ${currentUser.name}님.` : '안녕하세요, 마음이입니다.'}
           </h1>
           <p className="text-on-surface-variant max-w-md">
             시민 여러분의 목소리가 우리 도시를 더 살기 좋게 만듭니다. 마음결은 시민 여러분의 의견을 공감과 투명함으로 경청하겠습니다.
           </p>
-          <button onClick={() => navigate('/chatbot')} className="mt-6 bg-primary text-on-primary font-bold py-3 px-8 rounded-xl shadow-md flex items-center gap-2">
+          <button onClick={() => navigate('/chatbot')} className="mt-3 md:mt-6 bg-primary text-on-primary font-bold py-2.5 md:py-3 px-6 md:px-8 rounded-xl shadow-md flex items-center gap-2">
             <span className="material-symbols-outlined">add_circle</span>
             민원 신청하기
           </button>
@@ -34,28 +34,28 @@ function Home() {
       </section>
 
       {/* 상태 요약 카드 3개 */}
-      <section className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <section className="grid grid-cols-3 gap-3 md:gap-6 mb-4 md:mb-8">
         {[
           { label: '접수 완료', value: `${cReceived}건`, icon: 'archive' },
           { label: '처리 중', value: `${cInProgress}건`, icon: 'pending_actions' },
           { label: '처리 완료', value: `${cDone}건`, icon: 'check_circle' },
         ].map((card) => (
-          <div key={card.label} className="bg-white p-6 rounded-2xl border border-outline-variant flex items-center gap-5 shadow-sm">
-            <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
-              <span className="material-symbols-outlined text-2xl">{card.icon}</span>
+          <div key={card.label} className="bg-white p-3 md:p-6 rounded-2xl border border-outline-variant flex flex-col md:flex-row items-center gap-2 md:gap-5 shadow-sm">
+            <div className="w-10 h-10 md:w-14 md:h-14 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
+              <span className="material-symbols-outlined text-xl md:text-2xl">{card.icon}</span>
             </div>
-            <div>
-              <p className="text-sm font-bold text-on-surface-variant mb-1">{card.label}</p>
-              <h3 className="text-2xl font-bold text-primary">{card.value}</h3>
+            <div className="text-center md:text-left">
+              <p className="text-[10px] md:text-sm font-bold text-on-surface-variant mb-0.5 md:mb-1">{card.label}</p>
+              <h3 className="text-base md:text-2xl font-bold text-primary">{card.value}</h3>
             </div>
           </div>
         ))}
       </section>
 
       {/* 최근 민원 + 바로가기 */}
-      <section className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <div className="lg:col-span-8 bg-white rounded-2xl p-8 border border-outline-variant">
-          <div className="flex justify-between items-center mb-6">
+      <section className="grid grid-cols-1 md:grid-cols-12 gap-3 md:gap-6">
+        <div className="col-span-1 md:col-span-8 bg-white rounded-2xl p-4 md:p-8 border border-outline-variant">
+          <div className="flex justify-between items-center mb-3 md:mb-6">
             <h4 className="text-lg font-bold text-on-surface">최근 민원 처리 현황</h4>
             <button onClick={() => navigate('/my-complaints')} className="text-primary text-sm font-bold hover:underline">전체 보기</button>
           </div>
@@ -98,7 +98,7 @@ function Home() {
           </div>
         </div>
 
-        <div className="lg:col-span-4 bg-white rounded-2xl p-6 border border-outline-variant flex flex-col">
+        <div className="col-span-1 md:col-span-4 bg-white rounded-2xl p-3 md:p-6 border border-outline-variant flex flex-col">
           <h4 className="text-sm font-bold text-on-surface-variant uppercase mb-4">주요 서비스 바로가기</h4>
           <div className="grid grid-cols-3 gap-3">
             {[
@@ -109,16 +109,16 @@ function Home() {
               { label: '자주 묻는 질문', icon: 'contact_support',  path: '/faq' },
               { label: '설정',           icon: 'settings',         path: '/settings' },
             ].map((item) => (
-              <button key={item.label} onClick={() => navigate(item.path)} className="flex flex-col items-center gap-2 py-4 rounded-xl hover:bg-primary/5 transition-colors">
-                <div className="w-11 h-11 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                  <span className="material-symbols-outlined text-xl">{item.icon}</span>
+              <button key={item.label} onClick={() => navigate(item.path)} className="flex flex-col items-center gap-1.5 py-2 md:py-4 rounded-xl hover:bg-primary/5 transition-colors">
+                <div className="w-9 h-9 md:w-11 md:h-11 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                  <span className="material-symbols-outlined text-lg md:text-xl">{item.icon}</span>
                 </div>
                 <span className="text-[11px] font-bold text-on-surface text-center leading-tight">{item.label}</span>
               </button>
             ))}
           </div>
 
-          <div className="mt-auto pt-5 border-t border-outline-variant/60">
+          <div className="mt-auto pt-3 md:pt-5 border-t border-outline-variant/60">
             <div className="flex items-start gap-3 bg-primary/5 rounded-2xl px-4 py-3.5">
               <span className="material-symbols-outlined text-primary text-xl shrink-0 mt-0.5">volunteer_activism</span>
               <div>

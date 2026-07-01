@@ -28,6 +28,29 @@ export const getUsersApi = () =>
 export const updateUserDeptApi = (userId, departmentId) =>
   client.patch(`/admin/users/${userId}/department`, { department_id: departmentId }).then((r) => r.data);
 
-// 백엔드 GET /admin/departments 구현 필요
 export const getDepartmentsApi = () =>
   client.get('/admin/departments').then((r) => r.data);
+
+export const createDepartmentApi = (name) =>
+  client.post('/admin/departments', { name }).then((r) => r.data);
+
+export const updateDepartmentApi = (id, name) =>
+  client.patch(`/admin/departments/${id}`, { name }).then((r) => r.data);
+
+export const deleteDepartmentApi = (id) =>
+  client.delete(`/admin/departments/${id}`);
+
+export const getCategoriesApi = () =>
+  client.get('/admin/categories').then((r) => r.data);
+
+export const createCategoryApi = (name) =>
+  client.post('/admin/categories', { name }).then((r) => r.data);
+
+export const updateCategoryApi = (id, name) =>
+  client.patch(`/admin/categories/${id}`, { name }).then((r) => r.data);
+
+export const deleteCategoryApi = (id) =>
+  client.delete(`/admin/categories/${id}`);
+
+export const deleteUserApi = (userId) =>
+  client.delete(`/admin/users/${userId}`);

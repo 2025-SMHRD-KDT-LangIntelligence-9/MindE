@@ -54,35 +54,35 @@ function AdminDashboard() {
     <AdminLayout pageTitle="오늘의 대시보드" activeMenu="dashboard">
 
       {/* 요약 카드 */}
-      <div className="grid grid-cols-7 gap-3 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-3 md:mb-6">
         {summaryCards.map((c) => (
-          <div key={c.label} className="bg-white rounded-2xl border border-outline-variant p-4 shadow-sm flex flex-col items-center gap-2">
-            <div className={`w-10 h-10 rounded-xl ${c.bg} flex items-center justify-center shrink-0`}>
-              <span className={`material-symbols-outlined text-xl ${c.color}`}>{c.icon}</span>
+          <div key={c.label} className="bg-white rounded-2xl border border-outline-variant p-2 md:p-4 shadow-sm flex flex-col items-center gap-1 md:gap-2">
+            <div className={`w-8 h-8 md:w-10 md:h-10 rounded-xl ${c.bg} flex items-center justify-center shrink-0`}>
+              <span className={`material-symbols-outlined text-base md:text-xl ${c.color}`}>{c.icon}</span>
             </div>
-            <p className={`text-xl font-bold ${c.color}`}>{c.value}</p>
+            <p className={`text-base md:text-xl font-bold ${c.color}`}>{c.value}</p>
             <p className="text-xs text-on-surface-variant">{c.label}</p>
           </div>
         ))}
       </div>
 
       {/* 최근 7일 + 부서별 민원 */}
-      <div className="grid grid-cols-12 gap-5 mb-6">
-        <div className="col-span-8 bg-white rounded-2xl border border-outline-variant p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-5">
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-3 md:gap-5 mb-3 md:mb-6">
+        <div className="col-span-1 md:col-span-8 bg-white rounded-2xl border border-outline-variant p-3 md:p-6 shadow-sm">
+          <div className="flex items-center justify-between mb-3 md:mb-5">
             <div>
               <h3 className="font-bold text-sm text-on-surface">최근 7일 민원 접수 현황</h3>
               <p className="text-xs text-on-surface-variant mt-0.5">날짜별 민원 접수 건수</p>
             </div>
           </div>
-          <div className="flex items-end justify-between gap-2 h-44 pt-2">
+          <div className="flex items-end justify-between gap-2 h-28 md:h-44 pt-2">
             {last7Days.map((d) => {
               const maxCount = Math.max(...last7Days.map((x) => x.count), 1);
               const heightPct = d.count > 0 ? Math.max((d.count / maxCount) * 100, 8) : 0;
               return (
                 <div key={d.date} className="flex-1 flex flex-col items-center gap-1.5">
                   <span className="text-xs font-bold text-primary">{d.count > 0 ? `${d.count}건` : ''}</span>
-                  <div className="w-full flex items-end justify-center" style={{ height: '120px' }}>
+                  <div className="w-full flex items-end justify-center" style={{ height: 'clamp(60px, 10vw, 120px)' }}>
                     <div
                       className="w-full rounded-t-lg bg-primary/75 transition-all duration-500"
                       style={{ height: `${heightPct}%` }}
@@ -95,12 +95,12 @@ function AdminDashboard() {
           </div>
         </div>
 
-        <div className="col-span-4 bg-white rounded-2xl border border-outline-variant p-6 shadow-sm">
-          <h3 className="font-bold text-sm text-on-surface mb-5">부서별 민원 현황</h3>
+        <div className="col-span-1 md:col-span-4 bg-white rounded-2xl border border-outline-variant p-3 md:p-6 shadow-sm">
+          <h3 className="font-bold text-sm text-on-surface mb-3 md:mb-5">부서별 민원 현황</h3>
           {deptData.length === 0 ? (
             <p className="text-sm text-on-surface-variant text-center py-8">데이터가 없습니다.</p>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-2 md:space-y-4">
               {deptData.map((d) => {
                 const pct = Math.round((d.count / maxDeptCount) * 100);
                 return (
@@ -122,7 +122,7 @@ function AdminDashboard() {
 
       {/* 긴급 민원 테이블 */}
       <div className="bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-outline-variant">
+        <div className="flex items-center justify-between px-3 md:px-6 py-3 md:py-4 border-b border-outline-variant">
           <div>
             <h3 className="font-bold text-sm text-on-surface">최근 접수된 긴급 민원</h3>
             <p className="text-xs text-on-surface-variant mt-0.5">즉각적인 처리가 필요한 민원입니다.</p>
@@ -139,6 +139,7 @@ function AdminDashboard() {
         {urgentRows.length === 0 ? (
           <div className="px-6 py-8 text-center text-on-surface-variant text-sm">긴급 민원이 없습니다.</div>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead className="border-b border-outline-variant bg-surface-container-low/60">
               <tr>
@@ -172,6 +173,7 @@ function AdminDashboard() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

@@ -2,7 +2,8 @@ import { createContext, useContext, useState, useEffect } from 'react';
 import { getMeApi } from '../api/auth';
 import { getComplaintsApi, getAllComplaintsApi, addComplaintApi, updateComplaintStatusApi, saveMemoApi, saveResponseApi, updateComplaintDeptApi } from '../api/complaints';
 import { getNotificationsApi, markAllReadApi } from '../api/notifications';
-import { getUsersApi, approveStaffApi, rejectStaffApi, updateUserDeptApi } from '../api/admin';
+import { getUsersApi, approveStaffApi, rejectStaffApi, updateUserDeptApi, deleteUserApi } from '../api/admin';
+import { saveChatSessionApi, getChatSessionsApi, deleteChatSessionApi } from '../api/chat';
 
 /* 긴급도 공통 색상 */
 export const URGENCY_STYLE = {
@@ -86,6 +87,22 @@ export function AppProvider({ children }) {
     getNotificationsApi().then(setNotifications).catch(() => {});
     if (currentUser.role === 'admin') {
       getUsersApi().then(setUsers).catch(() => {});
+    }
+    if (currentUser.role === 'citizen') {
+      getChatSessionsApi().then((data) => {
+        setChatSessions(data.map((s) => ({
+          id: `session-${s.session_id}`,
+          session_id: s.session_id,
+          title: s.title,
+          preview: '',
+          date: new Date(s.created_at).toLocaleDateString('ko-KR'),
+          time: '',
+          status: s.status,
+          category: '기타',
+          messages: 0,
+          conversation: null,
+        })));
+      }).catch(() => {});
     }
   }, [currentUser.role]);
 
@@ -274,7 +291,10 @@ export function AppProvider({ children }) {
   };
 
   // 관리자가 회원 강제 탈퇴
-  const deleteUser = (userId) => {
+  const deleteUser = async (userId) => {
+    try {
+      await deleteUserApi(userId);
+    } catch {}
     setUsers((prev) => prev.filter((u) => u.id !== userId));
   };
 
@@ -308,8 +328,16 @@ export function AppProvider({ children }) {
   };
 
   // 상담 세션 저장 (챗봇)
-  const saveChatSession = (session) => {
+  const saveChatSession = async (session) => {
     setChatSessions((prev) => [session, ...prev.filter((s) => s.id !== session.id)]);
+    try {
+      await saveChatSessionApi(session);
+    } catch {}
+  };
+
+  const deleteChatSession = async (sessionId, id) => {
+    setChatSessions((prev) => prev.filter((s) => s.id !== id));
+    try { await deleteChatSessionApi(sessionId); } catch {}
   };
 
   // 알림 읽음 처리
@@ -321,8 +349,11 @@ export function AppProvider({ children }) {
   };
 
   // 담당자 본인 부서 민원 (deptGroup 기반 필터)
+  // deptGroup이 빈 배열이면 백엔드가 부서 정보를 아직 안 내려준 것이므로 전체 표시
   const myDeptComplaints = currentUser.role === 'staff'
-    ? complaints.filter((c) => currentUser.deptGroup.includes(c.dept))
+    ? (currentUser.deptGroup.length > 0
+        ? complaints.filter((c) => currentUser.deptGroup.includes(c.dept))
+        : complaints)
     : complaints;
 
   // 파생 통계 (computed)
@@ -358,6 +389,7 @@ export function AppProvider({ children }) {
       saveReply,
       addComplaint,
       saveChatSession,
+      deleteChatSession,
       markAllRead,
       registerUser,
       approveUser,

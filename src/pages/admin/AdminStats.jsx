@@ -75,30 +75,30 @@ function AdminStats() {
     <AdminLayout pageTitle="통계 및 인사이트" activeMenu="stats">
 
       {/* 요약 지표 카드 */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-3 gap-3 mb-3 md:mb-6">
         {[
           { label: '총 민원',   value: `${total}건`, icon: 'article',  color: 'text-primary',   bg: 'bg-primary/10' },
           { label: '처리 완료', value: `${done}건`,  icon: 'task_alt', color: 'text-navy',      bg: 'bg-navy/10' },
           { label: '처리율',    value: `${rate}%`,   icon: 'speed',    color: 'text-amber-600', bg: 'bg-amber-50' },
         ].map((s) => (
-          <div key={s.label} className="bg-white rounded-2xl border border-outline-variant p-5 shadow-sm flex items-center gap-4">
-            <div className={`w-11 h-11 rounded-xl ${s.bg} flex items-center justify-center shrink-0`}>
-              <span className={`material-symbols-outlined text-xl ${s.color}`}>{s.icon}</span>
+          <div key={s.label} className="bg-white rounded-2xl border border-outline-variant p-3 md:p-5 shadow-sm flex items-center gap-2 md:gap-4">
+            <div className={`w-8 h-8 md:w-11 md:h-11 rounded-xl ${s.bg} flex items-center justify-center shrink-0`}>
+              <span className={`material-symbols-outlined text-base md:text-xl ${s.color}`}>{s.icon}</span>
             </div>
             <div>
               <p className="text-xs text-on-surface-variant font-medium">{s.label}</p>
-              <p className={`text-xl font-bold ${s.color}`}>{s.value}</p>
+              <p className={`text-base md:text-xl font-bold ${s.color}`}>{s.value}</p>
             </div>
           </div>
         ))}
       </div>
 
       {/* 월별 추이 + 부서별 민원 건수 */}
-      <div className="grid grid-cols-12 gap-5 mb-5">
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-3 md:gap-5 mb-3 md:mb-5">
 
         {/* 월별 민원 발생 / 처리량 */}
-        <div className="col-span-12 lg:col-span-8 bg-white rounded-2xl border border-outline-variant p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-5">
+        <div className="col-span-1 md:col-span-8 bg-white rounded-2xl border border-outline-variant p-3 md:p-6 shadow-sm">
+          <div className="flex items-center justify-between mb-3 md:mb-5">
             <div>
               <h3 className="font-bold text-sm text-on-surface">월별 민원 발생 / 처리량</h3>
               <p className="text-xs text-on-surface-variant mt-0.5">최근 6개월</p>
@@ -111,10 +111,10 @@ function AdminStats() {
           {total === 0 ? (
             <p className="text-sm text-on-surface-variant text-center py-12">데이터가 없습니다.</p>
           ) : (
-            <div className="flex items-end gap-3 h-44">
+            <div className="flex items-end gap-2 md:gap-3 h-28 md:h-44">
               {monthData.map((d, i) => (
                 <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                  <div className="w-full flex items-end gap-1" style={{ height: '160px' }}>
+                  <div className="w-full flex items-end gap-0.5 md:gap-1" style={{ height: 'clamp(60px, 10vw, 160px)' }}>
                     <div className="flex-1 bg-primary rounded-t transition-all" style={{ height: `${(d.received / maxBar) * 100}%` }} />
                     <div className="flex-1 bg-emerald-400 rounded-t transition-all" style={{ height: `${(d.resolved / maxBar) * 100}%` }} />
                   </div>
@@ -126,12 +126,12 @@ function AdminStats() {
         </div>
 
         {/* 부서별 민원 건수 */}
-        <div className="col-span-12 lg:col-span-4 bg-white rounded-2xl border border-outline-variant p-6 shadow-sm">
-          <h3 className="font-bold text-sm text-on-surface mb-5">부서별 민원 건수</h3>
+        <div className="col-span-1 md:col-span-4 bg-white rounded-2xl border border-outline-variant p-3 md:p-6 shadow-sm">
+          <h3 className="font-bold text-sm text-on-surface mb-3 md:mb-5">부서별 민원 건수</h3>
           {deptData.length === 0 ? (
             <p className="text-sm text-on-surface-variant text-center py-8">데이터가 없습니다.</p>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-2 md:space-y-4">
               {deptData.map((d) => (
                 <div key={d.dept}>
                   <div className="flex justify-between text-xs mb-1.5">
@@ -150,15 +150,15 @@ function AdminStats() {
       </div>
 
       {/* 유형 분포 + 반복 민원 */}
-      <div className="grid grid-cols-12 gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-3 md:gap-5">
 
         {/* 민원 유형 분포 */}
-        <div className="col-span-12 md:col-span-6 bg-white rounded-2xl border border-outline-variant p-6 shadow-sm">
-          <h3 className="font-bold text-sm text-on-surface mb-5">주요 민원 유형 분포</h3>
+        <div className="col-span-1 md:col-span-6 bg-white rounded-2xl border border-outline-variant p-3 md:p-6 shadow-sm">
+          <h3 className="font-bold text-sm text-on-surface mb-3 md:mb-5">주요 민원 유형 분포</h3>
           {distribution.length === 0 ? (
             <p className="text-sm text-on-surface-variant text-center py-8">데이터가 없습니다.</p>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2 md:space-y-3">
               {distribution.map((d, i) => (
                 <div key={d.label}>
                   <div className="flex justify-between text-xs mb-1.5">
@@ -175,12 +175,12 @@ function AdminStats() {
         </div>
 
         {/* 반복 민원 TOP 5 */}
-        <div className="col-span-12 md:col-span-6 bg-white rounded-2xl border border-outline-variant p-6 shadow-sm">
-          <h3 className="font-bold text-sm text-on-surface mb-5">반복 민원 TOP 5</h3>
+        <div className="col-span-1 md:col-span-6 bg-white rounded-2xl border border-outline-variant p-3 md:p-6 shadow-sm">
+          <h3 className="font-bold text-sm text-on-surface mb-3 md:mb-5">반복 민원 TOP 5</h3>
           {repeatTop.length === 0 ? (
             <p className="text-sm text-on-surface-variant text-center py-8">데이터가 없습니다.</p>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2 md:space-y-3">
               {repeatTop.map((r) => (
                 <div key={r.rank} className="flex items-center gap-3">
                   <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${

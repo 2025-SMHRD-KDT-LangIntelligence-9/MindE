@@ -111,7 +111,7 @@ function Login() {
       </div>
     )}
     <div className="h-screen flex items-center justify-center bg-white overflow-hidden relative">
-      <div className="flex items-stretch mx-auto gap-6 px-10 py-4 relative z-10">
+      <div className="flex items-stretch mx-auto gap-6 px-4 py-2 md:px-10 md:py-4 relative z-10 w-full max-w-[900px]">
 
         {/* ── 왼쪽: 브랜드 ── */}
         <div className="hidden lg:flex w-[400px] shrink-0">
@@ -170,7 +170,7 @@ function Login() {
         </div>
 
         {/* ── 오른쪽: 폼 ── */}
-        <div className="flex w-[440px] shrink-0">
+        <div className="flex w-full md:w-[440px] md:shrink-0">
           <div className="w-full flex flex-col">
 
             <div className="bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden relative flex flex-col flex-1">
@@ -183,7 +183,7 @@ function Login() {
               <div className="relative z-10 flex flex-col flex-1 justify-between">
 
                 {/* 상단 환영 배너 */}
-                <div className="px-10 pt-10 pb-6 border-b border-outline-variant/50 bg-gradient-to-r from-primary/5 to-blue-50/80">
+                <div className="px-5 pt-5 pb-4 md:px-10 md:pt-10 md:pb-6 border-b border-outline-variant/50 bg-gradient-to-r from-primary/5 to-blue-50/80">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-2xl bg-primary flex items-center justify-center shadow-md shadow-primary/30 shrink-0">
                       <span className="material-symbols-outlined text-white text-xl">waving_hand</span>
@@ -196,16 +196,16 @@ function Login() {
                 </div>
 
                 {/* 폼 영역 */}
-                <form onSubmit={handleSubmit} className="px-10 py-8 flex flex-col gap-6">
+                <form onSubmit={handleSubmit} className="px-5 py-4 md:px-10 md:py-8 flex flex-col gap-4 md:gap-6">
 
                   <div>
-                    <div className="flex items-center gap-2 mb-6">
+                    <div className="flex items-center gap-2 mb-3 md:mb-6">
                       <div className="w-1 h-5 rounded-full bg-primary" />
                       <span className="text-base font-bold text-on-surface">로그인</span>
                     </div>
 
                     {/* 이메일 */}
-                    <div className="flex flex-col gap-5">
+                    <div className="flex flex-col gap-3 md:gap-5">
                       <div>
                         <label className="text-xs font-bold text-on-surface-variant block mb-1.5">이메일</label>
                         <div className="relative">
@@ -284,7 +284,7 @@ function Login() {
                 </form>
 
                 {/* 하단 서비스 특징 */}
-                <div className="px-10 py-5 border-t border-outline-variant/50 bg-slate-50/80">
+                <div className="px-5 py-3 md:px-10 md:py-5 border-t border-outline-variant/50 bg-slate-50/80">
                   <div className="flex items-center justify-around">
                     {[
                       { icon: 'smart_toy',      label: 'AI 민원 상담' },

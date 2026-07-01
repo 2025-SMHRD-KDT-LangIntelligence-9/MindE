@@ -70,8 +70,8 @@ function Register() {
   };
 
   return (
-    <div className="h-screen flex items-center justify-center bg-white overflow-hidden">
-      <div className="flex items-stretch mx-auto gap-6 px-10 py-4">
+    <div className="h-[100dvh] md:min-h-screen flex items-center justify-center bg-white overflow-hidden md:overflow-auto md:py-4">
+      <div className="flex items-stretch mx-auto gap-6 px-4 md:px-10 md:py-4 w-full max-w-[900px] h-full md:h-auto">
 
         {/* ── 왼쪽: 브랜드 ── */}
         <div className="hidden lg:flex w-[400px] shrink-0">
@@ -130,9 +130,9 @@ function Register() {
         </div>
 
         {/* ── 오른쪽: 폼 ── */}
-        <div className="flex w-[440px] shrink-0">
-          <div className="w-full flex flex-col">
-            <div className="bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden flex flex-col flex-1">
+        <div className="flex w-full md:w-[440px] md:shrink-0 h-full md:h-auto">
+          <div className="w-full flex flex-col h-full md:h-auto">
+            <div className="bg-white md:rounded-2xl md:border md:border-outline-variant md:shadow-sm overflow-hidden flex flex-col flex-1 h-full md:h-auto">
 
               {/* 탭 */}
               <div className="flex border-b border-outline-variant">
@@ -144,23 +144,30 @@ function Register() {
                     key={t.key}
                     type="button"
                     onClick={() => handleModeChange(t.key)}
-                    className={`flex-1 flex items-center justify-center gap-2 py-4 text-sm font-bold transition-all border-b-2 ${
+                    className={`flex-1 flex items-center justify-center gap-2 py-2 md:py-4 text-xs md:text-sm font-bold transition-all border-b-2 ${
                       mode === t.key
                         ? 'text-primary border-primary bg-primary/3'
                         : 'text-on-surface-variant border-transparent hover:text-on-surface hover:bg-surface-container-low'
                     }`}
                   >
-                    <span className="material-symbols-outlined text-lg">{t.icon}</span>
+                    <span className="material-symbols-outlined text-base md:text-lg">{t.icon}</span>
                     {t.label}
                   </button>
                 ))}
               </div>
 
-              <div className="p-6 flex flex-col flex-1 justify-center">
-                <h2 className="text-base font-bold text-on-surface mb-0.5">
+              <div className="p-3 md:p-6 flex flex-col flex-1 justify-start md:justify-center">
+
+                {/* 모바일 전용 로고 */}
+                <div className="md:hidden flex flex-col items-center gap-1 py-2 mb-1">
+                  <img src={logo} alt="마음이" className="h-14 w-auto" />
+                  <p className="text-xs text-on-surface-variant">AI 기반 공공 민원 서비스</p>
+                </div>
+
+                <h2 className="text-sm md:text-base font-bold text-on-surface mb-0.5">
                   {isStaff ? '담당자 회원가입' : '일반 회원가입'}
                 </h2>
-                <p className="text-xs text-on-surface-variant mb-4">
+                <p className="text-xs text-on-surface-variant mb-2 md:mb-4">
                   {isStaff ? '담당 부서를 선택하고 정보를 입력해주세요.' : '정보를 입력하고 마음이 서비스를 시작하세요.'}
                 </p>
 
@@ -198,47 +205,47 @@ function Register() {
                   </div>
                 ) : (
                   <>
-                    <form onSubmit={handleSubmit} className="space-y-3">
+                    <form onSubmit={handleSubmit} className="space-y-2 md:space-y-3">
                       {/* 이름 */}
                       <div>
-                        <label className="text-sm font-medium text-on-surface block mb-1.5">이름</label>
+                        <label className="text-xs md:text-sm font-medium text-on-surface block mb-0.5 md:mb-1.5">이름</label>
                         <div className="relative">
                           <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[20px]">person</span>
                           <input type="text" placeholder="홍길동" value={name} onChange={(e) => setName(e.target.value)}
-                            className="w-full h-11 pl-10 pr-4 border border-outline-variant rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-on-surface text-sm" />
+                            className="w-full h-9 md:h-11 pl-10 pr-4 border border-outline-variant rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-on-surface text-xs md:text-sm" />
                         </div>
                       </div>
 
                       {/* 전화번호 */}
                       <div>
-                        <label className="text-sm font-medium text-on-surface block mb-1.5">전화번호</label>
+                        <label className="text-xs md:text-sm font-medium text-on-surface block mb-0.5 md:mb-1.5">전화번호</label>
                         <div className="relative">
                           <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[20px]">phone</span>
                           <input type="tel" placeholder="010-0000-0000" value={phone} onChange={(e) => setPhone(e.target.value)}
-                            className="w-full h-11 pl-10 pr-4 border border-outline-variant rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-on-surface text-sm" />
+                            className="w-full h-9 md:h-11 pl-10 pr-4 border border-outline-variant rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-on-surface text-xs md:text-sm" />
                         </div>
                       </div>
 
                       {/* 이메일 */}
                       <div>
-                        <label className="text-sm font-medium text-on-surface block mb-1.5">이메일</label>
+                        <label className="text-xs md:text-sm font-medium text-on-surface block mb-0.5 md:mb-1.5">이메일</label>
                         <div className="relative">
                           <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[20px]">mail</span>
                           <input type="email" placeholder="example@email.com" value={email} onChange={(e) => setEmail(e.target.value)}
-                            className="w-full h-11 pl-10 pr-4 border border-outline-variant rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-on-surface text-sm" />
+                            className="w-full h-9 md:h-11 pl-10 pr-4 border border-outline-variant rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-on-surface text-xs md:text-sm" />
                         </div>
                       </div>
 
                       {/* 담당 부서 (담당자만) */}
                       {isStaff && (
                         <div>
-                          <label className="text-sm font-medium text-on-surface block mb-1.5">담당 부서</label>
+                          <label className="text-xs md:text-sm font-medium text-on-surface block mb-0.5 md:mb-1.5">담당 부서</label>
                           <div className="relative">
                             <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[20px]">business</span>
                             <select
                               value={selectedDept}
                               onChange={(e) => setSelectedDept(e.target.value)}
-                              className="w-full h-11 pl-10 pr-4 border border-outline-variant rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-on-surface text-sm bg-white appearance-none"
+                              className="w-full h-9 md:h-11 pl-10 pr-4 border border-outline-variant rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-on-surface text-xs md:text-sm bg-white appearance-none"
                             >
                               {DEPT_OPTIONS.map((d) => (
                                 <option key={d.dept} value={d.dept}>{d.dept}</option>
@@ -254,12 +261,12 @@ function Register() {
 
                       {/* 비밀번호 */}
                       <div>
-                        <label className="text-sm font-medium text-on-surface block mb-1.5">비밀번호</label>
+                        <label className="text-xs md:text-sm font-medium text-on-surface block mb-0.5 md:mb-1.5">비밀번호</label>
                         <div className="relative">
                           <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[20px]">lock</span>
                           <input type={showPw ? 'text' : 'password'} placeholder="비밀번호를 입력하세요"
                             value={password} onChange={(e) => setPassword(e.target.value)}
-                            className="w-full h-11 pl-10 pr-10 border border-outline-variant rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-on-surface text-sm" />
+                            className="w-full h-9 md:h-11 pl-10 pr-10 border border-outline-variant rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-on-surface text-xs md:text-sm" />
                           <button type="button" onClick={() => setShowPw(!showPw)} className="absolute right-3 top-1/2 -translate-y-1/2 text-outline hover:text-on-surface transition-colors">
                             <span className="material-symbols-outlined text-[20px]">{showPw ? 'visibility_off' : 'visibility'}</span>
                           </button>
@@ -268,12 +275,12 @@ function Register() {
 
                       {/* 비밀번호 확인 */}
                       <div>
-                        <label className="text-sm font-medium text-on-surface block mb-1.5">비밀번호 확인</label>
+                        <label className="text-xs md:text-sm font-medium text-on-surface block mb-0.5 md:mb-1.5">비밀번호 확인</label>
                         <div className="relative">
                           <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[20px]">lock_reset</span>
                           <input type={showPwConfirm ? 'text' : 'password'} placeholder="비밀번호를 다시 입력하세요"
                             value={passwordConfirm} onChange={(e) => setPasswordConfirm(e.target.value)}
-                            className="w-full h-11 pl-10 pr-10 border border-outline-variant rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-on-surface text-sm" />
+                            className="w-full h-9 md:h-11 pl-10 pr-10 border border-outline-variant rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-on-surface text-xs md:text-sm" />
                           <button type="button" onClick={() => setShowPwConfirm(!showPwConfirm)} className="absolute right-3 top-1/2 -translate-y-1/2 text-outline hover:text-on-surface transition-colors">
                             <span className="material-symbols-outlined text-[20px]">{showPwConfirm ? 'visibility_off' : 'visibility'}</span>
                           </button>
@@ -289,20 +296,20 @@ function Register() {
                       )}
 
                       {!isStaff && (
-                        <label className="flex items-center gap-2 cursor-pointer pt-1">
-                          <input type="checkbox" defaultChecked className="w-4 h-4 accent-primary" />
-                          <span className="text-sm text-on-surface-variant">민원 처리 결과 및 서비스 알림 수신에 동의합니다.</span>
+                        <label className="flex items-center gap-2 cursor-pointer pt-0.5">
+                          <input type="checkbox" defaultChecked className="w-3.5 h-3.5 md:w-4 md:h-4 accent-primary shrink-0" />
+                          <span className="text-xs text-on-surface-variant">민원 처리 결과 및 서비스 알림 수신에 동의합니다.</span>
                         </label>
                       )}
 
                       <button type="submit" disabled={loading}
-                        className="w-full py-3 font-bold rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-sm bg-primary text-white hover:brightness-105 shadow-md shadow-primary/30 mt-1 disabled:opacity-60 disabled:cursor-not-allowed">
+                        className="w-full py-2 md:py-3 font-bold rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-xs md:text-sm bg-primary text-white hover:brightness-105 shadow-md shadow-primary/30 mt-0.5 disabled:opacity-60 disabled:cursor-not-allowed">
                         {loading ? '처리 중...' : (isStaff ? '담당자 가입 신청' : '회원가입')}
                         <span className="material-symbols-outlined text-lg">{loading ? 'hourglass_empty' : (isStaff ? 'badge' : 'person_add')}</span>
                       </button>
                     </form>
 
-                    <p className="text-center text-sm text-on-surface-variant mt-4">
+                    <p className="text-center text-xs text-on-surface-variant mt-4">
                       이미 계정이 있으신가요?{' '}
                       <button type="button" onClick={() => navigate('/login')} className="text-primary font-bold hover:underline">
                         로그인

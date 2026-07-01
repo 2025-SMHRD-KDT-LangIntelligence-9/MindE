@@ -49,14 +49,14 @@ function AdminLayout({ pageTitle, activeMenu, children }) {
   return (
     <div className="min-h-screen bg-background text-on-background">
 
-      <header className="fixed top-0 left-0 w-full h-16 bg-slate-100 border-b border-slate-200 z-50 flex items-center px-6 shadow-sm">
+      <header className="fixed top-0 left-0 w-full h-10 md:h-16 bg-slate-100 border-b border-slate-200 z-50 flex items-center px-3 md:px-6 shadow-sm">
 
-        <button onClick={() => navigate('/admin')} className="shrink-0 mr-6 flex items-center gap-2.5">
-          <img src={logo} alt="마음이 로고" className="h-16 w-auto" />
+        <button onClick={() => navigate('/admin')} className="shrink-0 mr-2 md:mr-6 flex items-center gap-1.5 md:gap-2.5">
+          <img src={logo} alt="마음이 로고" className="h-10 md:h-16 w-auto" />
           <span className="text-xs font-bold text-slate-500 border border-slate-300 px-2 py-0.5 rounded-md">관리자</span>
         </button>
 
-        <nav className="flex items-center h-full flex-1 overflow-x-auto">
+        <nav className="hidden md:flex items-center h-full flex-1 overflow-x-auto">
           {menuItems.map((item) => (
             <button
               key={item.key}
@@ -73,7 +73,7 @@ function AdminLayout({ pageTitle, activeMenu, children }) {
           ))}
         </nav>
 
-        <div className="flex items-center gap-2 shrink-0 pl-4">
+        <div className="flex items-center gap-1 md:gap-2 shrink-0 ml-auto md:ml-0 md:pl-4">
           <NotificationDropdown
             items={notifItems}
             onMarkAllRead={handleMarkAllRead}
@@ -82,21 +82,37 @@ function AdminLayout({ pageTitle, activeMenu, children }) {
               else navigate('/admin/settings?tab=users');
             }}
           />
-          <div className="flex items-center gap-2 pl-3 border-l border-slate-300">
+          <div className="flex items-center gap-1 md:gap-2 pl-2 md:pl-3 border-l border-slate-300">
             <span className="text-sm font-bold text-slate-700 hidden sm:inline">시스템 관리자</span>
             <button
               onClick={handleLogout}
-              className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center hover:bg-slate-300 transition-colors"
+              className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-slate-200 flex items-center justify-center hover:bg-slate-300 transition-colors"
               title="로그아웃"
             >
-              <span className="material-symbols-outlined text-slate-600 text-xl">logout</span>
+              <span className="material-symbols-outlined text-slate-600 text-lg md:text-xl">logout</span>
             </button>
           </div>
         </div>
       </header>
 
-      <main className="pt-16 min-h-screen">
-        <div className="p-6">{children}</div>
+      {/* 모바일 하단 탭바 */}
+      <nav className="md:hidden fixed bottom-0 left-0 w-full bg-white border-t border-slate-200 z-50 flex items-center justify-around">
+        {menuItems.map((item) => (
+          <button
+            key={item.key}
+            onClick={() => navigate(item.path)}
+            className={`flex flex-col items-center gap-0.5 py-2 flex-1 transition-colors ${
+              activeMenu === item.key ? 'text-primary' : 'text-slate-400'
+            }`}
+          >
+            <span className="material-symbols-outlined text-xl">{item.icon}</span>
+            <span className="text-[9px] font-medium">{item.label}</span>
+          </button>
+        ))}
+      </nav>
+
+      <main className="pt-10 md:pt-16 pb-16 md:pb-0 min-h-screen">
+        <div className="p-3 md:p-6">{children}</div>
       </main>
 
     </div>

@@ -61,7 +61,7 @@ function AdminUsers() {
         </div>
       )}
 
-      <div className="max-w-5xl mx-auto space-y-6">
+      <div className="max-w-5xl mx-auto space-y-3 md:space-y-6">
 
         {/* ── 승인 대기 섹션 ── */}
         {pending.length > 0 && (
@@ -72,7 +72,7 @@ function AdminUsers() {
             </div>
             <div className="space-y-2">
               {pending.map((user) => (
-                <div key={user.id} className="bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4 flex items-center gap-4">
+                <div key={user.id} className="bg-amber-50 border border-amber-200 rounded-2xl px-3 md:px-5 py-2 md:py-4 flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4">
                   <div className="w-9 h-9 rounded-full bg-amber-200 flex items-center justify-center shrink-0">
                     <span className="material-symbols-outlined text-amber-700 text-lg">badge</span>
                   </div>
@@ -115,7 +115,7 @@ function AdminUsers() {
 
         {/* ── 전체 회원 섹션 ── */}
         <div>
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between mb-2 md:mb-3">
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-bold text-on-surface">전체 회원</h2>
               <div className="flex gap-2">
@@ -139,6 +139,7 @@ function AdminUsers() {
           </div>
 
           <div className="bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-slate-50 border-b border-outline-variant">
                 <tr>
@@ -160,16 +161,16 @@ function AdminUsers() {
                   const isEditing = editingDept[user.id] !== undefined;
                   return (
                     <tr key={user.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-5 py-3.5 font-bold text-on-surface">{user.name}</td>
-                      <td className="px-5 py-3.5 text-on-surface-variant">{user.email || '-'}</td>
-                      <td className="px-5 py-3.5 text-on-surface-variant">{user.phone || '-'}</td>
-                      <td className="px-5 py-3.5">
+                      <td className="px-3 md:px-5 py-2 md:py-3.5 font-bold text-on-surface">{user.name}</td>
+                      <td className="px-3 md:px-5 py-2 md:py-3.5 text-on-surface-variant">{user.email || '-'}</td>
+                      <td className="px-3 md:px-5 py-2 md:py-3.5 text-on-surface-variant">{user.phone || '-'}</td>
+                      <td className="px-3 md:px-5 py-2 md:py-3.5">
                         <span className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full ${r.bg} ${r.text}`}>
                           <span className="material-symbols-outlined text-xs">{r.icon}</span>
                           {r.label}
                         </span>
                       </td>
-                      <td className="px-5 py-3.5">
+                      <td className="px-3 md:px-5 py-2 md:py-3.5">
                         {user.role === 'staff' ? (
                           isEditing ? (
                             <div className="flex items-center gap-1.5">
@@ -201,12 +202,13 @@ function AdminUsers() {
                           <span className="text-xs text-on-surface-variant">-</span>
                         )}
                       </td>
-                      <td className="px-5 py-3.5 text-on-surface-variant text-xs">{user.joinedAt}</td>
+                      <td className="px-3 md:px-5 py-2 md:py-3.5 text-on-surface-variant text-xs">{user.joinedAt}</td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
+            </div>
           </div>
         </div>
 

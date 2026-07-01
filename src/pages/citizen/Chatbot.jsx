@@ -2,7 +2,7 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import CitizenLayout from '../../layouts/CitizenLayout';
 import { CATEGORY_STYLE, useApp } from '../../store/AppContext';
-import { chatAskApi, chatImageApi, chatResetApi } from '../../api/chat';
+import { chatAskApi, chatImageApi, getChatSessionApi } from '../../api/chat';
 
 const quickReplies = [
   { icon: 'description',         label: '필요 서류 안내' },
@@ -34,15 +34,15 @@ function MessageBubble({ msg, isSpeaking, onSpeak }) {
   const isAI = msg.role === 'ai';
   const lines = (msg.text || '').split('\n');
   return (
-    <div className={`flex gap-3 ${isAI ? '' : 'flex-row-reverse'}`}>
-      <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-1 shadow-sm ${isAI ? 'bg-primary' : 'bg-primary/15'}`}>
-        <span className={`material-symbols-outlined text-base ${isAI ? 'text-white' : 'text-primary'}`}>{isAI ? 'smart_toy' : 'person'}</span>
+    <div className={`flex gap-2 md:gap-3 ${isAI ? '' : 'flex-row-reverse'}`}>
+      <div className={`w-6 h-6 md:w-8 md:h-8 rounded-full flex items-center justify-center shrink-0 mt-1 shadow-sm ${isAI ? 'bg-primary' : 'bg-primary/15'}`}>
+        <span className={`material-symbols-outlined text-sm md:text-base ${isAI ? 'text-white' : 'text-primary'}`}>{isAI ? 'smart_toy' : 'person'}</span>
       </div>
-      <div className={`max-w-[72%] ${isAI ? '' : ''}`}>
-        <p className={`text-[11px] text-on-surface-variant mb-1.5 ${isAI ? 'ml-1' : 'mr-1 text-right'}`}>
+      <div className="max-w-[80%] md:max-w-[72%]">
+        <p className={`text-[10px] md:text-[11px] text-on-surface-variant mb-1 ${isAI ? 'ml-1' : 'mr-1 text-right'}`}>
           {isAI ? `마음이 · ${msg.time}` : msg.time}
         </p>
-        <div className={`px-4 py-3.5 rounded-2xl shadow-sm text-sm leading-relaxed ${
+        <div className={`px-3 py-2.5 md:px-4 md:py-3.5 rounded-2xl shadow-sm text-xs md:text-sm leading-relaxed ${
           isAI
             ? 'bg-white border border-outline-variant/40 rounded-tl-sm text-on-surface'
             : 'bg-primary text-white rounded-tr-sm'
@@ -51,18 +51,18 @@ function MessageBubble({ msg, isSpeaking, onSpeak }) {
             <div className="flex flex-wrap gap-2 mb-2">
               {msg.files.map((f, i) => (
                 f.isImage ? (
-                  <img key={i} src={f.url} alt={f.name} className="max-w-[160px] max-h-[120px] rounded-xl object-cover border border-white/30" />
+                  <img key={i} src={f.url} alt={f.name} className="max-w-[120px] md:max-w-[160px] max-h-[100px] md:max-h-[120px] rounded-xl object-cover border border-white/30" />
                 ) : (
                   <div key={i} className="flex items-center gap-2 bg-white/20 rounded-xl px-3 py-2 text-xs">
                     <span className="material-symbols-outlined text-base">attach_file</span>
-                    <span className="max-w-[120px] truncate">{f.name}</span>
+                    <span className="max-w-[100px] truncate">{f.name}</span>
                   </div>
                 )
               ))}
             </div>
           )}
           {lines.map((line, i) => (
-            <p key={i} className={line === '' ? 'h-2' : ''}>
+            <p key={i} className={line === '' ? 'h-1.5' : ''}>
               {line.replace(/\*\*(.*?)\*\*/g, '$1').split(/(\*\*.*?\*\*)/).map((part, j) =>
                 /^\*\*/.test(part)
                   ? <strong key={j} className={isAI ? 'text-primary' : 'text-white font-bold'}>{part.replace(/\*\*/g, '')}</strong>
@@ -73,9 +73,9 @@ function MessageBubble({ msg, isSpeaking, onSpeak }) {
           {isAI && (
             <button
               onClick={() => onSpeak(msg.text.replace(/\*\*/g, '').replace(/\n/g, ' '))}
-              className="mt-2 flex items-center gap-1 text-[11px] text-on-surface-variant hover:text-primary transition-colors"
+              className="mt-1.5 flex items-center gap-1 text-[10px] md:text-[11px] text-on-surface-variant hover:text-primary transition-colors"
             >
-              <span className="material-symbols-outlined text-sm">{isSpeaking ? 'volume_off' : 'volume_up'}</span>
+              <span className="material-symbols-outlined text-xs md:text-sm">{isSpeaking ? 'volume_off' : 'volume_up'}</span>
               {isSpeaking ? '음성 중지' : '음성으로 듣기'}
             </button>
           )}
@@ -88,7 +88,7 @@ function MessageBubble({ msg, isSpeaking, onSpeak }) {
 function Chatbot() {
   const navigate  = useNavigate();
   const location  = useLocation();
-  const { chatSessions, currentUser, saveChatSession, addComplaint } = useApp();
+  const { chatSessions, currentUser, saveChatSession, deleteChatSession, addComplaint } = useApp();
 
   const makeGreeting = () => {
     const d = new Date();
@@ -104,6 +104,7 @@ function Chatbot() {
   const [view, setView]                   = useState('chat');
   const [messages, setMessages]           = useState(() => [makeGreeting()]);
   const [summary, setSummary]             = useState({ category: null, dept: null, urgency: null });
+  const [currentSessionId, setCurrentSessionId] = useState(null);
 
   /* ── 민원 접수 모달 ── */
   const [submitModal, setSubmitModal] = useState({ open: false, title: '', content: '' });
@@ -201,14 +202,24 @@ function Chatbot() {
   const stopListening = () => { recognitionRef.current?.stop(); setIsListening(false); };
 
   const speak = (text) => {
-    if (!window.speechSynthesis) return;
+    if (!window.speechSynthesis) { alert('이 브라우저는 음성 출력을 지원하지 않습니다.'); return; }
     if (isSpeaking) { window.speechSynthesis.cancel(); setIsSpeaking(false); return; }
-    const utter = new SpeechSynthesisUtterance(text);
-    utter.lang    = 'ko-KR';
-    utter.onstart = () => setIsSpeaking(true);
-    utter.onend   = () => setIsSpeaking(false);
-    utter.onerror = () => setIsSpeaking(false);
-    window.speechSynthesis.speak(utter);
+    const doSpeak = () => {
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.lang = 'ko-KR';
+      const koVoice = window.speechSynthesis.getVoices().find(v => v.lang.startsWith('ko'));
+      if (koVoice) utter.voice = koVoice;
+      utter.onstart = () => setIsSpeaking(true);
+      utter.onend   = () => setIsSpeaking(false);
+      utter.onerror = () => setIsSpeaking(false);
+      window.speechSynthesis.speak(utter);
+    };
+    const voices = window.speechSynthesis.getVoices();
+    if (voices.length === 0) {
+      window.speechSynthesis.addEventListener('voiceschanged', doSpeak, { once: true });
+    } else {
+      doSpeak();
+    }
   };
 
   const now = () => {
@@ -272,8 +283,10 @@ function Chatbot() {
     try {
       const imageFile = sentFiles.find(f => f.isImage);
       const result = imageFile
-        ? await chatImageApi(imageFile.file, text)
-        : await chatAskApi(text);
+        ? await chatImageApi(imageFile.file, text, currentSessionId)
+        : await chatAskApi(text, currentSessionId);
+
+      if (result.session_id) setCurrentSessionId(result.session_id);
 
       const md = result.metadata;
       if (md?.tool_used) {
@@ -298,9 +311,20 @@ function Chatbot() {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
 
-  const openHistory = (h) => {
+  const openHistory = async (h) => {
+    if (!h.conversation && h.session_id) {
+      try {
+        const full = await getChatSessionApi(h.session_id);
+        const conv = Array.isArray(full.messages) ? full.messages : [];
+        const enriched = { ...h, conversation: conv };
+        setViewingHistory(enriched);
+        setMessages(conv.length ? conv : [makeGreeting()]);
+        setView('chat');
+        return;
+      } catch {}
+    }
     setViewingHistory(h);
-    setMessages(h.conversation);
+    setMessages(h.conversation ?? [makeGreeting()]);
     setView('chat');
   };
 
@@ -328,7 +352,7 @@ function Chatbot() {
       const session = buildSession('상담 완료');
       if (session) saveChatSession(session);
     }
-    chatResetApi().catch(() => {});
+    setCurrentSessionId(null);
     setViewingHistory(null);
     setMessages([makeGreeting()]);
     setSummary({ category: null, dept: null, urgency: null });
@@ -382,49 +406,49 @@ function Chatbot() {
 
   return (
     <CitizenLayout pageTitle="AI 민원 상담" activeMenu="chatbot">
-      <div className="grid grid-cols-12 gap-5" style={{ height: 'calc(100vh - 8rem)' }}>
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-5" style={{ height: 'calc(100vh - 8rem)' }}>
 
         {/* ── 채팅 / 상담 내역 영역 ── */}
-        <section className="col-span-9 flex flex-col rounded-2xl overflow-hidden shadow-sm border border-outline-variant bg-white">
+        <section className="col-span-1 md:col-span-9 flex flex-col rounded-2xl overflow-hidden shadow-sm border border-outline-variant bg-white">
 
           {/* 헤더 */}
-          <div className="shrink-0 bg-gradient-to-r from-primary to-[#3a7fd4] px-6 py-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
+          <div className="shrink-0 bg-gradient-to-r from-primary to-[#3a7fd4] px-2 py-2 md:px-6 md:py-4 flex items-center justify-between">
+            <div className="flex items-center gap-2 md:gap-3">
               <div className="relative">
-                <div className="w-11 h-11 rounded-full bg-white/20 backdrop-blur flex items-center justify-center">
-                  <span className="material-symbols-outlined text-white text-2xl">smart_toy</span>
+                <div className="w-7 h-7 md:w-11 md:h-11 rounded-full bg-white/20 backdrop-blur flex items-center justify-center">
+                  <span className="material-symbols-outlined text-white text-base md:text-2xl">smart_toy</span>
                 </div>
-                {view === 'chat' && <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-400 border-2 border-primary rounded-full" />}
+                {view === 'chat' && <span className="absolute bottom-0 right-0 w-2 h-2 md:w-3 md:h-3 bg-emerald-400 border-2 border-primary rounded-full" />}
               </div>
               <div>
-                <p className="font-bold text-white text-sm leading-tight">
+                <p className="font-bold text-white text-xs md:text-sm leading-tight">
                   {viewingHistory ? viewingHistory.title : '마음이 AI 민원 상담'}
                 </p>
-                <p className="text-xs text-white/70 mt-0.5">
+                <p className="text-[10px] md:text-xs text-white/70 mt-0.5 hidden md:block">
                   {viewingHistory ? `${viewingHistory.date} ${viewingHistory.time}` : '온라인 · 24시간 응답 가능'}
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <div className="flex bg-white/15 rounded-xl p-1 gap-1">
+            <div className="flex items-center gap-1 md:gap-2">
+              <div className="flex bg-white/15 rounded-xl p-0.5 md:p-1 gap-0.5 md:gap-1">
                 <button
                   onClick={startNewChat}
-                  className={`flex items-center gap-1.5 text-xs font-bold px-3.5 py-2 rounded-lg transition-colors ${
+                  className={`flex items-center gap-1 text-xs font-bold px-2 py-1.5 md:px-3.5 md:py-2 rounded-lg transition-colors ${
                     view === 'chat' && !viewingHistory ? 'bg-white text-primary shadow-sm' : 'text-white/80 hover:text-white hover:bg-white/10'
                   }`}
                 >
-                  <span className="material-symbols-outlined text-base">add_comment</span>
-                  새 상담 시작
+                  <span className="material-symbols-outlined text-sm md:text-base">add_comment</span>
+                  <span className="hidden sm:inline">새 상담 시작</span>
                 </button>
                 <button
                   onClick={() => { setView('history'); setViewingHistory(null); }}
-                  className={`flex items-center gap-1.5 text-xs font-bold px-3.5 py-2 rounded-lg transition-colors ${
+                  className={`flex items-center gap-1 text-xs font-bold px-2 py-1.5 md:px-3.5 md:py-2 rounded-lg transition-colors ${
                     view === 'history' || viewingHistory ? 'bg-white text-primary shadow-sm' : 'text-white/80 hover:text-white hover:bg-white/10'
                   }`}
                 >
-                  <span className="material-symbols-outlined text-base">history</span>
-                  상담 내역
+                  <span className="material-symbols-outlined text-sm md:text-base">history</span>
+                  <span className="hidden sm:inline">상담 내역</span>
                   <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${view === 'history' || viewingHistory ? 'bg-primary/10 text-primary' : 'bg-white/20 text-white'}`}>
                     {chatSessions.length}
                   </span>
@@ -441,14 +465,11 @@ function Chatbot() {
                 <div className="shrink-0 flex items-center gap-3 px-5 py-2.5 bg-amber-50 border-b border-amber-200">
                   <span className="material-symbols-outlined text-amber-500 text-base">history</span>
                   <p className="text-xs text-amber-700 font-bold flex-1">과거 상담 내역을 보고 있습니다.</p>
-                  <button onClick={startNewChat} className="text-xs font-bold text-primary hover:underline flex items-center gap-1">
-                    <span className="material-symbols-outlined text-sm">add_comment</span>새 상담 시작
-                  </button>
                 </div>
               )}
 
               {/* 날짜 구분선 */}
-              <div className="flex items-center gap-3 px-6 py-3 bg-surface-container-low/40 shrink-0">
+              <div className="flex items-center gap-3 px-3 py-1.5 md:px-6 md:py-3 bg-surface-container-low/40 shrink-0">
                 <div className="flex-1 h-px bg-outline-variant/50" />
                 <span className="text-[11px] text-on-surface-variant font-medium">
                   {viewingHistory ? viewingHistory.date : '오늘'}
@@ -457,18 +478,18 @@ function Chatbot() {
               </div>
 
               {/* 메시지 목록 */}
-              <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6" style={{ background: 'linear-gradient(180deg,#f8faff 0%,#ffffff 100%)' }}>
+              <div className="flex-1 overflow-y-auto px-3 py-3 md:px-6 md:py-4 space-y-3 md:space-y-6" style={{ background: 'linear-gradient(180deg,#f8faff 0%,#ffffff 100%)' }}>
                 {messages.map((msg, i) => (
                   <MessageBubble key={i} msg={msg} isSpeaking={isSpeaking} onSpeak={speak} />
                 ))}
 
                 {/* AI 타이핑 인디케이터 */}
                 {isTyping && (
-                  <div className="flex gap-3">
-                    <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0 mt-1 shadow-sm">
-                      <span className="material-symbols-outlined text-white text-base">smart_toy</span>
+                  <div className="flex gap-2 md:gap-3">
+                    <div className="w-6 h-6 md:w-8 md:h-8 rounded-full bg-primary flex items-center justify-center shrink-0 mt-1 shadow-sm">
+                      <span className="material-symbols-outlined text-white text-sm md:text-base">smart_toy</span>
                     </div>
-                    <div className="bg-white border border-outline-variant/40 rounded-2xl rounded-tl-sm px-4 py-3.5 shadow-sm flex items-center gap-1.5">
+                    <div className="bg-white border border-outline-variant/40 rounded-2xl rounded-tl-sm px-3 py-2.5 md:px-4 md:py-3.5 shadow-sm flex items-center gap-1.5">
                       {[0, 1, 2].map(i => (
                         <span key={i} className="w-2 h-2 rounded-full bg-primary/40 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
                       ))}
@@ -478,7 +499,7 @@ function Chatbot() {
 
                 {/* 빠른 답변 버튼 (새 채팅 + 마지막 메시지가 AI일 때) */}
                 {!viewingHistory && messages.length >= 1 && messages[messages.length - 1]?.role === 'ai' && !isTyping && (
-                  <div className="flex flex-wrap gap-2 pl-11">
+                  <div className="flex flex-wrap gap-1.5 md:gap-2 pl-8 md:pl-11">
                     {quickReplies.map((r) => (
                       <button
                         key={r.label}
@@ -495,13 +516,26 @@ function Chatbot() {
                 <div ref={messagesEndRef} />
               </div>
 
+              {/* 모바일 전용 민원 접수 버튼 */}
+              {!viewingHistory && (
+                <div className="md:hidden shrink-0 px-4 pt-2 bg-white">
+                  <button
+                    onClick={openSubmitModal}
+                    disabled={messages.filter(m => m.role === 'user').length === 0}
+                    className="w-full bg-primary text-white text-sm font-bold py-2.5 rounded-xl flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <span className="material-symbols-outlined text-base">edit_document</span>
+                    민원 접수하기
+                  </button>
+                </div>
+              )}
+
               {/* 입력 영역 */}
-              <div className="shrink-0 p-4 border-t border-outline-variant/60 bg-white">
+              <div className="shrink-0 p-2 md:p-4 border-t border-outline-variant/60 bg-white">
                 {viewingHistory ? (
                   <div className="flex items-center justify-center gap-3 py-2">
                     <span className="material-symbols-outlined text-on-surface-variant text-base">lock</span>
                     <p className="text-sm text-on-surface-variant">과거 상담 내역입니다.</p>
-                    <button onClick={startNewChat} className="text-sm font-bold text-primary hover:underline">새 상담 시작하기</button>
                   </div>
                 ) : (
                   <>
@@ -546,9 +580,9 @@ function Chatbot() {
                       value={input}
                       onChange={(e) => setInput(e.target.value)}
                       onKeyDown={handleKeyDown}
-                      placeholder="궁금한 내용을 자유롭게 입력해주세요... (Enter 전송 / Shift+Enter 줄바꿈)"
-                      rows={2}
-                      className="w-full px-4 pt-3.5 pb-2 bg-transparent outline-none resize-none text-sm text-on-surface placeholder:text-on-surface-variant/50"
+                      placeholder="불편하신 내용을 입력해주세요..."
+                      rows={1}
+                      className="w-full px-3 pt-2.5 pb-1.5 md:px-4 md:pt-3.5 md:pb-2 bg-transparent outline-none resize-none text-sm text-on-surface placeholder:text-on-surface-variant/50"
                     />
                     <div className="flex items-center justify-between px-3 pb-2.5 pt-1">
                       <div className="flex gap-0.5">
@@ -589,7 +623,7 @@ function Chatbot() {
                       </button>
                     </div>
                   </div>
-                  <p className="text-[10px] text-on-surface-variant/40 text-center px-4 pb-2 leading-relaxed">
+                  <p className="hidden md:block text-[10px] text-on-surface-variant/40 text-center px-4 pb-2 leading-relaxed">
                     마음이 AI는 참고용 정보만 제공하며, 법적 효력이 없습니다. 중요한 사항은 담당 기관에 직접 확인하세요.
                   </p>
                   </>
@@ -631,23 +665,31 @@ function Chatbot() {
                   const st  = statusConfig[h.status] ?? { bg: 'bg-surface-container', text: 'text-on-surface-variant' };
                   const catS = CATEGORY_STYLE[h.category] ?? CATEGORY_STYLE['기타'];
                   return (
-                    <button
+                    <div
                       key={h.id}
-                      onClick={() => openHistory(h)}
-                      className="w-full flex items-start gap-4 px-6 py-4 hover:bg-surface-container-low/50 transition-colors text-left"
+                      className="w-full flex items-start gap-4 px-6 py-4 hover:bg-surface-container-low/50 transition-colors group"
                     >
-                      <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-                        <span className="material-symbols-outlined text-primary text-lg">chat_bubble</span>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${catS.bg} ${catS.text}`}>{h.category}</span>
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${st.bg} ${st.text}`}>{h.status}</span>
+                      <button onClick={() => openHistory(h)} className="flex items-start gap-4 flex-1 min-w-0 text-left">
+                        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                          <span className="material-symbols-outlined text-primary text-lg">chat_bubble</span>
                         </div>
-                        <p className="text-sm font-bold text-on-surface truncate">{h.title}</p>
-                        <p className="text-xs text-on-surface-variant mt-0.5 truncate">{h.preview}</p>
-                      </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${catS.bg} ${catS.text}`}>{h.category}</span>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${st.bg} ${st.text}`}>{h.status}</span>
+                          </div>
+                          <p className="text-sm font-bold text-on-surface truncate">{h.title}</p>
+                          <p className="text-xs text-on-surface-variant mt-0.5 truncate">{h.preview}</p>
+                        </div>
+                      </button>
                       <div className="flex flex-col items-end gap-1.5 shrink-0">
+                        <button
+                          onClick={() => deleteChatSession(h.session_id, h.id)}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity w-6 h-6 rounded-lg hover:bg-error/10 flex items-center justify-center"
+                          title="삭제"
+                        >
+                          <span className="material-symbols-outlined text-sm text-on-surface-variant hover:text-error">delete</span>
+                        </button>
                         <span className="text-[11px] text-on-surface-variant">{h.date}</span>
                         <span className="text-[11px] text-on-surface-variant">{h.time}</span>
                         <div className="flex items-center gap-1 text-[10px] text-on-surface-variant">
@@ -655,7 +697,7 @@ function Chatbot() {
                           {h.messages}개
                         </div>
                       </div>
-                    </button>
+                    </div>
                   );
                 })}
               </div>
@@ -664,7 +706,7 @@ function Chatbot() {
         </section>
 
         {/* ── 오른쪽 사이드 ── */}
-        <aside className="col-span-3 flex flex-col gap-4 overflow-y-auto">
+        <aside className="hidden md:flex md:col-span-3 flex-col gap-4 overflow-y-auto">
           <div className="bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden">
             <div className="bg-gradient-to-r from-primary/8 to-transparent px-5 py-4 border-b border-outline-variant/60 flex items-center justify-between">
               <div className="flex items-center gap-2">

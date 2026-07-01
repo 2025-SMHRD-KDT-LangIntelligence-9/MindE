@@ -21,3 +21,6 @@ export const updateMeApi = (data) =>
 
 export const deleteMeApi = () =>
   client.delete('/users/me').then((r) => r.data);
+
+export const updateNotificationsApi = (enabled) =>
+  client.patch('/users/me/notifications', { notification_enabled: enabled }).then((r) => r.data);

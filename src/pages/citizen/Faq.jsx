@@ -129,16 +129,16 @@ export default function Faq() {
       <div className="max-w-3xl mx-auto">
 
         {/* 헤더 */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary/10 mb-4">
-            <span className="material-symbols-outlined text-primary text-3xl">contact_support</span>
+        <div className="text-center mb-4 md:mb-8">
+          <div className="inline-flex items-center justify-center w-10 h-10 md:w-14 md:h-14 rounded-2xl bg-primary/10 mb-2 md:mb-4">
+            <span className="material-symbols-outlined text-primary text-2xl md:text-3xl">contact_support</span>
           </div>
-          <h1 className="text-2xl font-bold text-on-surface mb-2">자주 묻는 질문</h1>
+          <h1 className="text-lg md:text-2xl font-bold text-on-surface mb-2">자주 묻는 질문</h1>
           <p className="text-sm text-on-surface-variant">궁금한 내용을 검색하거나 카테고리를 선택해 보세요.</p>
         </div>
 
         {/* 검색창 */}
-        <div className="relative mb-5">
+        <div className="relative mb-3 md:mb-5">
           <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-primary text-xl">search</span>
           <input
             value={search}
@@ -157,7 +157,7 @@ export default function Faq() {
         </div>
 
         {/* 카테고리 탭 */}
-        <div className="flex flex-wrap gap-2 mb-6">
+        <div className="flex flex-wrap gap-2 mb-3 md:mb-6">
           {ALL_CATEGORIES.map((cat) => (
             <button
               key={cat}
@@ -188,7 +188,7 @@ export default function Faq() {
             <p className="text-xs">다른 키워드로 검색하거나 카테고리를 변경해 보세요.</p>
           </div>
         ) : (
-          <div className="space-y-6">
+          <div className="space-y-4 md:space-y-6">
             {filtered.map((group) => (
               <div key={group.category}>
                 {/* 카테고리 헤더 */}
@@ -217,7 +217,7 @@ export default function Faq() {
                         {/* 질문 */}
                         <button
                           onClick={() => toggle(key)}
-                          className="w-full flex items-center gap-4 px-6 py-4 text-left"
+                          className="w-full flex items-center gap-3 md:gap-4 px-4 md:px-6 py-3 md:py-4 text-left"
                         >
                           <span className={`w-7 h-7 shrink-0 flex items-center justify-center rounded-lg text-sm font-bold ${
                             isOpen ? 'bg-primary text-white' : 'bg-surface-container text-primary'
@@ -236,7 +236,7 @@ export default function Faq() {
 
                         {/* 답변 */}
                         {isOpen && (
-                          <div className="px-6 pb-5 flex gap-4">
+                          <div className="px-4 md:px-6 pb-3 md:pb-5 flex gap-3 md:gap-4">
                             <span className="w-7 h-7 shrink-0 flex items-center justify-center rounded-lg bg-primary/10 text-primary text-sm font-bold">
                               A
                             </span>
@@ -253,9 +253,9 @@ export default function Faq() {
         )}
 
         {/* 하단 추가 문의 배너 */}
-        <div className="mt-10 bg-gradient-to-r from-primary/8 to-blue-50/60 border border-primary/15 rounded-2xl p-6 flex items-center gap-5">
-          <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center shrink-0">
-            <span className="material-symbols-outlined text-primary text-2xl">chat_bubble</span>
+        <div className="mt-5 md:mt-10 bg-gradient-to-r from-primary/8 to-blue-50/60 border border-primary/15 rounded-2xl p-4 md:p-6 flex items-center gap-3 md:gap-5">
+          <div className="w-10 h-10 md:w-12 md:h-12 rounded-2xl bg-primary/10 flex items-center justify-center shrink-0">
+            <span className="material-symbols-outlined text-primary text-xl md:text-2xl">chat_bubble</span>
           </div>
           <div className="flex-1">
             <p className="font-bold text-on-surface text-sm mb-0.5">원하는 답변을 찾지 못하셨나요?</p>

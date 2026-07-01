@@ -308,11 +308,11 @@ function MyComplaints() {
   /* ── 목록 화면 ── */
   return (
     <CitizenLayout pageTitle="내 민원 내역" activeMenu="complaints">
-      <div className="grid grid-cols-12 gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
         {/* 왼쪽 */}
-        <div className="col-span-8 flex flex-col gap-5">
+        <div className="col-span-1 md:col-span-8 flex flex-col gap-5">
           {/* 통계 카드 */}
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
               { label: '접수됨',    value: countOf('접수'),     icon: 'inbox',                color: 'text-blue-600',    bg: 'bg-blue-50' },
               { label: '처리중',    value: countOf('처리 중'),  icon: 'pending_actions',      color: 'text-amber-600',   bg: 'bg-amber-50' },
@@ -331,7 +331,7 @@ function MyComplaints() {
 
           {/* 목록 테이블 */}
           <div className="bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-outline-variant">
+            <div className="flex items-center justify-between px-3 py-3 md:px-6 md:py-4 border-b border-outline-variant">
               <h2 className="text-sm font-bold text-on-surface">제출한 민원 목록</h2>
             </div>
             <div className="flex flex-wrap items-center gap-2 px-6 py-3 border-b border-outline-variant bg-surface-container-low/30">
@@ -349,6 +349,7 @@ function MyComplaints() {
                 <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-outline text-base">search</span>
               </div>
             </div>
+            <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead className="border-b border-outline-variant">
                 <tr>
@@ -387,11 +388,12 @@ function MyComplaints() {
                 })}
               </tbody>
             </table>
+            </div>
           </div>
         </div>
 
         {/* 오른쪽 사이드 */}
-        <div className="col-span-4 flex flex-col gap-5">
+        <div className="col-span-1 md:col-span-4 flex flex-col gap-5">
           {/* 실시간 알림 */}
           <div className="bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden">
             <div className="flex items-center justify-between px-5 py-4 border-b border-outline-variant">

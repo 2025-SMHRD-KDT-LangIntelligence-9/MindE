@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import CitizenLayout from '../../layouts/CitizenLayout';
 import { useApp } from '../../store/AppContext';
-import { loginApi, updateMeApi, deleteMeApi } from '../../api/auth';
+import { loginApi, updateMeApi, deleteMeApi, updateNotificationsApi } from '../../api/auth';
 
 function Toggle({ on, onClick }) {
   return (
@@ -52,7 +52,9 @@ function Settings() {
   const [withdrawing,   setWithdrawing]   = useState(false);
   const [withdrawAgree, setWithdrawAgree] = useState(false);
 
-  /* ── 알림 설정 (UI only) ── */
+  /* ── 알림 설정 ── */
+  const [notifSaving, setNotifSaving] = useState(false);
+  const [notifSaved,  setNotifSaved]  = useState(false);
   const [channels, setChannels] = useState({
     '이메일 알림': true,
     '문자 알림 (SMS)': false,
@@ -67,6 +69,17 @@ function Settings() {
   });
 
   const toggle = (setState, key) => setState((p) => ({ ...p, [key]: !p[key] }));
+
+  const handleSaveNotifications = async () => {
+    setNotifSaving(true);
+    try {
+      const enabled = Object.values(channels).some(Boolean) || Object.values(types).some(Boolean);
+      await updateNotificationsApi(enabled);
+      setNotifSaved(true);
+      setTimeout(() => setNotifSaved(false), 2000);
+    } catch {}
+    setNotifSaving(false);
+  };
 
   /* ── 본인 확인: 현재 비밀번호 API 검증 ── */
   const handleVerify = async (e) => {
@@ -150,7 +163,7 @@ function Settings() {
     localStorage.removeItem('savedEmail');
     logout();
     setWithdrawOpen(false);
-    navigate('/login', { state: { withdrawn: true } });
+    navigate('/', { state: { withdrawn: true } });
   };
 
   /* ── 본인 확인 화면 ── */
@@ -160,17 +173,17 @@ function Settings() {
         <div className="flex items-center justify-center min-h-[70vh]">
           <div className="w-full max-w-md">
             <div className="bg-white rounded-3xl border border-outline-variant shadow-lg overflow-hidden">
-              <div className="bg-gradient-to-br from-primary to-blue-400 px-8 pt-8 pb-10 flex flex-col items-center text-center">
-                <div className="w-16 h-16 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center mb-4 border border-white/30">
-                  <span className="material-symbols-outlined text-white text-3xl">shield_lock</span>
+              <div className="bg-gradient-to-br from-primary to-blue-400 px-6 md:px-8 pt-6 md:pt-8 pb-7 md:pb-10 flex flex-col items-center text-center">
+                <div className="w-12 h-12 md:w-16 md:h-16 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center mb-3 md:mb-4 border border-white/30">
+                  <span className="material-symbols-outlined text-white text-2xl md:text-3xl">shield_lock</span>
                 </div>
-                <h2 className="text-xl font-bold text-white mb-1.5">본인 확인</h2>
+                <h2 className="text-base md:text-xl font-bold text-white mb-1.5">본인 확인</h2>
                 <p className="text-white/75 text-sm leading-relaxed">
                   개인 정보 보호를 위해<br />현재 비밀번호를 입력해 주세요.
                 </p>
               </div>
 
-              <div className="px-8 py-7">
+              <div className="px-5 md:px-8 py-5 md:py-7">
                 <form onSubmit={handleVerify} className="space-y-4">
                   <div>
                     <label className="text-xs font-bold text-on-surface-variant block mb-1.5">현재 비밀번호</label>
@@ -239,17 +252,17 @@ function Settings() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-5 items-stretch">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-5 items-stretch">
 
         {/* ── 왼쪽: 정보 수정 ── */}
         <form onSubmit={handleSave} className="bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden flex flex-col">
 
           {/* 상태 대시보드 */}
-          <div className="px-6 py-5 border-b border-outline-variant bg-gradient-to-r from-primary/5 to-blue-50/60">
-            <p className="text-xs font-bold text-on-surface-variant mb-3">상태 대시보드</p>
-            <div className="flex items-center gap-4">
-              <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                <span className="material-symbols-outlined text-primary text-4xl">account_circle</span>
+          <div className="px-4 md:px-6 py-3 md:py-5 border-b border-outline-variant bg-gradient-to-r from-primary/5 to-blue-50/60">
+            <p className="text-xs font-bold text-on-surface-variant mb-2 md:mb-3">상태 대시보드</p>
+            <div className="flex items-center gap-3 md:gap-4">
+              <div className="w-10 h-10 md:w-14 md:h-14 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                <span className="material-symbols-outlined text-primary text-3xl md:text-4xl">account_circle</span>
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1.5">
@@ -273,8 +286,8 @@ function Settings() {
           </div>
 
           {/* 기본 정보 */}
-          <div className="px-6 py-5 border-b border-outline-variant">
-            <p className="text-xs font-bold text-on-surface-variant mb-3">기본 정보 <span className="font-normal text-on-surface-variant/70">(선택 수정)</span></p>
+          <div className="px-4 md:px-6 py-3 md:py-5 border-b border-outline-variant">
+            <p className="text-xs font-bold text-on-surface-variant mb-2 md:mb-3">기본 정보 <span className="font-normal text-on-surface-variant/70">(선택 수정)</span></p>
             <div className="space-y-3">
               <div>
                 <label className="text-xs font-bold text-on-surface-variant block mb-1">성명</label>
@@ -317,8 +330,8 @@ function Settings() {
           </div>
 
           {/* 비밀번호 변경 */}
-          <div className="px-6 py-5 border-b border-outline-variant">
-            <p className="text-xs font-bold text-on-surface-variant mb-3">비밀번호 변경 <span className="font-normal text-on-surface-variant/70">(선택 수정)</span></p>
+          <div className="px-4 md:px-6 py-3 md:py-5 border-b border-outline-variant">
+            <p className="text-xs font-bold text-on-surface-variant mb-2 md:mb-3">비밀번호 변경 <span className="font-normal text-on-surface-variant/70">(선택 수정)</span></p>
             <div className="space-y-3">
               <div>
                 <label className="text-xs font-bold text-on-surface-variant block mb-1">새 비밀번호</label>
@@ -350,8 +363,8 @@ function Settings() {
           </div>
 
           {/* 현재 비밀번호 확인 + 저장 */}
-          <div className="px-6 py-5">
-            <p className="text-xs font-bold text-on-surface-variant mb-3">현재 비밀번호 확인 <span className="text-error">*</span></p>
+          <div className="px-4 md:px-6 py-3 md:py-5">
+            <p className="text-xs font-bold text-on-surface-variant mb-2 md:mb-3">현재 비밀번호 확인 <span className="text-error">*</span></p>
             <div className="relative mb-3">
               <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[18px]">lock</span>
               <input
@@ -379,11 +392,11 @@ function Settings() {
         </form>
 
         {/* ── 오른쪽: 알림 설정 ── */}
-        <div className="flex flex-col gap-5 h-full">
+        <div className="flex flex-col gap-3 md:gap-5 h-full">
 
           {/* 알림 유형 설정 */}
           <div className="bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden flex-[3] flex flex-col">
-            <div className="flex justify-between items-center px-6 py-4 border-b border-outline-variant shrink-0">
+            <div className="flex justify-between items-center px-4 md:px-6 py-3 md:py-4 border-b border-outline-variant shrink-0">
               <h3 className="font-bold">알림 유형 설정</h3>
               <p className="text-xs text-on-surface-variant">받을 유형을 선택하세요.</p>
             </div>
@@ -395,9 +408,9 @@ function Settings() {
                 { label: '답변 완료',      desc: '민원에 대한 공식 답변이 등록되었을 때',  icon: 'mark_email_read' },
                 { label: '공지 및 이벤트', desc: '서비스 공지 및 이벤트 안내',             icon: 'campaign' },
               ].map((item) => (
-                <div key={item.label} className="flex-1 flex items-center justify-between px-6 hover:bg-surface-container-low/30 transition-colors">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-surface-container flex items-center justify-center shrink-0">
+                <div key={item.label} className="flex-1 flex items-center justify-between px-4 md:px-6 hover:bg-surface-container-low/30 transition-colors">
+                  <div className="flex items-center gap-2 md:gap-3">
+                    <div className="w-8 h-8 md:w-9 md:h-9 rounded-xl bg-surface-container flex items-center justify-center shrink-0">
                       <span className="material-symbols-outlined text-on-surface-variant text-base">{item.icon}</span>
                     </div>
                     <div>
@@ -413,7 +426,7 @@ function Settings() {
 
           {/* 알림 채널 설정 */}
           <div className="bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden flex-[2] flex flex-col">
-            <div className="flex justify-between items-center px-6 py-4 border-b border-outline-variant shrink-0">
+            <div className="flex justify-between items-center px-4 md:px-6 py-3 md:py-4 border-b border-outline-variant shrink-0">
               <h3 className="font-bold">알림 채널 설정</h3>
               <p className="text-xs text-on-surface-variant">받을 채널을 선택하세요.</p>
             </div>
@@ -423,9 +436,9 @@ function Settings() {
                 { label: '문자 알림 (SMS)', desc: '긴급 공지 및 본인 인증 코드 전송', icon: 'sms',           color: 'bg-amber-50 text-amber-600' },
                 { label: '앱 푸시 알림',    desc: '실시간 민원 상태 변경 알림',       icon: 'notifications', color: 'bg-emerald-50 text-emerald-600' },
               ].map((item) => (
-                <div key={item.label} className="flex-1 flex items-center justify-between px-6 hover:bg-surface-container-low/30 transition-colors">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-9 h-9 rounded-xl ${item.color} flex items-center justify-center shrink-0`}>
+                <div key={item.label} className="flex-1 flex items-center justify-between px-4 md:px-6 hover:bg-surface-container-low/30 transition-colors">
+                  <div className="flex items-center gap-2 md:gap-3">
+                    <div className={`w-8 h-8 md:w-9 md:h-9 rounded-xl ${item.color} flex items-center justify-center shrink-0`}>
                       <span className="material-symbols-outlined text-base">{item.icon}</span>
                     </div>
                     <div>
@@ -437,9 +450,11 @@ function Settings() {
                 </div>
               ))}
             </div>
-            <div className="px-6 py-4 border-t border-outline-variant flex justify-end shrink-0">
-              <button className="flex items-center gap-1 bg-primary text-white px-4 py-2 rounded-lg text-sm font-bold hover:brightness-95 transition-all">
-                알림 저장
+            <div className="px-4 md:px-6 py-3 md:py-4 border-t border-outline-variant flex justify-end shrink-0">
+              <button onClick={handleSaveNotifications} disabled={notifSaving}
+                className={`flex items-center gap-1 px-4 py-2 rounded-lg text-sm font-bold transition-all disabled:opacity-60 ${notifSaved ? 'bg-emerald-500 text-white' : 'bg-primary text-white hover:brightness-95'}`}>
+                <span className="material-symbols-outlined text-sm">{notifSaved ? 'check' : 'save'}</span>
+                {notifSaved ? '저장됨' : notifSaving ? '저장 중...' : '알림 저장'}
               </button>
             </div>
           </div>

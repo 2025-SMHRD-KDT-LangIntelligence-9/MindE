@@ -134,40 +134,40 @@ function StaffComplaints() {
         </div>
       )}
 
-      <div className="max-w-7xl mx-auto space-y-5">
+      <div className="max-w-7xl mx-auto space-y-3 md:space-y-5">
 
         {/* 담당 부서 안내 배너 */}
-        <div className="flex items-center gap-3 bg-[#1e3a5f]/8 border border-[#1e3a5f]/20 rounded-xl px-5 py-3">
+        <div className="flex items-center gap-3 bg-[#1e3a5f]/8 border border-[#1e3a5f]/20 rounded-xl px-3 md:px-5 py-2 md:py-3">
           <span className="material-symbols-outlined text-[#1e3a5f] text-lg">business</span>
           <div>
-            <span className="text-sm font-bold text-[#1e3a5f]">{currentUser.dept}</span>
-            <span className="text-xs text-on-surface-variant ml-2">담당 부서 민원만 표시됩니다.</span>
+            <span className="text-sm font-bold text-[#1e3a5f]">{currentUser.dept || '담당 부서'}</span>
+            <span className="text-xs text-on-surface-variant ml-1"> 민원만 표시됩니다.</span>
           </div>
           <span className="ml-auto text-xs font-bold text-[#1e3a5f]">총 {complaints.length}건</span>
         </div>
 
         {/* 상태별 카드 */}
-        <div className="grid grid-cols-5 gap-3">
+        <div className="grid grid-cols-3 md:grid-cols-5 gap-3">
           {STATUS_OPTIONS.map((s) => {
             const st = statusStyle[s];
             return (
               <button
                 key={s}
                 onClick={() => setFilterStatus(filterStatus === s ? '전체' : s)}
-                className={`rounded-2xl border p-4 text-center transition-all hover:shadow-md ${
+                className={`rounded-2xl border p-2 md:p-4 text-center transition-all hover:shadow-md ${
                   filterStatus === s ? 'border-[#1e3a5f] bg-[#1e3a5f]/5' : 'bg-white border-outline-variant'
                 }`}
               >
-                <p className={`text-2xl font-bold ${st.text}`}>{counts[s] ?? 0}</p>
-                <p className="text-xs text-on-surface-variant mt-1 font-medium">{s}</p>
+                <p className={`text-lg md:text-2xl font-bold ${st.text}`}>{counts[s] ?? 0}</p>
+                <p className="text-xs text-on-surface-variant mt-0.5 md:mt-1 font-medium">{s}</p>
               </button>
             );
           })}
         </div>
 
-        <div className="flex gap-5" style={{ height: 'calc(100vh - 16rem)' }}>
+        <div className="flex flex-col md:flex-row gap-3 md:gap-5 md:[height:calc(100vh-16rem)]">
           {/* 목록 */}
-          <section className="w-[420px] shrink-0 flex flex-col bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden">
+          <section className="w-full md:w-[420px] md:shrink-0 flex flex-col bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden">
             <div className="p-4 border-b border-outline-variant/60 space-y-3">
               <div className="relative">
                 <input
@@ -187,7 +187,7 @@ function StaffComplaints() {
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto divide-y divide-outline-variant/40">
+            <div className="min-h-[200px] md:min-h-0 flex-1 overflow-y-auto divide-y divide-outline-variant/40">
               {filtered.length === 0 ? (
                 <EmptyState
                   icon="search_off"
@@ -221,7 +221,7 @@ function StaffComplaints() {
           {/* 상세 패널 */}
           {selectedData ? (
             <section className="flex-1 flex flex-col bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden">
-              <div className="shrink-0 px-6 py-4 border-b border-outline-variant/60 flex items-start justify-between">
+              <div className="shrink-0 px-3 md:px-6 py-2 md:py-4 border-b border-outline-variant/60 flex items-start justify-between">
                 <div>
                   <div className="flex items-center gap-2 mb-1.5">
                     <UrgencyBadge urgency={selectedData.urgency} />
@@ -234,7 +234,7 @@ function StaffComplaints() {
                 <StatusBadge status={selectedData.status} />
               </div>
 
-              <div className="flex-1 overflow-y-auto p-6 space-y-5">
+              <div className="flex-1 overflow-y-auto p-3 md:p-6 space-y-3 md:space-y-5">
                 <div className="bg-surface-container-low/50 rounded-xl p-4">
                   <p className="text-xs font-bold text-on-surface-variant mb-2 flex items-center gap-1.5">
                     <span className="material-symbols-outlined text-sm">person</span>
@@ -474,7 +474,7 @@ function StaffComplaints() {
               </div>
 
               {/* 민원처리 버튼 */}
-              <div className="shrink-0 px-6 py-4 border-t border-outline-variant/60">
+              <div className="shrink-0 px-3 md:px-6 py-2 md:py-4 border-t border-outline-variant/60">
                 <button
                   onClick={handleStatusChange}
                   disabled={!pendingStatus || pendingStatus === selectedData.status}
@@ -486,7 +486,7 @@ function StaffComplaints() {
               </div>
             </section>
           ) : (
-            <section className="flex-1 flex items-center justify-center bg-white rounded-2xl border border-outline-variant shadow-sm">
+            <section className="hidden md:flex flex-1 items-center justify-center bg-white rounded-2xl border border-outline-variant shadow-sm">
               <EmptyState
                 icon="assignment"
                 title="민원을 선택하세요"
