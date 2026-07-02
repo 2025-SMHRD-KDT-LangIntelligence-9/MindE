@@ -199,3 +199,45 @@ class ChatSessionDetailOut(BaseModel):
 class ChatSessionUpdate(BaseModel):
     title: str | None = None
     status: str | None = None
+
+
+# ---------- 민원 양식(Form) ----------
+class FormFieldSpec(BaseModel):
+    name: str          # 필드 키 (예: "vehicle_number")
+    label: str         # 화면 표시명 (예: "차량번호")
+    type: str = "text" # text, textarea, date, datetime, number, image
+    required: bool = False
+
+
+class FormCreate(BaseModel):
+    name: str
+    description: str | None = None
+    fields: list[FormFieldSpec]
+
+
+class FormUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    fields: list[FormFieldSpec] | None = None
+
+
+class FormOut(BaseModel):
+    form_id: int
+    name: str
+    description: str | None
+    fields: list | dict
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ---------- OCR ----------
+class OcrExtractRequest(BaseModel):
+    form_id: int
+    image_base64: str  # data URI 없이 순수 base64
+    mime_type: str = "image/jpeg"
+
+
+class OcrPdfRequest(BaseModel):
+    form_id: int
+    values: dict
