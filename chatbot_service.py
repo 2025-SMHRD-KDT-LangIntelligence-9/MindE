@@ -1072,8 +1072,9 @@ _EDGE_VOICE_MAP = {
 # ElevenLabs 보이스 ID 매핑 (한국어는 multilingual_v2 모델로 처리)
 # 'nara' (기본) = 마음결 프로젝트 확정 voice — Starter tier 이상에서 접근 가능
 _ELEVEN_VOICE_MAP = {
-    'nara': 'uyVNoMrnUku1dZyVEXwD',    # ⭐ 마음결 확정 voice (기본)
-    'minde': 'uyVNoMrnUku1dZyVEXwD',   # 별칭
+    'nara': 'ksaI0TCD9BstzEzlxj4q',    # ⭐ 마음결 확정 voice (기본)
+    'minde': 'ksaI0TCD9BstzEzlxj4q',   # 별칭
+    'legacy': 'uyVNoMrnUku1dZyVEXwD',  # 이전 마음결 voice (필요 시 사용)
     'bella': 'EXAVITQu4vr4xnSDxMaL',   # 백업/대체 옵션들 (Free tier 접근 가능)
     'rachel': '21m00Tcm4TlvDq8ikWAM',
     'jinho': 'pNInz6obpgDQGcFmaJgB',   # Adam (남성)
@@ -1084,7 +1085,15 @@ _ELEVEN_VOICE_MAP = {
 ELEVENLABS_API_KEY = os.environ.get('ELEVENLABS_API_KEY', '')
 ELEVENLABS_MODEL = os.environ.get('ELEVENLABS_MODEL', 'eleven_multilingual_v2')
 # env로 default voice ID 오버라이드 가능 (배포 후 voice 교체 시 코드 재배포 없이)
-ELEVENLABS_DEFAULT_VOICE = os.environ.get('ELEVENLABS_DEFAULT_VOICE', 'uyVNoMrnUku1dZyVEXwD')
+ELEVENLABS_DEFAULT_VOICE = os.environ.get('ELEVENLABS_DEFAULT_VOICE', 'ksaI0TCD9BstzEzlxj4q')
+# ElevenLabs 재생 속도. 범위 0.7 (느림) ~ 1.2 (최대 빠름). 기본 1.0.
+ELEVENLABS_SPEED = float(os.environ.get('ELEVENLABS_SPEED', '1.1'))
+# 목소리 안정성. 0.0 (변화 큼, 표현력) ~ 1.0 (매우 안정, 톤 일정).
+ELEVENLABS_STABILITY = float(os.environ.get('ELEVENLABS_STABILITY', '1.0'))
+# 원본 voice 유사도 부스트. 0.0 ~ 1.0. 높을수록 원본 톤에 가까움.
+ELEVENLABS_SIMILARITY = float(os.environ.get('ELEVENLABS_SIMILARITY', '0.5'))
+# 스타일 과장. 0.0 (자연스러움, 중립) ~ 1.0 (감정/표현 과장). 민원 안내는 0 권장.
+ELEVENLABS_STYLE = float(os.environ.get('ELEVENLABS_STYLE', '0.0'))
 
 
 def _edge_voice(speaker: str) -> str:
@@ -1127,7 +1136,15 @@ async def _synthesize_eleven(text: str, speaker: str) -> bytes:
     body = {
         'text': text,
         'model_id': ELEVENLABS_MODEL,
-        'voice_settings': {'stability': 0.5, 'similarity_boost': 0.75},
+        # 텍스트 정규화 강제 활성화 — 숫자/약어를 자연스러운 발음으로 변환.
+        # "auto"는 종종 정규화 안 됨. "on"이면 웹사이트처럼 확실히 처리.
+        'apply_text_normalization': 'on',
+        'voice_settings': {
+            'stability': ELEVENLABS_STABILITY,       # 1.0 = 매우 안정 (톤 일정)
+            'similarity_boost': ELEVENLABS_SIMILARITY,
+            'style': ELEVENLABS_STYLE,               # 0.0 = 중립 (민원 안내에 적합)
+            'speed': ELEVENLABS_SPEED,               # 1.0 = 보통
+        },
     }
     async with httpx.AsyncClient(timeout=60.0) as http:
         resp = await http.post(url, headers=headers, json=body)
