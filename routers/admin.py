@@ -12,6 +12,7 @@ from auth import get_current_admin, get_current_staff
 import models
 import schemas
 from routers.complaints import build_complaint_out
+from routers.users import build_user_out
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -26,7 +27,8 @@ async def list_pending_staff(
         .where(models.User.user_type == "pending_staff")
         .order_by(models.User.created_at.asc())
     )
-    return result.scalars().all()
+    users = result.scalars().all()
+    return [await build_user_out(db, u) for u in users]
 
 
 @router.post("/approve-staff/{user_id}", response_model=schemas.UserOut)
@@ -46,7 +48,7 @@ async def approve_staff(
     user.user_type = "staff"
     await db.commit()
     await db.refresh(user)
-    return user
+    return await build_user_out(db, user)
 
 
 @router.delete("/reject-staff/{user_id}", status_code=204)
@@ -78,7 +80,8 @@ async def list_all_users(
     result = await db.execute(
         select(models.User).order_by(models.User.created_at.desc())
     )
-    return result.scalars().all()
+    users = result.scalars().all()
+    return [await build_user_out(db, u) for u in users]
 
 
 @router.patch("/users/{user_id}/department", response_model=schemas.UserOut)
@@ -99,7 +102,7 @@ async def update_user_department(
     user.department_id = payload.department_id
     await db.commit()
     await db.refresh(user)
-    return user
+    return await build_user_out(db, user)
 
 
 @router.get("/complaints", response_model=list[schemas.ComplaintOut])

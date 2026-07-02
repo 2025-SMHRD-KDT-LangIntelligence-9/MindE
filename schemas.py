@@ -21,6 +21,9 @@ class UserOut(BaseModel):
     email: EmailStr
     user_type: str
     phone: str | None = None
+    department_id: int | None = None
+    department_name: str | None = None   # 담당자 부서명 (JOIN으로 채움)
+    created_at: datetime | None = None    # 가입일 (관리자 화면용)
 
     model_config = ConfigDict(from_attributes=True)
 
