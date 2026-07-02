@@ -5,6 +5,9 @@
 AI 비즈니스 로직은 ai 브랜치의 chatbot_service 모듈에 통합되어 있다.
 백엔드는 한 줄 import로 모든 AI 기능(분류/긴급/RAG/클러스터/멀티모달/답변 LLM)을 사용.
 """
+import os
+import time
+
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
@@ -14,6 +17,9 @@ from contextlib import asynccontextmanager
 from database import get_db
 from routers import users, complaints, attachments, admin, notifications, chat
 import chatbot_service as svc
+
+
+SERVER_START_TIME = time.time()
 
 
 @asynccontextmanager
@@ -54,3 +60,60 @@ async def root():
 async def health_db(db: AsyncSession = Depends(get_db)):
     await db.execute(text("SELECT 1"))
     return {"db": "connected"}
+
+
+@app.get("/health")
+async def health_full(db: AsyncSession = Depends(get_db)):
+    """전체 의존성 상태 확인 (외부 모니터/알람에서 폴링).
+
+    반환: 각 항목 true/false + 전체 status.
+    status="ok"     — 다 정상
+    status="degraded" — 일부 기능 불가 (예: TTS 안 되지만 챗봇은 됨)
+    status="down"   — 챗봇 기능 자체 불가 (DB or 모델 문제)
+    """
+    checks = {}
+    errors = []
+
+    # 1. DB
+    try:
+        await db.execute(text("SELECT 1"))
+        checks["db"] = True
+    except Exception as e:
+        checks["db"] = False
+        errors.append(f"db: {type(e).__name__}")
+
+    # 2. 모델 preload 여부 (싱글톤 캐시 확인)
+    checks["classifier_loaded"] = svc._classifier is not None
+    checks["urgency_loaded"] = svc._urgency is not None
+    checks["embed_loaded"] = svc._embed_model is not None
+
+    # 3. 필수 환경변수 (호출 안 하고 존재 여부만)
+    checks["openai_key"] = bool(os.environ.get("OPENAI_API_KEY"))
+    checks["hf_token"] = bool(os.environ.get("HF_TOKEN"))
+    checks["elevenlabs_key"] = bool(os.environ.get("ELEVENLABS_API_KEY"))
+    checks["clova_stt_key"] = bool(
+        os.environ.get("NAVER_CLOVA_CLIENT_ID")
+        and os.environ.get("NAVER_CLOVA_CLIENT_SECRET")
+    )
+
+    # 4. 종합 status 판단
+    core_ok = checks["db"] and checks["classifier_loaded"] and checks["openai_key"]
+    optional_all = (
+        checks["elevenlabs_key"]
+        and checks["clova_stt_key"]
+        and checks["urgency_loaded"]
+        and checks["embed_loaded"]
+    )
+    if core_ok and optional_all:
+        status = "ok"
+    elif core_ok:
+        status = "degraded"   # 챗봇은 되지만 일부 기능 불가
+    else:
+        status = "down"       # 챗봇 자체 불가
+
+    return {
+        "status": status,
+        "uptime_seconds": int(time.time() - SERVER_START_TIME),
+        "checks": checks,
+        "errors": errors,
+    }
