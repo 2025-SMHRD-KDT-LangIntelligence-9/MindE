@@ -1,6 +1,6 @@
 # 진행 상황 (Resume용)
 
-마지막 업데이트: 2026-07-01 (백엔드 v2/v3 병합 + 세션 기반 챗봇 완성)
+마지막 업데이트: 2026-07-02 (정부24 절차 RAG + TTS 무료화 + 부서 판단 강화)
 
 ## ✅ 완료 상태
 
@@ -128,6 +128,40 @@ d68c9b3 — v10-relabel + HF 자동 다운로드 + Query Decomposition + 법령 
 - `/chat`: POST/GET `/sessions`, GET `/sessions/{id}`, PATCH `/sessions/{id}`, DELETE `/sessions/{id}`
 - `/admin`: DELETE `/reject-staff/{id}`, GET `/users`, PATCH `/users/{id}/department`, DELETE `/users/{id}`, GET `/complaints`, GET/POST/PATCH/DELETE `/departments`, `/categories`
 
+## 이번 세션 (2026-07-02) 추가 작업
+
+### 정부24 행정민원 절차 RAG 추가 ⭐
+- 크롤링해뒀던 `results (2).csv` (10,202행) 활용 — dedupe & 라벨 조립 → **9,438 유니크 민원 카탈로그**
+- **필드 청킹** — 각 민원을 5~6개 청크로 분해 ([용도]/[신청방법]/[구비서류]/[처리기간]/[수수료]/[절차]/[부가정보]/[소관기관]) → **46,157 청크**
+- KoSimCSE 임베딩 후 `rag_documents` 테이블에 `source_type='procedure'`로 INSERT
+- **총 rag_documents: 43,389 → 89,546건**
+- `chatbot_service.search_procedures(query, limit)` 신규 — 벡터 top-20 → **IDF 가중 title 부스트** → 리랭킹
+- `_process_sub_query` 병렬 gather에 procedures 추가, metadata에 `procedures` 필드
+- SYSTEM_PROMPT에 "행정 절차 안내 활용" 섹션 신규 (필요 서류/처리 기간/수수료/절차 답변 개선)
+- 실측: 자동차 이전등록 등 완벽 매칭. 여권/등기부등본은 KoSimCSE 한계로 벡터 top-20 진입 실패 케이스 존재. 답변 자체는 담당부서+정부24 안내로 안전.
+- **DB 스키마 변경 없음** — 마이그레이션 필요 없음
+
+### TTS 무료화
+- `synthesize_speech()`: CLOVA Voice Premium (월 9만원) → **Microsoft Edge Neural TTS (edge-tts, 무료)**
+- 시그니처 유지 → `/chat/voice-reply` 엔드포인트 & 프론트 코드 무영향
+- CLOVA speaker 이름 매핑 유지 (`nara`→SunHi 여성, `jinho`→InJoon 남성)
+- 품질: CLOVA Premium 급, 인증 불필요, 인터넷 연결만 필요
+- STT는 그대로 CLOVA CSR
+
+### 부서 억지 매칭 방지 (SYSTEM_PROMPT 강화)
+- **문제**: departments 테이블이 전남도청 산하 39개 부서만 있어서, 학교/중앙정부/경찰 소관 민원도 억지로 도청 부서에 매칭됨
+  - 예: "학교 운동장 체육대회 소음" → 관광과 안내 (오답)
+- **해결**: `chatbot_service.py`의 SYSTEM_PROMPT 두 섹션 강화
+  - "담당 부서 판단" 섹션 신규 — 도청 소관 vs 아닌 것 이분 판단 규칙 + 성격별 실제 담당 매핑 표 (학교→교육청, 여권→정부24, 학교폭력→117, 노동→1350, 국세→126 등)
+  - "자유롭게 안내해도 되는 것" 섹션에 상급 기관 채널 명시 (전라남도교육청 061-260-0114, 교육부 1577-1577, 국민건강보험 1577-1000, 금감원 1332 등)
+- **결과**: LLM이 매핑된 부서가 부적절할 때 무시하고 실제 담당 기관/국민신문고/정부24로 유도. 도청 소관인 케이스(포트홀, 가로등, 이웃 소음 등)는 원래대로 부서 안내 유지
+- **수정 파일**: `chatbot_service.py` 1개 (SYSTEM_PROMPT만)
+
+### 변경/추가된 파일
+- **수정**: `chatbot_service.py` (search_procedures + IDF 부스트 + synthesize_speech → edge-tts + SYSTEM_PROMPT 부서 판단 강화), `requirements.txt` (edge-tts 추가), `STATUS.md`
+- **신규 파일**: 없음
+- **DB**: rag_documents +46,157건, 스키마 변경 X
+
 ## 백엔드 통합 (backend-ai 폴더)
 
 - `C:\Users\smhrd\Desktop\backend-ai\` — self-contained (HF 자동 다운로드 반영)
@@ -146,7 +180,7 @@ d68c9b3 — v10-relabel + HF 자동 다운로드 + Query Decomposition + 법령 
 | 🔴 | 백엔드/프론트 인계 (HF_TOKEN, sub_queries 스키마, models/ 폴더 제거) | 30분 | 사용자 |
 | 🔴 | 발표 데모 시나리오 확정 + 리허설 | 1시간 | 사용자 |
 | 🟡 | 11 카테고리 골고루 실측 (예상 못한 케이스 대비) | 30분 | AI |
-| 🟡 | CLOVA Voice Premium 활성화 (TTS 데모) | 10분 | 사용자 (NCP 콘솔) |
+| ~~🟡~~ | ~~CLOVA Voice Premium 활성화 (TTS 데모)~~ → **해결됨** (Microsoft Edge Neural TTS로 교체, 무료) | - | - |
 | 🟡 | HF 토큰 회전 (이전 노출) | 5분 | 사용자 |
 | 🟢 | 자주 쓰는 문서 양식 자동 작성 (기획서 ⑥ 완성도) | 1~2시간 | 선택 |
 | 🟢 | 카톡/SMS 알림 통합 | 반나절 | 백엔드 |
@@ -211,7 +245,7 @@ print([r[0] for r in cur.fetchall()])
 ## 알려진 이슈
 
 - **가스누출/화재 케이스** 분류가 학습 데이터에 명확한 카테고리 없어서 헷갈림 (top-3 결과 부정확). 답변 LLM은 urgency=true로 119 안내 정확. 실제 데모엔 문제 없음.
-- **CLOVA Voice Premium 미활성화** — 코드는 준비. NCP 콘솔에서 서비스 신청 필요.
+- ~~**CLOVA Voice Premium 미활성화** — 코드는 준비. NCP 콘솔에서 서비스 신청 필요.~~ → **해결됨** (2026-07-02). CLOVA Voice Premium(월 9만원)이 부담이라 **Microsoft Edge Neural TTS (edge-tts, 무료)** 로 교체. `synthesize_speech()` 시그니처 그대로 유지되어 백엔드/프론트 코드 무영향. 품질은 CLOVA Premium 급 (SunHi 여성 / InJoon 남성).
 - **사례 활용** — 답변에 인용은 잘 되지만 sub_queries의 각 서브 cases 개별 활용은 완벽하지 않을 수 있음 (아직 세밀 검증 안 됨).
 - ~~**history in-memory** — 서버 재시작 시 사라짐~~ → **해결됨** (2026-07-01). `chat_sessions` 테이블 기반으로 이전, `/chat/ask`가 매 턴 DB 커밋.
 - **프론트 마이그레이션 필요** — `/chat/reset` 엔드포인트 제거됨. 프론트가 사용 중이면 `DELETE /chat/sessions/{id}`로 이관. 또한 `/chat/ask` 요청에 `session_id` 필드가 추가됨 (없으면 서버가 자동 생성해 응답에 포함).
