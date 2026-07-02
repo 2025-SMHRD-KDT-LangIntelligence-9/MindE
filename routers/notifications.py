@@ -1,7 +1,7 @@
 """
 알림 관련 엔드포인트.
 """
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -42,3 +42,38 @@ async def mark_all_read(
     )
     await db.commit()
     return {"updated": result.rowcount}
+
+
+@router.patch("/{notification_id}/read", response_model=schemas.NotificationOut)
+async def mark_read(
+    notification_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """알림 개별 읽음."""
+    noti = await db.get(models.Notification, notification_id)
+    if not noti:
+        raise HTTPException(status_code=404, detail="알림을 찾을 수 없습니다.")
+    if noti.user_id != current_user.user_id:
+        raise HTTPException(status_code=403, detail="권한이 없습니다.")
+    noti.is_read = True
+    await db.commit()
+    await db.refresh(noti)
+    return noti
+
+
+@router.delete("/{notification_id}", status_code=204)
+async def delete_notification(
+    notification_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """알림 개별 삭제."""
+    noti = await db.get(models.Notification, notification_id)
+    if not noti:
+        raise HTTPException(status_code=404, detail="알림을 찾을 수 없습니다.")
+    if noti.user_id != current_user.user_id:
+        raise HTTPException(status_code=403, detail="권한이 없습니다.")
+    await db.delete(noti)
+    await db.commit()
+    return

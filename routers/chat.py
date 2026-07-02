@@ -171,3 +171,42 @@ async def get_chat_session(
     if session.user_id != current_user.user_id:
         raise HTTPException(status_code=403, detail="조회 권한이 없습니다.")
     return session
+
+
+@router.patch("/sessions/{session_id}", response_model=schemas.ChatSessionDetailOut)
+async def update_chat_session(
+    session_id: int,
+    payload: schemas.ChatSessionUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """상담 세션 제목/상태 수정."""
+    session = await db.get(models.ChatSession, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다.")
+    if session.user_id != current_user.user_id:
+        raise HTTPException(status_code=403, detail="수정 권한이 없습니다.")
+    if payload.title is not None:
+        session.title = payload.title
+    if payload.status is not None:
+        session.status = payload.status
+    await db.commit()
+    await db.refresh(session)
+    return session
+
+
+@router.delete("/sessions/{session_id}", status_code=204)
+async def delete_chat_session(
+    session_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """상담 세션 삭제."""
+    session = await db.get(models.ChatSession, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다.")
+    if session.user_id != current_user.user_id:
+        raise HTTPException(status_code=403, detail="삭제 권한이 없습니다.")
+    await db.delete(session)
+    await db.commit()
+    return

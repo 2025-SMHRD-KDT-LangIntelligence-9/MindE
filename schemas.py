@@ -21,6 +21,8 @@ class UserOut(BaseModel):
     email: EmailStr
     user_type: str
     phone: str | None = None
+    department_id: int | None = None
+    department_name: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -192,3 +194,8 @@ class ChatSessionDetailOut(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ChatSessionUpdate(BaseModel):
+    title: str | None = None
+    status: str | None = None

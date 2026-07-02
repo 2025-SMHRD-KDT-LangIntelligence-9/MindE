@@ -27,3 +27,6 @@ sentence-transformers>=3.0
 # ===== LLM / 멀티모달 =====
 openai>=1.0
 httpx>=0.27
+
+# ===== TTS (무료 — Microsoft Edge Neural Voice) =====
+edge-tts>=6.1

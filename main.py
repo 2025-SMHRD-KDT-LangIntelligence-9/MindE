@@ -29,7 +29,7 @@ app = FastAPI(title="MindE API", version="0.2.0", lifespan=lifespan)
 # React(프론트엔드)에서 호출할 수 있도록 CORS 허용
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

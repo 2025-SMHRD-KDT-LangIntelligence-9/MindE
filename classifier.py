@@ -54,18 +54,20 @@ def normalize_text(text: str) -> str:
 class ComplaintClassifier:
     """KLUE BERT 기반 민원 분류기 (v5, 11 클래스)."""
 
-    DEFAULT_MODEL_NAME = 'atti433/minde-classifier'
+    DEFAULT_MODEL_DIR = Path(__file__).parent / 'bert-v5' / 'final'
 
-    def __init__(self, model_name: str = None, model_dir: Union[str, Path, None] = None,
+    def __init__(self, model_dir: Union[str, Path, None] = None,
                  device: str = None, max_length: int = 128):
-        # model_dir가 있으면 로컬 경로 우선, 없으면 HF 모델명
-        if model_dir:
-            src = str(Path(model_dir))
-            if not Path(model_dir).exists():
-                raise FileNotFoundError(f'모델 폴더 없음: {model_dir}')
+        # 로컬 경로 또는 HuggingFace model_id (예: "atti433/minde-classifier") 지원.
+        # HF model_id면 transformers가 자동 다운로드 (HF_TOKEN env 필요, private일 때).
+        _val = model_dir if model_dir else self.DEFAULT_MODEL_DIR
+        _val_str = str(_val)
+        if Path(_val_str).exists():
+            self.model_dir = Path(_val_str)   # 로컬
+        elif '/' in _val_str and not _val_str.startswith(('.', '/', '\\')) and ':' not in _val_str[:3]:
+            self.model_dir = _val_str          # HF model_id (예: "atti433/minde-classifier")
         else:
-            src = model_name or self.DEFAULT_MODEL_NAME
-        self.source = src
+            raise FileNotFoundError(f'모델 폴더/저장소 없음: {_val_str}')
 
         # device 자동 선택 (cuda 가능하면 cuda)
         if device is None:
@@ -73,8 +75,8 @@ class ComplaintClassifier:
         self.device = torch.device(device)
         self.max_length = max_length
 
-        self.tokenizer = AutoTokenizer.from_pretrained(src)
-        self.model = AutoModelForSequenceClassification.from_pretrained(src)
+        self.tokenizer = AutoTokenizer.from_pretrained(str(self.model_dir))
+        self.model = AutoModelForSequenceClassification.from_pretrained(str(self.model_dir))
         self.model.to(self.device)
         self.model.eval()
 
@@ -140,7 +142,7 @@ class ComplaintClassifier:
         return results
 
     def __repr__(self):
-        return (f'ComplaintClassifier(source={self.source}, '
+        return (f'ComplaintClassifier(model_dir={self.model_dir}, '
                 f'device={self.device}, num_labels={len(self.labels)})')
 
 

@@ -283,3 +283,22 @@ async def update_complaint_department(
     await db.commit()
     await db.refresh(complaint)
     return await build_complaint_out(db, complaint)
+
+
+@router.delete("/{complaint_id}", status_code=204)
+async def delete_complaint(
+    complaint_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """민원 삭제 (본인 또는 admin)."""
+    complaint = await db.get(models.Complaint, complaint_id)
+    if not complaint:
+        raise HTTPException(status_code=404, detail="민원을 찾을 수 없습니다.")
+    is_owner = complaint.user_id == current_user.user_id
+    is_admin = current_user.user_type == "admin"
+    if not (is_owner or is_admin):
+        raise HTTPException(status_code=403, detail="삭제 권한이 없습니다.")
+    await db.delete(complaint)
+    await db.commit()
+    return

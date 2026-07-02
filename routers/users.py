@@ -16,6 +16,20 @@ router = APIRouter(prefix="/users", tags=["users"])
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
+async def build_user_out(db: AsyncSession, user: models.User) -> dict:
+    """UserOut dict + 부서 정보 JOIN."""
+    dept = await db.get(models.Department, user.department_id) if user.department_id else None
+    return {
+        "user_id": user.user_id,
+        "name": user.name,
+        "email": user.email,
+        "user_type": user.user_type,
+        "phone": user.phone,
+        "department_id": user.department_id,
+        "department_name": dept.name if dept else None,
+    }
+
+
 @router.post("", response_model=schemas.UserOut, status_code=201)
 async def signup(payload: schemas.UserCreate, db: AsyncSession = Depends(get_db)):
     exists = await db.scalar(
@@ -34,7 +48,7 @@ async def signup(payload: schemas.UserCreate, db: AsyncSession = Depends(get_db)
     db.add(user)
     await db.commit()
     await db.refresh(user)
-    return user
+    return await build_user_out(db, user)
 
 
 @router.post("/login", response_model=schemas.Token)
@@ -57,8 +71,11 @@ async def login(
 
 
 @router.get("/me", response_model=schemas.UserOut)
-async def read_me(current_user: models.User = Depends(get_current_user)):
-    return current_user
+async def read_me(
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    return await build_user_out(db, current_user)
 
 
 @router.patch("/me", response_model=schemas.UserOut)
@@ -87,7 +104,7 @@ async def update_me(
 
     await db.commit()
     await db.refresh(current_user)
-    return current_user
+    return await build_user_out(db, current_user)
 
 
 @router.delete("/me", status_code=204)
@@ -111,4 +128,4 @@ async def update_my_notifications(
     current_user.notification_enabled = payload.notification_enabled
     await db.commit()
     await db.refresh(current_user)
-    return current_user
+    return await build_user_out(db, current_user)
