@@ -1,6 +1,7 @@
 """
 민원 관련 엔드포인트.
 """
+import asyncio
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -77,7 +78,8 @@ async def create_complaint(
         )
 
     text_for_ai = f"{title}\n{content}"
-    result = await svc.answer_chatbot(text_for_ai)
+    # 챗봇 분석은 하되 클러스터는 안 만듦 — 클러스터는 아래에서 title만으로 별도 처리.
+    result = await svc.answer_chatbot(text_for_ai, create_cluster=False)
     md = result["metadata"]
 
     # 2차 방어: 게이트 LLM. 잡담/이미지 설명 조각 등 유형 판별.
@@ -87,10 +89,16 @@ async def create_complaint(
             detail="민원 접수 내용으로 판단되지 않습니다. 상담이 필요하시면 채팅으로 문의해주세요.",
         )
 
+    # ─── 클러스터: title로만 매칭/생성 (유사 민원 감지) ───
+    # 본문에 포함된 위치·시간 등 세부 정보로 흩어지지 않고 "제목=이슈 유형"으로 집계됨.
+    cluster_r = await asyncio.to_thread(
+        svc.match_or_create_cluster, title, md.get("keywords")
+    )
+
     category_id = md["classification"]["category_id"]
     department_id = md["departments"][0]["department_id"] if md["departments"] else None
-    urgency_score = md["urgency"]["probability_urgent"] + md["cluster"]["urgency_bonus"]
-    cluster_id = md["cluster"]["cluster_id"]
+    urgency_score = md["urgency"]["probability_urgent"] + (cluster_r.get("urgency_bonus") or 0)
+    cluster_id = cluster_r.get("cluster_id")
 
     complaint = models.Complaint(
         user_id=current_user.user_id,

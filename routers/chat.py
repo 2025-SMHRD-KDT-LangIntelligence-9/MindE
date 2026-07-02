@@ -5,18 +5,23 @@
 엔드포인트:
 - POST   /chat/ask          — 텍스트 입력 → 답변 (session_id 옵션, 없으면 자동 생성)
 - POST   /chat/voice        — 음성 입력 (CLOVA CSR) → 텍스트 → 답변
-- POST   /chat/image        — 이미지 (gpt-4o Vision) → 분석 → 답변
+- POST   /chat/image        — 이미지 (gpt-4o Vision) → 분석 → 답변 (이미지 저장)
+- POST   /chat/file         — 문서/파일 첨부 → 세션에 붙임 (분석 X)
 - POST   /chat/voice-reply  — 답변 텍스트 → 음성 mp3 (CLOVA Voice Premium)
 - POST   /chat/sessions     — 세션 수동 생성 (클라이언트가 통째로 저장할 때)
 - GET    /chat/sessions     — 내 세션 목록
 - GET    /chat/sessions/{id}— 세션 단건 (messages 포함)
 - PATCH  /chat/sessions/{id}— 세션 title/status 수정
 - DELETE /chat/sessions/{id}— 세션 삭제
+- GET    /chat/files/{name} — 세션에 첨부된 파일 다운로드 (권한 확인)
 """
+import mimetypes
+import uuid
 from datetime import datetime
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
-from fastapi.responses import Response
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,6 +37,28 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 
 _MAX_HISTORY = 20  # 최근 10턴(20 메시지)만 LLM에 컨텍스트로 전달
 _TITLE_MAX = 40   # 자동 생성 title 최대 길이
+
+# 파일 저장 경로 — 프로젝트 루트의 uploads/chat/
+_CHAT_UPLOAD_DIR = Path(__file__).resolve().parent.parent / "uploads" / "chat"
+_CHAT_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+_MAX_FILE_SIZE = 20 * 1024 * 1024   # 20MB
+
+
+def _save_upload(file_bytes: bytes, original_name: str, mime: str) -> dict:
+    """업로드 파일을 uploads/chat/에 UUID 이름으로 저장. 메시지에 넣을 dict 반환."""
+    ext = Path(original_name or "").suffix or mimetypes.guess_extension(mime or "") or ""
+    filename = f"{uuid.uuid4().hex}{ext}"
+    path = _CHAT_UPLOAD_DIR / filename
+    path.write_bytes(file_bytes)
+    ftype = "image" if (mime or "").startswith("image/") else "file"
+    return {
+        "file_url": f"uploads/chat/{filename}",   # 상대 경로
+        "filename": filename,                       # 다운로드 endpoint용
+        "file_type": ftype,
+        "mime_type": mime or "application/octet-stream",
+        "original_filename": original_name or filename,
+        "size": len(file_bytes),
+    }
 
 
 def _auto_title(first_message: str) -> str:
@@ -67,11 +94,38 @@ async def _load_or_create_session(
     return session
 
 
-def _append_and_save(session: models.ChatSession, user_msg: str, assistant_msg: str):
-    """세션 messages에 한 턴 append. flag_modified로 JSONB 변경 인식."""
+def _append_and_save(
+    session: models.ChatSession,
+    user_msg: str,
+    assistant_msg: str,
+    user_attachments: list[dict] | None = None,
+):
+    """세션 messages에 한 턴 append. 각 메시지에 timestamp 포함.
+
+    user_attachments가 있으면 user 메시지에 첨부 정보 함께 저장.
+    """
     msgs = list(session.messages) if session.messages else []
-    msgs.append({"role": "user", "content": user_msg})
-    msgs.append({"role": "assistant", "content": assistant_msg})
+    now = datetime.now().isoformat()
+    user_entry = {"role": "user", "content": user_msg, "timestamp": now}
+    if user_attachments:
+        user_entry["attachments"] = user_attachments
+    msgs.append(user_entry)
+    msgs.append({"role": "assistant", "content": assistant_msg, "timestamp": datetime.now().isoformat()})
+    session.messages = msgs
+    session.updated_at = datetime.now()
+    flag_modified(session, "messages")
+
+
+def _append_attachment_only(session: models.ChatSession, attachment: dict, user_text: str = ""):
+    """AI 호출 없이 첨부만 세션에 append (/chat/file 용)."""
+    msgs = list(session.messages) if session.messages else []
+    now = datetime.now().isoformat()
+    msgs.append({
+        "role": "user",
+        "content": user_text or "(파일 첨부)",
+        "timestamp": now,
+        "attachments": [attachment],
+    })
     session.messages = msgs
     session.updated_at = datetime.now()
     flag_modified(session, "messages")
@@ -147,9 +201,18 @@ async def chat_image(
     if not img_bytes:
         raise HTTPException(400, "이미지 파일이 비어있습니다.")
 
+    if len(img_bytes) > _MAX_FILE_SIZE:
+        raise HTTPException(413, f"파일이 너무 큽니다 (최대 {_MAX_FILE_SIZE // (1024*1024)}MB)")
+
     img_desc = await svc.analyze_image(
         img_bytes, mime_type=file.content_type or "image/jpeg"
     )
+    # 이미지 원본 저장 → attachment 정보에 분석 결과도 함께
+    attachment = _save_upload(
+        img_bytes, file.filename or "image.jpg", file.content_type or "image/jpeg"
+    )
+    attachment["description"] = img_desc
+
     combined = (
         f"[첨부 이미지 분석]\n{img_desc}\n\n"
         f"[사용자 메시지]\n{text or '(이미지만 첨부)'}"
@@ -160,10 +223,82 @@ async def chat_image(
     )
     history = _history_for_llm(session)
     result = await svc.answer_chatbot(combined, history=history)
-    _append_and_save(session, combined, result["answer"])
+    _append_and_save(session, combined, result["answer"], user_attachments=[attachment])
     await db.commit()
     await db.refresh(session)
-    return {"session_id": session.session_id, "image_description": img_desc, **result}
+    return {"session_id": session.session_id, "image_description": img_desc, "attachment": attachment, **result}
+
+
+@router.post("/file")
+async def chat_file(
+    file: UploadFile = File(...),
+    text: str = Form(""),
+    session_id: int | None = Form(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """일반 파일 첨부 (문서·PDF·기타). AI 분석 없이 세션에 attachment로만 저장.
+
+    이미지면 /chat/image 를 쓰는 게 낫다 (Vision 분석 포함).
+    """
+    file_bytes = await file.read()
+    if not file_bytes:
+        raise HTTPException(400, "파일이 비어있습니다.")
+    if len(file_bytes) > _MAX_FILE_SIZE:
+        raise HTTPException(413, f"파일이 너무 큽니다 (최대 {_MAX_FILE_SIZE // (1024*1024)}MB)")
+
+    attachment = _save_upload(
+        file_bytes,
+        file.filename or "file",
+        file.content_type or "application/octet-stream",
+    )
+
+    session = await _load_or_create_session(
+        db, current_user.user_id, session_id, text or attachment["original_filename"]
+    )
+    _append_attachment_only(session, attachment, user_text=text)
+    await db.commit()
+    await db.refresh(session)
+    return {"session_id": session.session_id, "attachment": attachment}
+
+
+@router.get("/files/{filename}")
+async def chat_download_file(
+    filename: str,
+    current_user: models.User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """세션에 첨부된 파일 다운로드. 권한: 파일이 참조된 세션의 소유자만.
+
+    filename은 UUID 기반이라 추측 불가하지만, 소유권도 확인.
+    """
+    # 파일 존재 확인
+    safe_name = Path(filename).name  # path traversal 방지
+    path = _CHAT_UPLOAD_DIR / safe_name
+    if not path.exists() or not path.is_file():
+        raise HTTPException(404, "파일을 찾을 수 없습니다.")
+
+    # 이 유저의 세션 중 이 파일을 참조하는 것 있는지 확인
+    target_url = f"uploads/chat/{safe_name}"
+    result = await db.execute(
+        select(models.ChatSession).where(models.ChatSession.user_id == current_user.user_id)
+    )
+    owned = False
+    for session in result.scalars().all():
+        msgs = session.messages or []
+        for m in (msgs if isinstance(msgs, list) else []):
+            for a in (m.get("attachments") or []):
+                if a.get("file_url") == target_url or a.get("filename") == safe_name:
+                    owned = True
+                    break
+            if owned:
+                break
+        if owned:
+            break
+    if not owned:
+        raise HTTPException(403, "이 파일에 접근 권한이 없습니다.")
+
+    return FileResponse(path, filename=safe_name)
 
 
 class VoiceReplyRequest(BaseModel):

@@ -1400,7 +1400,11 @@ def _build_tool_query(text: str, history: Optional[list[dict]] = None) -> str:
     return '\n'.join(p for p in parts if p)
 
 
-async def answer_chatbot(text: str, history: Optional[list[dict]] = None) -> dict:
+async def answer_chatbot(
+    text: str,
+    history: Optional[list[dict]] = None,
+    create_cluster: bool = False,
+) -> dict:
     """챗봇 답변 생성 (백엔드 오케스트레이션 패턴 A + 게이트).
 
     흐름:
@@ -1507,7 +1511,12 @@ async def answer_chatbot(text: str, history: Optional[list[dict]] = None) -> dic
             asyncio.to_thread(search_procedures, tool_q, 5),
         )
         kw = await keywords_task
-        cluster_r = await asyncio.to_thread(match_or_create_cluster, sub_text, kw)
+        # 클러스터는 create_cluster=True 일 때만 (예: 정식 민원 접수 시).
+        # 챗봇 대화(/chat/ask)에선 잡담/문의도 클러스터화되어 오염되기 때문에 기본 False.
+        if create_cluster:
+            cluster_r = await asyncio.to_thread(match_or_create_cluster, sub_text, kw)
+        else:
+            cluster_r = None
         top_k_items = cls_r.get('top_k') or []
         cat_id_r = cls_r.get('category_id')
         dept_search_task = (
