@@ -13,6 +13,7 @@
 - GET    /chat/sessions/{id}— 세션 단건 (messages 포함)
 - PATCH  /chat/sessions/{id}— 세션 title/status 수정
 - DELETE /chat/sessions/{id}— 세션 삭제
+- POST   /chat/sessions/{id}/draft-complaint — 세션 → 민원 접수 초안 (title/content/attachments)
 - GET    /chat/files/{name} — 세션에 첨부된 파일 다운로드 (권한 확인)
 """
 import mimetypes
@@ -413,3 +414,113 @@ async def delete_chat_session(
         raise HTTPException(403, "삭제 권한이 없습니다.")
     await db.delete(session)
     await db.commit()
+
+
+# ---------- 민원 접수 초안 자동 생성 ----------
+_DRAFT_PROMPT = """\
+당신은 시민 민원 상담 챗봇의 접수 어시스턴트입니다.
+아래 유저↔AI 대화 로그를 바탕으로 시민이 '민원 접수' 화면에서 바로 쓸 수 있는
+**민원 제목**과 **민원 내용**을 만들어주세요.
+
+## 규칙
+- **제목**: 간결한 한 줄 (10~30자). 이슈 유형이 드러나야 함.
+  예: "도로 포트홀 신고", "가로등 고장 문의", "가족관계증명서 발급 절차"
+- **내용**: 담당 공무원이 읽고 처리할 수 있는 정중한 서술체 (2~4문장, 100~250자).
+  - 상황·위치·불편 정도를 구체적으로.
+  - 이미지가 첨부되었다면 이미지에서 확인된 사실을 반영.
+  - **금지**: "카테고리 후보:", "[첨부 이미지 분석]", "[사용자 메시지]" 같은 시스템 메타 표기는 절대 넣지 마세요.
+  - 이모지·해시태그 금지. 대화체("~에요") 대신 서술체("~니다") 사용.
+
+## 대화 로그
+{conversation}
+
+## 첨부 이미지 분석 (있으면 참고)
+{image_desc}
+
+## 출력 형식 (JSON만 출력)
+{{"title": "...", "content": "..."}}
+"""
+
+
+class DraftComplaintOut(BaseModel):
+    session_id: int
+    title: str
+    content: str
+    attachments: list[dict] = []
+
+
+@router.post("/sessions/{session_id}/draft-complaint", response_model=DraftComplaintOut)
+async def draft_complaint_from_session(
+    session_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """세션 대화를 바탕으로 민원 접수용 title/content 초안 자동 생성.
+
+    프론트가 "민원 접수" 버튼 클릭 시 호출 → 반환된 title/content 로 폼 자동 채움.
+    첨부 파일도 세션에 있던 것 그대로 반환 (프론트가 접수 시 다시 붙일 수 있게).
+    유저는 초안 확인·수정 후 POST /complaints 로 실제 접수.
+    """
+    session = await db.get(models.ChatSession, session_id)
+    if not session:
+        raise HTTPException(404, "세션을 찾을 수 없습니다.")
+    if session.user_id != current_user.user_id:
+        raise HTTPException(403, "조회 권한이 없습니다.")
+
+    msgs = session.messages or []
+    if not isinstance(msgs, list) or not msgs:
+        raise HTTPException(400, "세션에 대화 내용이 없습니다.")
+
+    # 대화 로그 구성 (system meta 텍스트 제거)
+    import re as _re
+    conv_lines: list[str] = []
+    attachments_all: list[dict] = []
+    image_descs: list[str] = []
+    for m in msgs:
+        role = m.get("role")
+        content = (m.get("content") or "").strip()
+        # 첨부 정보 수집
+        for a in (m.get("attachments") or []):
+            attachments_all.append(a)
+            if a.get("description"):
+                image_descs.append(a["description"])
+        # 이미지 분석 태그 제거 (LLM에 clean text만 주도록)
+        content = _re.sub(r'\[첨부 이미지 분석\]\n.*?\n\n\[사용자 메시지\]\n', '', content, flags=_re.DOTALL)
+        content = _re.sub(r'카테고리 후보:.*', '', content).strip()
+        if not content:
+            continue
+        prefix = "유저" if role == "user" else "AI"
+        conv_lines.append(f"{prefix}: {content}")
+
+    conversation = "\n".join(conv_lines) or "(대화 내용 없음)"
+    image_desc_text = "\n".join(image_descs) if image_descs else "(첨부 이미지 없음)"
+
+    prompt = _DRAFT_PROMPT.format(conversation=conversation, image_desc=image_desc_text)
+
+    # LLM 호출
+    client = svc._get_openai()
+    resp = await client.chat.completions.create(
+        model=svc.OPENAI_MODEL,
+        messages=[{"role": "user", "content": prompt}],
+        response_format={"type": "json_object"},
+    )
+    import json as _json
+    raw = (resp.choices[0].message.content or "").strip()
+    try:
+        parsed = _json.loads(raw)
+        title = str(parsed.get("title", "")).strip()
+        content = str(parsed.get("content", "")).strip()
+    except Exception:
+        raise HTTPException(500, f"초안 생성 파싱 실패: {raw[:200]}")
+
+    if not title:
+        title = "민원 접수"
+    if not content:
+        content = conversation[:200]
+
+    return DraftComplaintOut(
+        session_id=session_id,
+        title=title[:200],
+        content=content,
+        attachments=attachments_all,
+    )
