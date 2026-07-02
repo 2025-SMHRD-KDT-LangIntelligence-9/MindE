@@ -1,6 +1,6 @@
 # 진행 상황 (Resume용)
 
-마지막 업데이트: 2026-07-02 (정부24 절차 RAG + TTS 무료화 + 부서 판단 강화)
+마지막 업데이트: 2026-07-02 (인프라 + 통계 API + 세션 첨부 + 클러스터 정책 개편)
 
 ## ✅ 완료 상태
 
@@ -17,9 +17,10 @@
 - HF 업로드 완료 (tag 부여)
 
 ### DB (PostgreSQL + pgvector) — 캠퍼스 공용
-- **13 테이블** (chat_sessions 추가), 카테고리 11 / 부서 39 / 매핑 32 / urgency_keywords 29
-- `rag_documents`: law 5,441 + dept 39 + case **37,909** (임베딩 완료, 벡터 검색 활성)
-- `complaint_clusters` 초기화 완료 (28건 → 0건). 시퀀스도 1부터 리셋.
+- **13 테이블**, 카테고리 11 / 부서 39 / 매핑 32 / urgency_keywords 29
+- `rag_documents`: law 5,441 + dept 39 + case 37,909 + **procedure 46,157** = **89,546건**
+- `complaint_clusters`: 정리 완료 (43건 → 1건, 실제 참조되는 것만 남김)
+- `complaints`: 정리 완료 (6건 → 2건, 오염 데이터 삭제)
 - **마이그레이션 v2/v3/v4 모두 적용 완료** (`scripts/migrate_v2.sql`, `migrate_v3.sql`, `migrate_v4.sql`)
   - v2: `users.department_id`, `complaints.memo/updated_at`, `notifications.is_read`
   - v3: `chat_sessions` 테이블 (session_id / user_id / title / status / messages JSONB / created_at)
@@ -28,10 +29,10 @@
 ### chatbot_service 함수
 | 함수 | 용도 |
 |---|---|
-| `answer_chatbot(text, history=None)` ⭐ | 게이트 + 분해 + 도구 병렬 + 답변 LLM |
+| `answer_chatbot(text, history=None, create_cluster=False)` ⭐ | 게이트 + 분해 + 도구 병렬 + 답변 LLM. **클러스터 생성은 접수 시(complaints POST)만 True로 호출** |
 | `decompose_query(text, history)` | 복합 민원 자동 분해 |
 | `transcribe_audio(audio_bytes)` | 음성→텍스트 (CLOVA CSR) |
-| `synthesize_speech(text, speaker)` | 텍스트→음성 mp3 (CLOVA Voice Premium, 미활성) |
+| `synthesize_speech(text, speaker, provider)` | 텍스트→음성 mp3 (ElevenLabs 마음결 voice 기본, 실패 시 edge-tts fallback) |
 | `analyze_image(image_bytes, mime_type)` | 이미지→민원 분석 (gpt-4o Vision) |
 | `classify_complaint / check_urgency / search_laws / search_cases / search_dept / lookup_dept_by_category / match_or_create_cluster / get_categories / extract_keywords` | 도구 |
 | `preload_models()` | 서버 startup |
@@ -162,6 +163,69 @@ d68c9b3 — v10-relabel + HF 자동 다운로드 + Query Decomposition + 법령 
 - **신규 파일**: 없음
 - **DB**: rag_documents +46,157건, 스키마 변경 X
 
+## 이번 세션 (2026-07-02 오후) 추가 작업
+
+### ElevenLabs TTS 통합 + 마음결 확정 voice
+- `synthesize_speech(text, speaker, provider)` — provider 파라미터 신규 (`"edge"` | `"eleven"`)
+- 기본 provider = `"eleven"` — 프론트가 안 넘겨도 마음결 voice로 자동 응답
+- ElevenLabs 실패 시 edge-tts 자동 fallback (데모 무음 방지)
+- **마음결 voice ID**: `ksaI0TCD9BstzEzlxj4q` (Starter tier 이상 필요)
+- 튜닝: stability 1.0, similarity 0.5, style 0.0, speed 1.1, `apply_text_normalization: on`
+- env 오버라이드: `ELEVENLABS_API_KEY`, `ELEVENLABS_DEFAULT_VOICE`, `ELEVENLABS_SPEED/STABILITY/SIMILARITY/STYLE`
+
+### 관리자 통계 API 11개
+- `GET /admin/stats/summary` — 요약 카드 (오늘/이번주/이번달, 상태별, 긴급)
+- `GET /admin/stats/by-status` — 상태별 도넛/파이
+- `GET /admin/stats/by-category` — 카테고리별 막대
+- `GET /admin/stats/by-department` — 부서별 + 상태 breakdown
+- `GET /admin/stats/timeline?days=7` — 일별 접수/답변 추이
+- `GET /admin/stats/urgency` — 긴급도 4단계 분포
+- `GET /admin/stats/urgent-top` — 긴급 민원 top-N (알림 배너용)
+- `GET /admin/stats/hot-clusters` — 접수 폭증 클러스터
+- `GET /admin/stats/response-metrics` — 답변률/평균 답변 시간
+- `GET /admin/stats/user-metrics` — 사용자 지표
+- `GET /admin/stats/attachment-rate` — 첨부율
+- 모두 `Depends(get_current_staff)` — 담당자/관리자만
+
+### 세션 메시지 확장 (2026-07-02 오후)
+- 각 message에 `timestamp` 필드 자동 추가
+- `attachments` 필드 (첨부 있을 때만)
+- `/chat/image` — 이미지 원본 저장 (`uploads/chat/`), 응답에 attachment 반환
+- **`POST /chat/file` 신규** — 문서/파일 첨부 (AI 분석 X)
+- **`GET /chat/files/{filename}` 신규** — 첨부 다운로드 (세션 소유권 확인)
+- 최대 파일 크기: 20MB
+- 음성 파일은 저장 X (STT 텍스트만 유지)
+
+### 클러스터 정책 개편
+- `answer_chatbot(create_cluster=False)` 기본 — **챗봇 대화는 클러스터 안 만듦**
+- `/complaints` POST에서만 명시적으로 `match_or_create_cluster(title, keywords)` 호출
+- **title 기준으로만** 클러스터링 (본문 세부정보로 흩어지지 X)
+- 이전에 챗봇 대화로 오염된 클러스터 43건 → 1건으로 정리
+
+### 헬스체크 강화 + 외부 모니터
+- `GET /health` — DB, 모델 로드, API 키 여부 종합 확인 → status: ok/degraded/down
+- `scripts/health_monitor.py` — 30초 폴링, 3연속 실패 시 Windows 토스트 + 경고음 + Discord 웹훅
+
+### CORS 수정
+- `main.py`: `allow_credentials=False` (allow_origins=["*"] 와 호환)
+- JWT는 Authorization 헤더로 문제 없음
+
+### 인프라 (2026-07-02)
+- **도메인 확보**: `minde.ai.kr` → 공인 IP `123.142.39.125`
+- **공유기 포트 포워딩**:
+  - 외부 80 → 팀원 노트북(프론트) `192.168.0.78:3000`
+  - 외부 3000 → 팀원 노트북 `192.168.0.78:3000`
+  - 외부 8000 → 본인 노트북(백엔드) `192.168.0.77:8000`
+- 서버 실행: `uvicorn main:app --host 0.0.0.0 --port 8000 --reload`
+- 외부 접속 가능: `http://minde.ai.kr:8000` (백엔드 Swagger), `http://minde.ai.kr` (프론트 UI)
+- ISP 포트 80 허용 확인됨 — Cloudflare Tunnel 없이 순수 포트 포워딩으로 도메인 접속 가능
+- HTTPS 아직 미적용 (`http://`만) — 필요 시 Cloudflare 프록시 30분 작업
+
+### 변경/추가된 파일 (오늘 오후 세션)
+- **수정**: `chatbot_service.py` (create_cluster 파라미터, ElevenLabs voice/파라미터), `routers/chat.py` (timestamp, attachment, /chat/file, /chat/files), `routers/complaints.py` (title 클러스터), `routers/admin.py` (통계 API 11개), `main.py` (`/health` 강화, CORS credentials=False), `STATUS.md`
+- **신규 파일**: `scripts/health_monitor.py`
+- **DB**: rag_documents 그대로, complaint_clusters 43→1, complaints 6→2, 스키마 변경 X
+
 ## 백엔드 통합 (backend-ai 폴더)
 
 - `C:\Users\smhrd\Desktop\backend-ai\` — self-contained (HF 자동 다운로드 반영)
@@ -171,30 +235,34 @@ d68c9b3 — v10-relabel + HF 자동 다운로드 + Query Decomposition + 법령 
 
 ## 발표 일정 및 남은 항목
 
-- 발표: **2026-07-09** (7/1 기준 D-8)
+- 발표: **2026-07-09** (7/2 기준 D-7)
 
 ### 발표 전 남은 작업
 | 우선순위 | 항목 | 시간 | 담당 |
 |---|---|---|---|
-| 🔴 | 프론트 담당자 API 인계 — `/chat/reset` 제거, `/chat/ask`에 `session_id` 추가, 신규 세션 CRUD 5개, 백엔드 20개 신규 엔드포인트 | 30분 | 사용자 |
-| 🔴 | 백엔드/프론트 인계 (HF_TOKEN, sub_queries 스키마, models/ 폴더 제거) | 30분 | 사용자 |
+| 🔴 | 프론트 담당자에게 오늘 변경사항 통합 인계 (통계 API 11개, 첨부 저장, timestamp, /chat/file 등) | 30분 | 사용자 |
+| 🔴 | 프론트 SPA 새로고침 404 이슈 전달 — 프록시를 `/api/*` 만 잡도록 (진단 완료) | 5분 | 사용자 |
 | 🔴 | 발표 데모 시나리오 확정 + 리허설 | 1시간 | 사용자 |
+| 🟡 | 발표 리허설 겸 샘플 민원 5~10건 접수 (관리자 대시보드 채우기) | 20분 | 사용자 |
 | 🟡 | 11 카테고리 골고루 실측 (예상 못한 케이스 대비) | 30분 | AI |
-| ~~🟡~~ | ~~CLOVA Voice Premium 활성화 (TTS 데모)~~ → **해결됨** (Microsoft Edge Neural TTS로 교체, 무료) | - | - |
+| 🟡 | HTTPS 붙이기 (Cloudflare Tunnel) — 발표 완성도 | 30분 | 사용자 |
 | 🟡 | HF 토큰 회전 (이전 노출) | 5분 | 사용자 |
+| 🟢 | 채팅 → 민원 접수 연결 (`chat_session_id` 컬럼) — 담당자가 원본 대화 열람 | 30~60분 | AI |
 | 🟢 | 자주 쓰는 문서 양식 자동 작성 (기획서 ⑥ 완성도) | 1~2시간 | 선택 |
 | 🟢 | 카톡/SMS 알림 통합 | 반나절 | 백엔드 |
-| 🟢 | 관리자 대시보드 시각화 (백엔드 CRUD는 완료) | 반나절 | 백엔드+프론트 |
+| 🟢 | 세션 삭제 시 첨부 파일도 함께 삭제 | 10분 | AI |
 
 ## 환경/접속
 
 - Python 3.11: `C:\Users\smhrd\AppData\Local\Programs\Python\Python311\python.exe`
-- AI 인계 폴더: `C:\Users\smhrd\Desktop\실전 프로젝트\` (ai 브랜치 push 대상)
-- 백엔드 통합 폴더: `C:\Users\smhrd\Desktop\backend-ai\` (윤지은 씨 인계 대상)
+- AI 인계 폴더: `C:\Users\smhrd\Desktop\실전 프로젝트\` (backend-ai 브랜치 push 대상)
+- 백엔드 통합 폴더: `C:\Users\smhrd\Desktop\backend-ai\` (윤지은 씨 인계 대상 — 옛 zip)
 - 재라벨링 워크스페이스: `C:\Users\smhrd\Desktop\데이터\relabel-workspace\`
 - DB: `project-db-campus.smhrd.com:3310/mp_24k_li9_p3_3`
 - HF 저장소: `atti433/minde-classifier`, `atti433/minde-urgency` (HF_TOKEN 필요)
-- GitHub: https://github.com/2025-SMHRD-KDT-LangIntelligence-9/MindE (ai 브랜치)
+- GitHub: https://github.com/2025-SMHRD-KDT-LangIntelligence-9/MindE (**backend-ai 브랜치** 최신)
+- **도메인**: http://minde.ai.kr (프론트 UI), http://minde.ai.kr:8000 (백엔드 API)
+- 공인 IP: 123.142.39.125
 
 ## 다음 세션 빠른 체크
 
@@ -245,10 +313,13 @@ print([r[0] for r in cur.fetchall()])
 ## 알려진 이슈
 
 - **가스누출/화재 케이스** 분류가 학습 데이터에 명확한 카테고리 없어서 헷갈림 (top-3 결과 부정확). 답변 LLM은 urgency=true로 119 안내 정확. 실제 데모엔 문제 없음.
-- ~~**CLOVA Voice Premium 미활성화** — 코드는 준비. NCP 콘솔에서 서비스 신청 필요.~~ → **해결됨** (2026-07-02). CLOVA Voice Premium(월 9만원)이 부담이라 **Microsoft Edge Neural TTS (edge-tts, 무료)** 로 교체. `synthesize_speech()` 시그니처 그대로 유지되어 백엔드/프론트 코드 무영향. 품질은 CLOVA Premium 급 (SunHi 여성 / InJoon 남성).
+- ~~**CLOVA Voice Premium 미활성화**~~ → **해결됨** (2026-07-02). 처음엔 edge-tts 무료 사용, 이후 **ElevenLabs Starter($6/월) 도입 + 마음결 확정 voice (uyVNoMrnUku1dZyVEXwD)** 로 최종. edge-tts는 fallback으로 유지.
 - **사례 활용** — 답변에 인용은 잘 되지만 sub_queries의 각 서브 cases 개별 활용은 완벽하지 않을 수 있음 (아직 세밀 검증 안 됨).
 - ~~**history in-memory** — 서버 재시작 시 사라짐~~ → **해결됨** (2026-07-01). `chat_sessions` 테이블 기반으로 이전, `/chat/ask`가 매 턴 DB 커밋.
-- **프론트 마이그레이션 필요** — `/chat/reset` 엔드포인트 제거됨. 프론트가 사용 중이면 `DELETE /chat/sessions/{id}`로 이관. 또한 `/chat/ask` 요청에 `session_id` 필드가 추가됨 (없으면 서버가 자동 생성해 응답에 포함).
+- **프론트 SPA 새로고침 404** — `/chatbot` 같은 클라이언트 라우트 새로고침 시 프론트의 광범위 프록시가 백엔드로 넘겨 404. **프론트 담당자가 프록시를 `/api/*` 만 잡도록 좁혀야 함.**
+- **HTTPS 미적용** — `http://` 만 사용 중. 발표 완성도 원하면 Cloudflare Tunnel 등 30분 작업.
+- **음성 원본 미저장** — `/chat/voice`는 STT 텍스트만 저장 (오디오 원본은 버림). 재생 필요하면 별도 저장 로직 추가 필요.
+- **세션 삭제 시 첨부 파일 남음** — `DELETE /chat/sessions/{id}`에 파일 삭제 로직 미포함. `uploads/chat/` 정리 스크립트 필요할 수도.
 
 ## 사용자 스타일/선호
 
