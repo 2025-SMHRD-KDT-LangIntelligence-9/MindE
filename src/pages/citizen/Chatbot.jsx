@@ -19,16 +19,6 @@ const statusConfig = {
 };
 
 
-// 간단한 AI 자동 응답
-const getAIReply = (text) => {
-  if (/도로|파손|포트홀|구멍/.test(text))   return '도로 파손 관련 민원을 접수해 드리겠습니다.\n\n담당 부서는 **도로교통과**이며, 사진과 위치 정보를 함께 첨부하시면 더 빠른 처리가 가능합니다.\n\n민원 접수를 진행할까요?';
-  if (/쓰레기|투기|환경|위생/.test(text))   return '환경/위생 관련 민원으로 분류되었습니다.\n\n**청소행정과**에서 담당하며, 현장 사진이 있으시면 첨부해 주시면 도움이 됩니다.\n\n민원을 접수해 드릴까요?';
-  if (/주차|주정차|단속/.test(text))        return '불법 주정차 관련 민원입니다.\n\n**교통지도과** 담당이며 ☎ 02-345-6789로 신고하시거나 바로 민원 접수가 가능합니다.';
-  if (/가로등|조명|불빛/.test(text))        return '시설물 관련 민원을 접수해 드리겠습니다.\n\n**공원녹지과** 또는 **도시시설과**에서 담당하며 접수 후 3~5 영업일 내 현장 점검이 이루어집니다.';
-  if (/보상|배상|피해/.test(text))          return '피해 보상 신청은 **「국가배상법」**에 따라 진행됩니다.\n\n준비 서류: 현장 사진, 피해 견적서, 사고 경위서, 신분증 사본\n\n민원 접수 후 담당자가 검토하여 안내드립니다.';
-  if (/스쿨존|어린이|학교|속도/.test(text)) return '어린이 보호구역 관련 민원입니다.\n\n**교통행정과**와 경찰서 교통과에 동시 접수를 권장합니다.\n\n무인 단속 카메라 설치, 과속 방지턱 추가 등 조치를 요청하실 수 있습니다.';
-  return '말씀하신 내용을 확인했습니다.\n\n담당 부서를 분석 중입니다. 더 자세한 내용(위치, 발생 시간 등)을 알려주시면 빠른 안내가 가능합니다.\n\n민원 접수를 도와드릴까요?';
-};
 
 function MessageBubble({ msg, isSpeaking, onSpeak }) {
   const isAI = msg.role === 'ai';
@@ -300,8 +290,7 @@ function Chatbot() {
 
       setMessages(prev => [...prev, { role: 'ai', time: now(), text: result.answer }]);
     } catch {
-      // 백엔드 연결 실패 시 로컬 응답으로 폴백
-      setMessages(prev => [...prev, { role: 'ai', time: now(), text: getAIReply(text) }]);
+      setMessages(prev => [...prev, { role: 'ai', time: now(), text: '서버 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.' }]);
     } finally {
       setIsTyping(false);
     }
