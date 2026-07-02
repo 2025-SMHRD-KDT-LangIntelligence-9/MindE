@@ -1069,10 +1069,70 @@ _EDGE_VOICE_MAP = {
     'in': 'ko-KR-InJoonNeural',
 }
 
+# ElevenLabs 보이스 ID 매핑 (한국어는 multilingual_v2 모델로 처리)
+# 'nara' (기본) = 마음결 프로젝트 확정 voice — Starter tier 이상에서 접근 가능
+_ELEVEN_VOICE_MAP = {
+    'nara': 'uyVNoMrnUku1dZyVEXwD',    # ⭐ 마음결 확정 voice (기본)
+    'minde': 'uyVNoMrnUku1dZyVEXwD',   # 별칭
+    'bella': 'EXAVITQu4vr4xnSDxMaL',   # 백업/대체 옵션들 (Free tier 접근 가능)
+    'rachel': '21m00Tcm4TlvDq8ikWAM',
+    'jinho': 'pNInz6obpgDQGcFmaJgB',   # Adam (남성)
+    'adam': 'pNInz6obpgDQGcFmaJgB',
+    'antoni': 'ErXwobaYiN019PkySvjV',
+}
+
+ELEVENLABS_API_KEY = os.environ.get('ELEVENLABS_API_KEY', '')
+ELEVENLABS_MODEL = os.environ.get('ELEVENLABS_MODEL', 'eleven_multilingual_v2')
+# env로 default voice ID 오버라이드 가능 (배포 후 voice 교체 시 코드 재배포 없이)
+ELEVENLABS_DEFAULT_VOICE = os.environ.get('ELEVENLABS_DEFAULT_VOICE', 'uyVNoMrnUku1dZyVEXwD')
+
 
 def _edge_voice(speaker: str) -> str:
     """CLOVA 스피커 이름을 edge-tts 보이스로 매핑. 모르는 이름은 SunHi로."""
     return _EDGE_VOICE_MAP.get((speaker or '').lower(), 'ko-KR-SunHiNeural')
+
+
+def _eleven_voice(speaker: str) -> str:
+    """스피커 이름을 ElevenLabs voice ID로 매핑. 모르는 이름은 default(env override 가능)."""
+    return _ELEVEN_VOICE_MAP.get((speaker or '').lower(), ELEVENLABS_DEFAULT_VOICE)
+
+
+async def _synthesize_edge(text: str, speaker: str, speed: int, volume: int, pitch: int) -> bytes:
+    """edge-tts 백엔드 (무료 무제한)."""
+    import edge_tts
+    rate = f'{-int(speed) * 10:+d}%'
+    volume_str = f'{int(volume) * 10:+d}%'
+    pitch_str = f'{int(pitch) * 10:+d}Hz'
+    voice = _edge_voice(speaker)
+    communicate = edge_tts.Communicate(text, voice, rate=rate, volume=volume_str, pitch=pitch_str)
+    chunks: list[bytes] = []
+    async for chunk in communicate.stream():
+        if chunk.get('type') == 'audio':
+            chunks.append(chunk['data'])
+    return b''.join(chunks)
+
+
+async def _synthesize_eleven(text: str, speaker: str) -> bytes:
+    """ElevenLabs 백엔드 (월 10,000자 무료, 그 이상 유료)."""
+    if not ELEVENLABS_API_KEY:
+        raise RuntimeError("ELEVENLABS_API_KEY 환경변수가 없습니다.")
+    import httpx
+    voice_id = _eleven_voice(speaker)
+    url = f'https://api.elevenlabs.io/v1/text-to-speech/{voice_id}'
+    headers = {
+        'xi-api-key': ELEVENLABS_API_KEY,
+        'Content-Type': 'application/json',
+        'Accept': 'audio/mpeg',
+    }
+    body = {
+        'text': text,
+        'model_id': ELEVENLABS_MODEL,
+        'voice_settings': {'stability': 0.5, 'similarity_boost': 0.75},
+    }
+    async with httpx.AsyncClient(timeout=60.0) as http:
+        resp = await http.post(url, headers=headers, json=body)
+        resp.raise_for_status()
+        return resp.content
 
 
 async def synthesize_speech(
@@ -1082,54 +1142,38 @@ async def synthesize_speech(
     volume: int = 0,
     pitch: int = 0,
     audio_format: str = "mp3",
+    provider: str = "edge",
 ) -> bytes:
-    """텍스트를 음성으로 변환 (Microsoft Edge Neural TTS — 무료).
-
-    Microsoft Edge 브라우저가 쓰는 Azure TTS 백엔드를 무료로 사용.
-    한국어 자연 음성 (SunHi 여성 / InJoon 남성). CLOVA Voice Premium 급 품질.
-
-    기존 CLOVA 시그니처와 호환: speaker 이름을 매핑해서 edge voice로 변환.
+    """텍스트를 음성으로 변환 (edge-tts 기본, ElevenLabs 옵션).
 
     Args:
-        text: 변환할 텍스트 (길이 제한 없음, 내부에서 스트리밍)
-        speaker: 보이스 이름
-          - "nara"/"sun"/"sunhi" → ko-KR-SunHiNeural (여성)
-          - "jinho"/"injoon" → ko-KR-InJoonNeural (남성)
-        speed: -5(빠름) ~ 5(느림). edge-tts rate로 변환 (-5 → +50%, +5 → -50%)
-        volume: -5 ~ 5. edge-tts volume으로 변환
-        pitch: -5 ~ 5. edge-tts pitch로 변환 (-5 → -50Hz, +5 → +50Hz)
-        audio_format: mp3 고정 (edge-tts 기본).
+        text: 변환할 텍스트
+        speaker: 보이스 이름 (provider별 매핑됨)
+          - edge: nara/sun/sunhi → SunHi (여성), jinho/injoon → InJoon (남성)
+          - eleven: nara/bella → Bella (여성), jinho/adam → Adam (남성), rachel, antoni 등
+        speed/volume/pitch: -5~5. edge-tts 전용 (eleven은 무시).
+        audio_format: mp3 (양쪽 동일).
+        provider: "edge" (기본, 무료 무제한) | "eleven" (ElevenLabs, 월 10K자 한도)
 
     Returns:
         mp3 raw bytes. 빈 입력이면 빈 bytes.
 
+    Raises:
+        RuntimeError: provider='eleven'인데 ELEVENLABS_API_KEY 환경변수 없을 때
+        httpx.HTTPStatusError: ElevenLabs 호출 실패 (한도 초과 등)
+
     사용 예:
-        audio = await svc.synthesize_speech("안녕하세요")
-        # → mp3 bytes
+        audio = await svc.synthesize_speech("안녕하세요")                      # edge (기본)
+        audio = await svc.synthesize_speech("안녕", provider="eleven")         # ElevenLabs
+        audio = await svc.synthesize_speech("Hi", speaker="rachel", provider="eleven")
     """
     if not text or not text.strip():
         return b''
 
-    import edge_tts
-
-    # CLOVA speed(-5~5, 음수=빠름) → edge rate ("+50%" ~ "-50%", 음수=느림)
-    # speed=-5 → edge +50%(빠름), speed=+5 → edge -50%(느림)
-    rate_pct = -int(speed) * 10
-    rate = f'{rate_pct:+d}%'
-    volume_pct = int(volume) * 10
-    volume_str = f'{volume_pct:+d}%'
-    pitch_hz = int(pitch) * 10
-    pitch_str = f'{pitch_hz:+d}Hz'
-
-    voice = _edge_voice(speaker)
-    communicate = edge_tts.Communicate(
-        text, voice, rate=rate, volume=volume_str, pitch=pitch_str
-    )
-    chunks: list[bytes] = []
-    async for chunk in communicate.stream():
-        if chunk.get('type') == 'audio':
-            chunks.append(chunk['data'])
-    return b''.join(chunks)
+    provider = (provider or 'edge').lower()
+    if provider == 'eleven' or provider == 'elevenlabs':
+        return await _synthesize_eleven(text, speaker)
+    return await _synthesize_edge(text, speaker, speed, volume, pitch)
 
 
 IMAGE_ANALYSIS_PROMPT = """\

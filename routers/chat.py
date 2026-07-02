@@ -169,12 +169,25 @@ async def chat_image(
 class VoiceReplyRequest(BaseModel):
     text: str
     speaker: str = "nara"
+    provider: str = "eleven"   # 기본은 마음결 확정 voice (ElevenLabs). 실패 시 자동으로 edge fallback.
 
 
 @router.post("/voice-reply")
 async def chat_voice_reply(payload: VoiceReplyRequest):
-    """답변 텍스트를 음성 mp3로 변환 (CLOVA Voice Premium)."""
-    audio = await svc.synthesize_speech(payload.text, speaker=payload.speaker)
+    """답변 텍스트를 음성 mp3로 변환.
+
+    기본: ElevenLabs 마음결 확정 voice (uyVNoMrnUku1dZyVEXwD).
+    실패(크레딧 소진/네트워크/키 없음) 시 edge-tts로 자동 fallback → 데모 안전.
+    """
+    try:
+        audio = await svc.synthesize_speech(
+            payload.text, speaker=payload.speaker, provider=payload.provider
+        )
+    except Exception:
+        # ElevenLabs 실패 시 edge-tts로 fallback (데모 중 무음 방지)
+        audio = await svc.synthesize_speech(
+            payload.text, speaker=payload.speaker, provider="edge"
+        )
     return Response(content=audio, media_type="audio/mpeg")
 
 
