@@ -2,7 +2,8 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import CitizenLayout from '../../layouts/CitizenLayout';
 import { CATEGORY_STYLE, useApp } from '../../store/AppContext';
-import { chatAskApi, chatImageApi, getChatSessionApi } from '../../api/chat';
+import { chatAskApi, chatImageApi, chatFileApi, getChatSessionApi, chatVoiceReplyApi, getChatFileBlobUrlApi, createComplaintDraftApi, updateChatSessionApi } from '../../api/chat';
+import { uploadAttachmentApi } from '../../api/complaints';
 
 const quickReplies = [
   { icon: 'description',         label: '필요 서류 안내' },
@@ -11,6 +12,13 @@ const quickReplies = [
   { icon: 'chat_bubble_outline', label: '상담 종료' },
 ];
 
+// 민원 내용 최소 길이 (백엔드 게이트: 10자 미만이면 400)
+const MIN_COMPLAINT_LEN = 10;
+// 진행 중 상담을 다른 탭 이동/새로고침 후에도 유지하기 위한 저장 키
+const LIVE_CHAT_KEY = 'minde_live_chat';
+// quick-reply 버튼 텍스트는 민원 내용에 포함하지 않음 (백엔드 안내사항)
+const QUICK_LABELS = quickReplies.map((r) => r.label);
+
 
 const statusConfig = {
   '상담 완료': { bg: 'bg-emerald-50', text: 'text-emerald-600' },
@@ -18,7 +26,217 @@ const statusConfig = {
   '민원 접수': { bg: 'bg-blue-50',    text: 'text-blue-600' },
 };
 
+// 정부24 절차 안내(metadata.procedures) 필드명 → 한글 라벨 (영/한 키 모두 대응)
+const PROC_LABELS = {
+  method: '신청 방법', how: '신청 방법', apply: '신청 방법', application: '신청 방법', how_to_apply: '신청 방법',
+  document: '구비 서류', documents: '구비 서류', required_documents: '구비 서류', docs: '구비 서류',
+  period: '처리 기간', processing_time: '처리 기간', duration: '처리 기간', time: '처리 기간',
+  fee: '수수료', cost: '수수료', charge: '수수료', price: '수수료',
+  url: '바로가기', link: '바로가기', title: '항목', name: '항목',
+  '신청방법': '신청 방법', '구비서류': '구비 서류', '처리기간': '처리 기간', '수수료': '수수료',
+  '용도': '서비스 설명', '소관기관': '소관 기관', '절차': '처리 절차', '근거법령': '근거 법령', '출처': '출처',
+};
 
+// procedures = 정부24 카탈로그 검색 결과 [{ title, content(라벨 형식), similarity, ... }]
+// 같은 title(동일 민원)의 청크가 여러 개 올 수 있어 title로 묶고 content 라인을 합쳐 표시
+function ProceduresView({ data }) {
+  const label = (k) => PROC_LABELS[String(k).toLowerCase()] ?? PROC_LABELS[k] ?? k;
+  const raw = (Array.isArray(data) ? data : [data]).filter((x) => x != null && x !== '');
+  if (raw.length === 0) return null;
+
+  // 문자열 형태로 오면 그대로 표시
+  if (raw.every((x) => typeof x !== 'object')) {
+    return (
+      <div className="space-y-1">
+        {raw.map((x, i) => (
+          <p key={i} className="text-xs text-on-surface leading-relaxed">{String(x)}</p>
+        ))}
+      </div>
+    );
+  }
+
+  // title 기준 그룹핑 + content(청크) 합치기(중복 제거)
+  const groups = [];
+  const byTitle = {};
+  for (const it of raw) {
+    if (!it || typeof it !== 'object') continue;
+    const title = it.title ?? it.name ?? '민원 절차';
+    if (!byTitle[title]) { byTitle[title] = { title, contents: [] }; groups.push(byTitle[title]); }
+    const c = String(it.content ?? '').trim();
+    if (c && !byTitle[title].contents.includes(c)) byTitle[title].contents.push(c);
+  }
+
+  // "[라벨] 값 [라벨2] 값2 …" 형식 파싱. 앞부분 비라벨 텍스트는 서비스 설명으로.
+  const parseFields = (text) => {
+    const str = String(text).replace(/\s*\.\.\.$/, '').trim();
+    const fields = [];
+    const re = /\[([^\]]+)\]/g;
+    let m, lastIdx = 0, lastLabel = null;
+    while ((m = re.exec(str)) !== null) {
+      const seg = str.slice(lastIdx, m.index).trim();
+      if (lastLabel === null) { if (seg) fields.push({ label: null, value: seg }); }
+      else fields.push({ label: lastLabel, value: seg });
+      lastLabel = m[1].trim();
+      lastIdx = re.lastIndex;
+    }
+    const tail = str.slice(lastIdx).trim();
+    if (lastLabel === null) { if (tail) fields.push({ label: null, value: tail }); }
+    else fields.push({ label: lastLabel, value: tail });
+    return fields.filter((f) => f.value && f.label !== '출처');
+  };
+
+  return (
+    <div className="space-y-2.5">
+      {groups.slice(0, 2).map((g, i) => {
+        const fields = parseFields(g.contents.join('\n'));
+        return (
+          <div key={i} className="bg-surface-container-low/60 rounded-lg p-2.5">
+            <p className="text-xs font-bold text-on-surface mb-1.5">{g.title}</p>
+            <div className="space-y-1">
+              {fields.map((f, j) =>
+                f.label === null ? (
+                  <p key={j} className="text-[11px] text-on-surface leading-relaxed">{f.value}</p>
+                ) : (
+                  <div key={j} className="flex gap-1.5 text-[11px] leading-relaxed">
+                    <span className="text-on-surface-variant font-medium shrink-0">{label(f.label)}</span>
+                    <span className="text-on-surface break-words min-w-0 flex-1">{f.value}</span>
+                  </div>
+                )
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+
+
+// 이미지 파일을 적당히 축소해 data URL로 변환.
+// 상담 내역(백엔드에 JSON 저장)에 이미지가 함께 남아 다시 열어도 보이도록 함.
+function fileToDataUrl(file, maxDim = 1024, quality = 0.8) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (Math.max(width, height) > maxDim) {
+          const scale = maxDim / Math.max(width, height);
+          width = Math.round(width * scale);
+          height = Math.round(height * scale);
+        }
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', quality));
+        } catch {
+          resolve(e.target.result); // 캔버스 실패 시 원본 data URL
+        }
+      };
+      img.onerror = () => resolve(e.target.result);
+      img.src = e.target.result;
+    };
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
+}
+
+// data URL(base64 이미지)을 File 객체로 복원 (탭 이동 후에도 첨부 업로드 가능하도록).
+function dataUrlToFile(dataUrl, name) {
+  try {
+    const [meta, b64] = String(dataUrl).split(',');
+    const mime = meta.match(/:(.*?);/)?.[1] || 'image/jpeg';
+    const bin = atob(b64);
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return new File([arr], name || 'image.jpg', { type: mime });
+  } catch {
+    return null;
+  }
+}
+
+// ISO timestamp → "오후 4:47" 형식
+function isoToTime(iso) {
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    const h = d.getHours(), m = d.getMinutes();
+    return `${h < 12 ? '오전' : '오후'} ${h % 12 || 12}:${String(m).padStart(2, '0')}`;
+  } catch { return ''; }
+}
+
+// 세션 첨부파일(백엔드 저장분)을 JWT로 blob 로드해 표시. filename 기반.
+function ChatAttachment({ file }) {
+  const [url, setUrl] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    let created = null;
+    getChatFileBlobUrlApi(file.filename)
+      .then((u) => { if (alive) { created = u; setUrl(u); } else URL.revokeObjectURL(u); })
+      .catch(() => {});
+    return () => { alive = false; if (created) URL.revokeObjectURL(created); };
+  }, [file.filename]);
+
+  if (file.isImage) {
+    return url ? (
+      <img src={url} alt={file.name} className="max-w-[120px] md:max-w-[160px] max-h-[100px] md:max-h-[120px] rounded-xl object-cover border border-white/30" />
+    ) : (
+      <div className="w-24 h-20 rounded-xl bg-white/20 flex items-center justify-center">
+        <span className="material-symbols-outlined text-base animate-pulse">image</span>
+      </div>
+    );
+  }
+  return (
+    <a
+      href={url || undefined}
+      download={file.name}
+      className="flex items-center gap-2 bg-white/20 rounded-xl px-3 py-2 text-xs hover:bg-white/30 transition-colors"
+    >
+      <span className="material-symbols-outlined text-base">attach_file</span>
+      <span className="max-w-[100px] truncate">{file.name}</span>
+    </a>
+  );
+}
+
+// 저장된 상담 메시지를 화면 형식({ role:'ai'|'user', text })으로 정규화.
+// 프론트 저장본({role:'ai'|'user', text})과 백엔드/시드본({role:'assistant', content}) 모두 대응.
+function normalizeHistoryMessages(arr) {
+  if (!Array.isArray(arr)) return [];
+  return arr.map((m) => {
+    if (typeof m === 'string') return { role: 'ai', time: '', text: m };
+    if (!m || typeof m !== 'object') return { role: 'ai', time: '', text: '' };
+    const raw = String(m.role ?? '').toLowerCase();
+    const role = raw === 'user' || raw === 'human' ? 'user' : 'ai';
+    const atts = Array.isArray(m.attachments) ? m.attachments : null;
+
+    let text = m.text ?? m.content ?? m.message ?? '';
+    // 이미지 첨부 메시지의 시스템 프리픽스([첨부 이미지 분석]…[사용자 메시지]) 제거
+    if (atts?.length && typeof text === 'string' && text.includes('[사용자 메시지]')) {
+      text = (text.split('[사용자 메시지]\n').pop() || '').trim();
+      if (text === '(이미지만 첨부)') text = '';
+    }
+
+    // 백엔드 attachments → 화면 files 형식 (filename은 /chat/files 로 토큰 로드)
+    const files = atts
+      ? atts.map((a) => ({
+          name: a.original_filename ?? a.filename ?? '첨부',
+          isImage: a.file_type === 'image',
+          filename: a.filename,
+        }))
+      : m.files;
+
+    return {
+      role,
+      time: m.time ?? (m.timestamp ? isoToTime(m.timestamp) : ''),
+      text,
+      files,
+    };
+  });
+}
 
 function MessageBubble({ msg, isSpeaking, onSpeak }) {
   const isAI = msg.role === 'ai';
@@ -39,16 +257,18 @@ function MessageBubble({ msg, isSpeaking, onSpeak }) {
         }`}>
           {msg.files && msg.files.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-2">
-              {msg.files.map((f, i) => (
-                f.isImage ? (
+              {msg.files.map((f, i) =>
+                f.isImage && f.url ? (
                   <img key={i} src={f.url} alt={f.name} className="max-w-[120px] md:max-w-[160px] max-h-[100px] md:max-h-[120px] rounded-xl object-cover border border-white/30" />
+                ) : f.filename ? (
+                  <ChatAttachment key={i} file={f} />
                 ) : (
                   <div key={i} className="flex items-center gap-2 bg-white/20 rounded-xl px-3 py-2 text-xs">
                     <span className="material-symbols-outlined text-base">attach_file</span>
                     <span className="max-w-[100px] truncate">{f.name}</span>
                   </div>
                 )
-              ))}
+              )}
             </div>
           )}
           {lines.map((line, i) => (
@@ -78,7 +298,7 @@ function MessageBubble({ msg, isSpeaking, onSpeak }) {
 function Chatbot() {
   const navigate  = useNavigate();
   const location  = useLocation();
-  const { chatSessions, currentUser, saveChatSession, deleteChatSession, addComplaint } = useApp();
+  const { chatSessions, currentUser, deleteChatSession, addComplaint, refreshChatSessions } = useApp();
 
   const makeGreeting = () => {
     const d = new Date();
@@ -91,10 +311,24 @@ function Chatbot() {
     };
   };
 
+  // 진행 중 상담을 다른 탭 이동/새로고침 후에도 유지 (sessionStorage에서 1회 복원)
+  const restoredRef = useRef(undefined);
+  if (restoredRef.current === undefined) {
+    try {
+      const p = JSON.parse(sessionStorage.getItem(LIVE_CHAT_KEY) || 'null');
+      restoredRef.current = p?.messages?.some((m) => m?.role === 'user') ? p : null;
+    } catch { restoredRef.current = null; }
+  }
+  const restored = restoredRef.current;
+
   const [view, setView]                   = useState('chat');
-  const [messages, setMessages]           = useState(() => [makeGreeting()]);
-  const [summary, setSummary]             = useState({ category: null, dept: null, urgency: null });
-  const [currentSessionId, setCurrentSessionId] = useState(null);
+  const [messages, setMessages]           = useState(() => restored?.messages ?? [makeGreeting()]);
+  const [summary, setSummary]             = useState(restored?.summary ?? { category: null, dept: null, urgency: null });
+  const [procedures, setProcedures]       = useState(restored?.procedures ?? null);
+  const [cases, setCases]                 = useState(restored?.cases ?? []);
+  const [imageNotes, setImageNotes]       = useState(restored?.imageNotes ?? []);
+  const [liveSnapshot, setLiveSnapshot]   = useState(null);
+  const [currentSessionId, setCurrentSessionId] = useState(restored?.currentSessionId ?? null);
 
   /* ── 민원 접수 모달 ── */
   const [submitModal, setSubmitModal] = useState({ open: false, title: '', content: '' });
@@ -103,6 +337,7 @@ function Chatbot() {
   const [viewingHistory, setViewingHistory] = useState(null);
   const [input, setInput]                 = useState('');
   const [isTyping, setIsTyping]           = useState(false);
+  const [typingStatus, setTypingStatus]   = useState('');
   const [historySearch, setHistorySearch] = useState('');
   const [filterStatus, setFilterStatus]   = useState('전체');
   const [isListening, setIsListening]     = useState(false);
@@ -110,7 +345,9 @@ function Chatbot() {
   const [attachedFiles, setAttachedFiles] = useState([]);
   const [isDragging, setIsDragging]       = useState(false);
   const recognitionRef   = useRef(null);
+  const isListeningRef   = useRef(false);
   const messagesEndRef   = useRef(null);
+  const audioRef         = useRef(null);
   const textareaRef      = useRef(null);
   const imageInputRef    = useRef(null);
   const fileInputRef     = useRef(null);
@@ -119,6 +356,16 @@ function Chatbot() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
+
+  // 진행 중 상담 저장 (과거 내역 보는 중엔 보관해둔 스냅샷이 실제 현재 상담)
+  useEffect(() => {
+    const live = viewingHistory
+      ? liveSnapshot
+      : { messages, summary, procedures, cases, imageNotes, currentSessionId };
+    try {
+      if (live) sessionStorage.setItem(LIVE_CHAT_KEY, JSON.stringify(live));
+    } catch { /* 용량 초과 등은 무시 */ }
+  }, [messages, summary, procedures, cases, imageNotes, currentSessionId, viewingHistory, liveSnapshot]);
 
   useEffect(() => {
     if (!location.state?.autoSubmit || autoSubmitDone.current) return;
@@ -181,36 +428,85 @@ function Chatbot() {
     if (!SR) { alert('이 브라우저는 음성 입력을 지원하지 않습니다.\nChrome을 사용해 주세요.'); return; }
     const recognition = new SR();
     recognition.lang = 'ko-KR';
+    recognition.continuous = true;
     recognition.interimResults = true;
     recognition.onstart  = () => setIsListening(true);
-    recognition.onresult = (e) => { const t = Array.from(e.results).map(r => r[0].transcript).join(''); setInput(t); };
-    recognition.onend    = () => setIsListening(false);
-    recognition.onerror  = () => setIsListening(false);
+    recognition.onresult = (e) => {
+      let t = '';
+      for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript;
+      setInput(t);
+    };
+    // 무음 타임아웃으로 onend가 호출돼도 사용자가 중단하기 전까지 재시작
+    recognition.onend = () => {
+      if (isListeningRef.current) {
+        try { recognition.start(); } catch {}
+      } else {
+        setIsListening(false);
+      }
+    };
+    recognition.onerror = (e) => {
+      console.error('[STT] error:', e.error);
+      if (e.error !== 'no-speech') {
+        isListeningRef.current = false;
+        setIsListening(false);
+      }
+    };
     recognitionRef.current = recognition;
+    isListeningRef.current = true;
+    console.log('[STT] starting...');
     recognition.start();
   };
-  const stopListening = () => { recognitionRef.current?.stop(); setIsListening(false); };
+  const stopListening = () => {
+    isListeningRef.current = false;
+    recognitionRef.current?.stop();
+    setIsListening(false);
+  };
 
-  const speak = (text) => {
-    if (!window.speechSynthesis) { alert('이 브라우저는 음성 출력을 지원하지 않습니다.'); return; }
-    if (isSpeaking) { window.speechSynthesis.cancel(); setIsSpeaking(false); return; }
-    const doSpeak = () => {
-      const utter = new SpeechSynthesisUtterance(text);
-      utter.lang = 'ko-KR';
-      const koVoice = window.speechSynthesis.getVoices().find(v => v.lang.startsWith('ko'));
-      if (koVoice) utter.voice = koVoice;
-      utter.onstart = () => setIsSpeaking(true);
-      utter.onend   = () => setIsSpeaking(false);
-      utter.onerror = () => setIsSpeaking(false);
-      window.speechSynthesis.speak(utter);
-    };
-    const voices = window.speechSynthesis.getVoices();
-    if (voices.length === 0) {
-      window.speechSynthesis.addEventListener('voiceschanged', doSpeak, { once: true });
-    } else {
-      doSpeak();
+  // 재생 중지 (백엔드 mp3 + 브라우저 음성 모두 정리)
+  const stopSpeaking = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      if (audioRef.current.src) URL.revokeObjectURL(audioRef.current.src);
+      audioRef.current = null;
+    }
+    window.speechSynthesis?.cancel();
+    setIsSpeaking(false);
+  };
+
+  // 브라우저 내장 음성 (백엔드 TTS 실패 시 폴백)
+  const browserSpeak = (text) => {
+    if (!window.speechSynthesis) { setIsSpeaking(false); return; }
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = 'ko-KR';
+    const koVoice = window.speechSynthesis.getVoices().find(v => v.lang.startsWith('ko'));
+    if (koVoice) utter.voice = koVoice;
+    utter.onend   = () => setIsSpeaking(false);
+    utter.onerror = () => setIsSpeaking(false);
+    window.speechSynthesis.speak(utter);
+  };
+
+  // 답변을 마음결 목소리(백엔드 TTS)로 재생. 실패 시 브라우저 음성으로 폴백.
+  const speak = async (text) => {
+    if (isSpeaking) { stopSpeaking(); return; }
+    setIsSpeaking(true);
+    try {
+      const url = await chatVoiceReplyApi(text);
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      audio.onended = () => { URL.revokeObjectURL(url); audioRef.current = null; setIsSpeaking(false); };
+      audio.onerror = () => { URL.revokeObjectURL(url); audioRef.current = null; browserSpeak(text); };
+      await audio.play();
+    } catch {
+      audioRef.current = null;
+      browserSpeak(text);
     }
   };
+
+  // 페이지 이탈 시 재생 중이던 음성 정리
+  useEffect(() => () => {
+    audioRef.current?.pause();
+    window.speechSynthesis?.cancel();
+  }, []);
 
   const now = () => {
     const d = new Date();
@@ -219,16 +515,16 @@ function Chatbot() {
     return `${ampm} ${h % 12 || 12}:${String(m).padStart(2, '0')}`;
   };
 
-  const processFiles = (fileList) => {
-    const files = Array.from(fileList).map(f => ({
-      name: f.name,
-      size: f.size,
-      type: f.type,
-      url: URL.createObjectURL(f),
-      isImage: f.type.startsWith('image/'),
-      file: f,
-    }));
-    setAttachedFiles(prev => [...prev, ...files]);
+  const processFiles = async (fileList) => {
+    const files = await Promise.all(
+      Array.from(fileList).map(async (f) => {
+        const isImage = f.type.startsWith('image/');
+        // 이미지는 내역에도 남도록 data URL로 저장(자체 포함), 문서는 미리보기 URL 없음
+        const url = isImage ? await fileToDataUrl(f) : null;
+        return { name: f.name, size: f.size, type: f.type, url, isImage, file: f };
+      })
+    );
+    setAttachedFiles((prev) => [...prev, ...files]);
   };
 
   const handleFileSelect = (e) => {
@@ -262,6 +558,7 @@ function Chatbot() {
   const handleSend = async () => {
     const text = input.trim();
     if ((!text && attachedFiles.length === 0) || isTyping || viewingHistory) return;
+    if (isListeningRef.current) stopListening();
 
     const sentFiles = attachedFiles;
     const userMsg = { role: 'user', time: now(), text, files: sentFiles };
@@ -269,12 +566,31 @@ function Chatbot() {
     setInput('');
     setAttachedFiles([]);
     setIsTyping(true);
+    setTypingStatus('처리 중');
 
     try {
       const imageFile = sentFiles.find(f => f.isImage);
-      const result = imageFile
-        ? await chatImageApi(imageFile.file, text, currentSessionId)
-        : await chatAskApi(text, currentSessionId);
+      // 주 이미지 외 나머지(문서·추가 이미지)는 /chat/file 로 세션에 먼저 저장 → 상담 내역에 표시
+      const extraFiles = sentFiles.filter((f) => f !== imageFile && f.file instanceof File);
+      let sid = currentSessionId;
+      if (extraFiles.length) {
+        setTypingStatus('파일 업로드 중');
+        for (const f of extraFiles) {
+          try { const r = await chatFileApi(f.file, '', sid); if (r?.session_id) sid = r.session_id; } catch { /* ignore */ }
+        }
+      }
+
+      let result;
+      if (imageFile?.file instanceof File) {
+        setTypingStatus('이미지 분석 중');
+        result = await chatImageApi(imageFile.file, text, sid);
+      } else if (text) {
+        setTypingStatus('답변 생성 중');
+        result = await chatAskApi(text, sid);
+      } else {
+        // 텍스트 없이 문서만 첨부 → AI 답변 없이 접수 확인만
+        result = { session_id: sid, answer: '파일을 첨부했습니다. 추가로 말씀하실 내용이 있으면 입력해 주세요.' };
+      }
 
       if (result.session_id) setCurrentSessionId(result.session_id);
 
@@ -287,12 +603,28 @@ function Chatbot() {
                   : md.urgency?.probability_urgent >= 0.4 ? '보통' : '낮음',
         });
       }
+      // 정부24 절차 안내: 유사도 0.5 미만(백엔드 신뢰 기준)은 잡음이라 제외
+      if (Array.isArray(md?.procedures)) {
+        const relevant = md.procedures.filter((p) => (p?.similarity ?? 0) >= 0.5);
+        if (relevant.length > 0) setProcedures(relevant);
+      } else if (md?.procedures) {
+        setProcedures(md.procedures);
+      }
+      // 유사 민원 사례 (있을 때만 갱신)
+      if (Array.isArray(md?.cases) && md.cases.length > 0) {
+        setCases(md.cases);
+      }
+      // 이미지 첨부 시 AI가 분석한 설명 저장 (민원 접수 내용 자동 채움용)
+      if (result.image_description) {
+        setImageNotes((prev) => [...prev, result.image_description]);
+      }
 
       setMessages(prev => [...prev, { role: 'ai', time: now(), text: result.answer }]);
     } catch {
       setMessages(prev => [...prev, { role: 'ai', time: now(), text: '서버 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.' }]);
     } finally {
       setIsTyping(false);
+      setTypingStatus('');
     }
   };
 
@@ -301,71 +633,110 @@ function Chatbot() {
   };
 
   const openHistory = async (h) => {
+    if (!viewingHistory) snapshotLive(); // 진행 중 상담 보관 (덮이기 전에)
+    setProcedures(null); // 과거 상담엔 절차 안내 데이터가 없음
+    setCases([]);
+    setImageNotes([]);
     if (!h.conversation && h.session_id) {
       try {
         const full = await getChatSessionApi(h.session_id);
-        const conv = Array.isArray(full.messages) ? full.messages : [];
-        const enriched = { ...h, conversation: conv };
-        setViewingHistory(enriched);
+        const conv = normalizeHistoryMessages(full.messages);
+        setViewingHistory({ ...h, conversation: conv });
         setMessages(conv.length ? conv : [makeGreeting()]);
         setView('chat');
         return;
       } catch {}
     }
     setViewingHistory(h);
-    setMessages(h.conversation ?? [makeGreeting()]);
+    const conv = normalizeHistoryMessages(h.conversation);
+    setMessages(conv.length ? conv : [makeGreeting()]);
     setView('chat');
   };
 
-  const buildSession = (status) => {
-    const userMsgs = messages.filter(m => m.role === 'user' && m.text?.trim());
-    if (userMsgs.length === 0) return null;
-    const firstText = userMsgs[0].text.replace(/\n/g, ' ').trim();
-    const lastMsg   = messages[messages.length - 1];
-    const d = new Date();
-    return {
-      id:           `session-${Date.now()}`,
-      title:        firstText.length > 30 ? firstText.slice(0, 30) + '…' : firstText,
-      preview:      (lastMsg?.text ?? '').replace(/\n/g, ' ').slice(0, 50),
-      date:         `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`,
-      time:         `${d.getHours() < 12 ? '오전' : '오후'} ${d.getHours() % 12 || 12}:${String(d.getMinutes()).padStart(2,'0')}`,
-      status:       status,
-      category:     summary.category ?? '기타',
-      messages:     userMsgs.length,
-      conversation: messages,
-    };
+  // 진행 중인 상담을 보관(과거 내역 열기 전) / 복원(현재 상담으로 돌아오기)
+  const snapshotLive = () => {
+    setLiveSnapshot({ messages, summary, procedures, cases, imageNotes, currentSessionId });
+  };
+  const returnToLive = () => {
+    if (view === 'chat' && !viewingHistory) return; // 이미 현재 상담 화면
+    if (liveSnapshot) {
+      setMessages(liveSnapshot.messages);
+      setSummary(liveSnapshot.summary);
+      setProcedures(liveSnapshot.procedures);
+      setCases(liveSnapshot.cases);
+      setImageNotes(liveSnapshot.imageNotes);
+      setCurrentSessionId(liveSnapshot.currentSessionId);
+    }
+    setViewingHistory(null);
+    setView('chat');
   };
 
   const startNewChat = () => {
-    if (!viewingHistory) {
-      const session = buildSession('상담 완료');
-      if (session) saveChatSession(session);
-    }
+    // 백엔드가 세션을 자동 저장하므로 별도 저장 없이 현재 상담만 새로 시작.
     setCurrentSessionId(null);
     setViewingHistory(null);
     setMessages([makeGreeting()]);
     setSummary({ category: null, dept: null, urgency: null });
+    setProcedures(null);
+    setCases([]);
+    setImageNotes([]);
+    setLiveSnapshot(null);
     setView('chat');
+    try { sessionStorage.removeItem(LIVE_CHAT_KEY); } catch { /* ignore */ }
+    refreshChatSessions(); // 방금까지의 상담(백엔드 자동 저장분)을 목록에 반영
   };
 
-  const openSubmitModal = () => {
-    const userMsgs = messages.filter(m => m.role === 'user' && m.text?.trim());
+  const openSubmitModal = async () => {
+    // quick-reply 버튼 텍스트만 제외. (사진만 첨부한 메시지도 접수 가능하도록 텍스트 유무는 안 따짐)
+    const userMsgs = messages.filter(
+      (m) => m.role === 'user' && !(m.text?.trim() && QUICK_LABELS.includes(m.text.trim()))
+    );
     if (userMsgs.length === 0) return;
-    const firstText = userMsgs[0].text.replace(/\n/g, ' ').trim();
-    const title = firstText.length > 30 ? firstText.slice(0, 30) + '…' : firstText;
-    const content = userMsgs.map(m => m.text).join('\n\n');
-    setSubmitModal({ open: true, title, content });
+    const textMsgs = userMsgs.filter((m) => m.text?.trim());
+    const textContent = textMsgs.map((m) => m.text).join('\n\n').trim();
+    const imgContent = imageNotes.join('\n\n').trim();
+    // 텍스트가 있으면 텍스트를, 없으면 AI가 분석한 사진 설명을 민원 내용으로 채움
+    const content = textContent || imgContent;
+    const base = (textMsgs[0]?.text ?? imgContent).replace(/\n/g, ' ').trim();
+    const title = base ? (base.length > 30 ? base.slice(0, 30) + '…' : base) : '사진 첨부 민원';
+
+    // 세션 초안(draft-complaint)은 모달 열 때 '딱 한 번' 호출해 폼을 채운다.
+    // 이후 유저가 편집하면 로컬 state만 바뀌고 API는 재호출하지 않음.
+    if (currentSessionId) {
+      setSubmitModal({ open: true, title: '', content: '', loading: true });
+      try {
+        const d = await createComplaintDraftApi(currentSessionId);
+        setSubmitModal({ open: true, title: d?.title || title, content: d?.content || content, loading: false });
+      } catch {
+        setSubmitModal({ open: true, title, content, loading: false });
+      }
+    } else {
+      setSubmitModal({ open: true, title, content, loading: false });
+    }
   };
 
   const handleComplaintSubmit = async () => {
-    if (!submitModal.title.trim() || !submitModal.content.trim()) return;
+    if (!submitModal.title.trim() || submitModal.content.trim().length < MIN_COMPLAINT_LEN) return;
     setSubmitting(true);
     try {
-      await addComplaint({
+      const newId = await addComplaint({
         title: submitModal.title.trim(),
         content: submitModal.content.trim(),
         category: summary.category ?? '기타',
       });
+      // 채팅에 첨부한 파일들을 접수된 민원에 업로드 → 담당자에게 전달
+      // (탭 이동/복원으로 File 객체가 사라진 이미지는 data URL에서 File을 재생성)
+      const files = messages
+        .flatMap((m) => m.files ?? [])
+        .map((f) => {
+          if (f.file instanceof File) return f.file;
+          if (f.isImage && typeof f.url === 'string' && f.url.startsWith('data:')) return dataUrlToFile(f.url, f.name);
+          return null;
+        })
+        .filter(Boolean);
+      if (newId && files.length) {
+        await Promise.all(files.map((f) => uploadAttachmentApi(newId, f).catch(() => {})));
+      }
       setSubmitModal({ open: false, title: '', content: '' });
       const doneInfo = {
         title: submitModal.title.trim(),
@@ -373,8 +744,11 @@ function Chatbot() {
         dept: summary.dept ?? null,
       };
       setSubmitDone(doneInfo);
-      const session = buildSession('민원 접수');
-      if (session) saveChatSession({ ...session, title: doneInfo.title, category: doneInfo.category });
+      // 세션을 '민원 접수'로 표시 + 목록 갱신 (세션은 백엔드가 관리)
+      if (currentSessionId) {
+        try { await updateChatSessionApi(currentSessionId, { status: '민원 접수' }); } catch { /* ignore */ }
+      }
+      refreshChatSessions();
     } finally {
       setSubmitting(false);
     }
@@ -392,6 +766,9 @@ function Chatbot() {
     const matchStatus = filterStatus === '전체' || h.status === filterStatus;
     return matchSearch && matchStatus;
   });
+
+  // 접수 모달에서 미리 보여줄 채팅 첨부파일
+  const submitFiles = messages.flatMap((m) => m.files ?? []);
 
   return (
     <CitizenLayout pageTitle="AI 민원 상담" activeMenu="chatbot">
@@ -423,15 +800,22 @@ function Chatbot() {
               <div className="flex bg-white/15 rounded-xl p-0.5 md:p-1 gap-0.5 md:gap-1">
                 <button
                   onClick={startNewChat}
-                  className={`flex items-center gap-1 text-xs font-bold px-2 py-1.5 md:px-3.5 md:py-2 rounded-lg transition-colors ${
-                    view === 'chat' && !viewingHistory ? 'bg-white text-primary shadow-sm' : 'text-white/80 hover:text-white hover:bg-white/10'
-                  }`}
+                  className="flex items-center gap-1 text-xs font-bold px-2 py-1.5 md:px-3.5 md:py-2 rounded-lg text-white/80 hover:text-white hover:bg-white/10 transition-colors"
                 >
                   <span className="material-symbols-outlined text-sm md:text-base">add_comment</span>
                   <span className="hidden sm:inline">새 상담 시작</span>
                 </button>
                 <button
-                  onClick={() => { setView('history'); setViewingHistory(null); }}
+                  onClick={returnToLive}
+                  className={`flex items-center gap-1 text-xs font-bold px-2 py-1.5 md:px-3.5 md:py-2 rounded-lg transition-colors ${
+                    view === 'chat' && !viewingHistory ? 'bg-white text-primary shadow-sm' : 'text-white/80 hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-sm md:text-base">chat</span>
+                  <span className="hidden sm:inline">현재 상담</span>
+                </button>
+                <button
+                  onClick={() => { if (!viewingHistory) snapshotLive(); refreshChatSessions(); setView('history'); setViewingHistory(null); }}
                   className={`flex items-center gap-1 text-xs font-bold px-2 py-1.5 md:px-3.5 md:py-2 rounded-lg transition-colors ${
                     view === 'history' || viewingHistory ? 'bg-white text-primary shadow-sm' : 'text-white/80 hover:text-white hover:bg-white/10'
                   }`}
@@ -454,6 +838,13 @@ function Chatbot() {
                 <div className="shrink-0 flex items-center gap-3 px-5 py-2.5 bg-amber-50 border-b border-amber-200">
                   <span className="material-symbols-outlined text-amber-500 text-base">history</span>
                   <p className="text-xs text-amber-700 font-bold flex-1">과거 상담 내역을 보고 있습니다.</p>
+                  <button
+                    onClick={() => { setView('history'); setViewingHistory(null); }}
+                    className="flex items-center gap-1 text-xs font-bold text-amber-700 bg-amber-100 hover:bg-amber-200 px-3 py-1.5 rounded-lg transition-colors shrink-0"
+                  >
+                    <span className="material-symbols-outlined text-sm">arrow_back</span>
+                    상담 목록
+                  </button>
                 </div>
               )}
 
@@ -478,10 +869,17 @@ function Chatbot() {
                     <div className="w-6 h-6 md:w-8 md:h-8 rounded-full bg-primary flex items-center justify-center shrink-0 mt-1 shadow-sm">
                       <span className="material-symbols-outlined text-white text-sm md:text-base">smart_toy</span>
                     </div>
-                    <div className="bg-white border border-outline-variant/40 rounded-2xl rounded-tl-sm px-3 py-2.5 md:px-4 md:py-3.5 shadow-sm flex items-center gap-1.5">
-                      {[0, 1, 2].map(i => (
-                        <span key={i} className="w-2 h-2 rounded-full bg-primary/40 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
-                      ))}
+                    <div className="flex flex-col items-start gap-1">
+                      <div className="bg-white border border-outline-variant/40 rounded-2xl rounded-tl-sm px-3 py-2.5 md:px-4 md:py-3.5 shadow-sm flex items-center gap-1.5 w-fit">
+                        {[0, 1, 2].map(i => (
+                          <span key={i} className="w-2 h-2 rounded-full bg-primary/40 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
+                        ))}
+                      </div>
+                      {typingStatus && (
+                        <span className="text-[11px] md:text-xs text-primary/70 font-medium ml-1 animate-pulse">
+                          {typingStatus}…
+                        </span>
+                      )}
                     </div>
                   </div>
                 )}
@@ -695,15 +1093,15 @@ function Chatbot() {
         </section>
 
         {/* ── 오른쪽 사이드 ── */}
-        <aside className="hidden md:flex md:col-span-3 flex-col gap-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden">
-            <div className="bg-gradient-to-r from-primary/8 to-transparent px-5 py-4 border-b border-outline-variant/60 flex items-center justify-between">
+        <aside className="hidden md:flex md:col-span-3 flex-col gap-4 min-h-0">
+          <div className="flex-1 min-h-0 flex flex-col bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden">
+            <div className="shrink-0 bg-gradient-to-r from-primary/8 to-transparent px-5 py-4 border-b border-outline-variant/60 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-primary text-base">summarize</span>
                 <h3 className="font-bold text-sm text-on-surface">상담 요약</h3>
               </div>
             </div>
-            <div className="p-5 space-y-4">
+            <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-4">
               <div className="flex items-center justify-between">
                 <p className="text-[11px] text-on-surface-variant font-medium">민원 유형</p>
                 {(viewingHistory?.category ?? summary.category) ? (
@@ -732,18 +1130,44 @@ function Chatbot() {
               </div>
               <div className="border-t border-outline-variant/50" />
               <div>
-                <p className="text-[11px] text-on-surface-variant font-medium mb-2.5">유사 민원 사례</p>
-                <p className="text-xs text-on-surface-variant/50 text-center py-2">상담 내용 분석 후 표시됩니다.</p>
+                <p className="text-[11px] text-on-surface-variant font-medium mb-2.5 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-sm text-primary">assignment</span>
+                  행정 절차 안내
+                </p>
+                {procedures ? (
+                  <ProceduresView data={procedures} />
+                ) : (
+                  <p className="text-xs text-on-surface-variant/50 text-center py-2">상담 내용 분석 후 표시됩니다.</p>
+                )}
               </div>
               <div className="border-t border-outline-variant/50" />
               <div>
-                <p className="text-[11px] text-on-surface-variant font-medium mb-2.5">추천 조치</p>
-                <p className="text-xs text-on-surface-variant/50 text-center py-2">상담 내용 분석 후 표시됩니다.</p>
+                <p className="text-[11px] text-on-surface-variant font-medium mb-2.5 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-sm text-primary">history</span>
+                  유사 민원 사례
+                </p>
+                {cases.length > 0 ? (
+                  <div className="space-y-1.5">
+                    {cases.slice(0, 3).map((c, i) => (
+                      <div key={i} className="flex items-start gap-1.5 text-[11px] leading-relaxed">
+                        <span className="material-symbols-outlined text-[14px] text-on-surface-variant mt-0.5 shrink-0">description</span>
+                        <span className="text-on-surface break-words min-w-0 flex-1">{c.title ?? c.content ?? ''}</span>
+                        {typeof c.similarity === 'number' && (
+                          <span className="text-[10px] font-bold text-primary shrink-0 mt-0.5">{Math.round(c.similarity * 100)}%</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-on-surface-variant/50 text-center py-2">상담 내용 분석 후 표시됩니다.</p>
+                )}
               </div>
+            </div>
+            <div className="shrink-0 p-4 border-t border-outline-variant/60">
               <button
                 onClick={openSubmitModal}
                 disabled={messages.filter(m => m.role === 'user').length === 0}
-                className="w-full mt-1 bg-primary text-white text-sm font-bold py-3 rounded-xl hover:brightness-95 transition-all flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                className="w-full bg-primary text-white text-sm font-bold py-3 rounded-xl hover:brightness-95 transition-all flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <span className="material-symbols-outlined text-base">edit_document</span>
                 민원 접수하기
@@ -751,7 +1175,7 @@ function Chatbot() {
             </div>
           </div>
 
-          <div className="bg-gradient-to-br from-primary/8 to-[#3a7fd4]/5 rounded-2xl border border-primary/15 p-5">
+          <div className="shrink-0 bg-gradient-to-br from-primary/8 to-[#3a7fd4]/5 rounded-2xl border border-primary/15 p-5">
             <div className="flex items-center gap-2 mb-2">
               <span className="material-symbols-outlined text-primary text-lg">help_outline</span>
               <h4 className="text-sm font-bold text-primary">도움이 필요하신가요?</h4>
@@ -787,6 +1211,12 @@ function Chatbot() {
               </button>
             </div>
             <div className="px-6 py-5 flex flex-col gap-4">
+              {submitModal.loading && (
+                <div className="flex items-center gap-2 px-3 py-2.5 bg-blue-50 border border-blue-200 rounded-xl">
+                  <span className="material-symbols-outlined text-blue-500 text-base animate-spin">progress_activity</span>
+                  <p className="text-xs font-bold text-blue-700">AI가 민원 초안을 작성하고 있습니다...</p>
+                </div>
+              )}
               <div>
                 <label className="text-xs font-bold text-on-surface-variant block mb-1.5">민원 제목</label>
                 <input
@@ -804,6 +1234,12 @@ function Chatbot() {
                   rows={6}
                   className="w-full px-3.5 py-3 border-2 border-outline-variant rounded-xl focus:border-primary outline-none text-sm text-on-surface resize-none"
                 />
+                {!submitModal.loading && submitModal.content.trim().length < MIN_COMPLAINT_LEN && (
+                  <p className="text-[11px] text-error mt-1.5 flex items-center gap-1">
+                    <span className="material-symbols-outlined text-sm">info</span>
+                    민원 내용은 {MIN_COMPLAINT_LEN}자 이상 입력해 주세요. (현재 {submitModal.content.trim().length}자)
+                  </p>
+                )}
               </div>
               {summary.category && (
                 <div className="flex items-center gap-2 text-xs text-on-surface-variant bg-surface-container-low/60 px-3 py-2 rounded-xl">
@@ -812,6 +1248,33 @@ function Chatbot() {
                   {summary.dept && <> · 담당: <span className="font-bold text-on-surface">{summary.dept}</span></>}
                 </div>
               )}
+
+              {/* 첨부파일 미리보기 */}
+              {submitFiles.length > 0 && (
+                <div>
+                  <label className="text-xs font-bold text-on-surface-variant block mb-1.5">
+                    첨부 파일 ({submitFiles.length})
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {submitFiles.map((f, i) => (
+                      f.isImage && f.url ? (
+                        <img
+                          key={i}
+                          src={f.url}
+                          alt={f.name}
+                          className="w-16 h-16 rounded-lg object-cover border border-outline-variant"
+                        />
+                      ) : (
+                        <div key={i} className="flex items-center gap-1.5 bg-surface-container px-2.5 py-1.5 rounded-lg text-xs text-on-surface border border-outline-variant">
+                          <span className="material-symbols-outlined text-sm text-primary">attach_file</span>
+                          <span className="max-w-[100px] truncate">{f.name}</span>
+                        </div>
+                      )
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="flex gap-2 pt-1">
                 <button
                   onClick={() => setSubmitModal(p => ({ ...p, open: false }))}
@@ -821,7 +1284,7 @@ function Chatbot() {
                 </button>
                 <button
                   onClick={handleComplaintSubmit}
-                  disabled={submitting || !submitModal.title.trim()}
+                  disabled={submitting || submitModal.loading || !submitModal.title.trim() || submitModal.content.trim().length < MIN_COMPLAINT_LEN}
                   className="flex-1 py-2.5 rounded-xl bg-primary text-white text-sm font-bold hover:brightness-105 shadow-md shadow-primary/25 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {submitting ? '접수 중...' : '접수하기'}

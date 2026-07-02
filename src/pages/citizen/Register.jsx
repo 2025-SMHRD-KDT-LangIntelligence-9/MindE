@@ -1,8 +1,9 @@
-﻿import { useState } from 'react';
+﻿import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import logo from '../../assets/logo.png';
 import { useApp, DEPT_OPTIONS } from '../../store/AppContext';
 import { registerApi } from '../../api/auth';
+import { getPublicDepartmentsApi } from '../../api/admin';
 
 function Register() {
   const navigate = useNavigate();
@@ -12,20 +13,49 @@ function Register() {
   const [showPw, setShowPw] = useState(false);
   const [showPwConfirm, setShowPwConfirm] = useState(false);
   const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
+  const [phoneMid, setPhoneMid] = useState('');
+  const [phoneLast, setPhoneLast] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [passwordConfirm, setPasswordConfirm] = useState('');
   const [selectedDept, setSelectedDept] = useState(DEPT_OPTIONS[0].dept);
+  const [departments, setDepartments] = useState(DEPT_OPTIONS.map((d) => d.dept));
+  const [deptOpen, setDeptOpen] = useState(false);
+  const [deptSearch, setDeptSearch] = useState('');
   const [done, setDone] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const phoneMidRef = useRef(null);
+  const phoneLastRef = useRef(null);
+  const deptBoxRef = useRef(null);
 
   const isStaff = mode === 'staff';
 
+  // DB 부서 목록 로드 (공개 엔드포인트가 없으면 기본 목록 유지)
+  useEffect(() => {
+    getPublicDepartmentsApi().then((list) => {
+      if (list?.length) {
+        const names = list.map((d) => d.name).filter(Boolean);
+        if (names.length) {
+          setDepartments(names);
+          setSelectedDept((cur) => (names.includes(cur) ? cur : names[0]));
+        }
+      }
+    });
+  }, []);
+
+  // 부서 드롭다운 바깥 클릭 시 닫기
+  useEffect(() => {
+    const h = (e) => { if (deptBoxRef.current && !deptBoxRef.current.contains(e.target)) setDeptOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+
+  const filteredDepts = departments.filter((d) => d.includes(deptSearch.trim()));
+
   const handleModeChange = (next) => {
     setMode(next);
-    setName(''); setPhone(''); setEmail(''); setPassword(''); setPasswordConfirm(''); setError(''); setDone(false);
+    setName(''); setPhoneMid(''); setPhoneLast(''); setEmail(''); setPassword(''); setPasswordConfirm(''); setError(''); setDone(false);
   };
 
   const handleSubmit = async (e) => {
@@ -36,10 +66,20 @@ function Register() {
       setError('이름, 이메일, 비밀번호를 모두 입력해 주세요.');
       return;
     }
+    const pwValid = password.length >= 8 && /[^A-Za-z0-9\s]/.test(password);
+    if (!pwValid) {
+      setError('비밀번호는 8자 이상이며 특수문자를 포함해야 합니다.');
+      return;
+    }
     if (password !== passwordConfirm) {
       setError('비밀번호가 일치하지 않습니다.');
       return;
     }
+    if ((phoneMid || phoneLast) && (phoneMid.length !== 4 || phoneLast.length !== 4)) {
+      setError('전화번호는 4자리씩 정확히 입력해 주세요.');
+      return;
+    }
+    const phone = phoneMid && phoneLast ? `010-${phoneMid}-${phoneLast}` : '';
 
     setLoading(true);
     try {
@@ -47,7 +87,7 @@ function Register() {
         name,
         email,
         password,
-        phone: phone || '',
+        phone,
         apply_as_staff: isStaff,
       });
 
@@ -219,10 +259,30 @@ function Register() {
                       {/* 전화번호 */}
                       <div>
                         <label className="text-xs md:text-sm font-medium text-on-surface block mb-0.5 md:mb-1.5">전화번호</label>
-                        <div className="relative">
+                        <div className="relative flex items-center gap-2 md:gap-2.5 h-9 md:h-11 pl-11 pr-4 border border-outline-variant rounded-xl focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 transition-all">
                           <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[20px]">phone</span>
-                          <input type="tel" placeholder="010-0000-0000" value={phone} onChange={(e) => setPhone(e.target.value)}
-                            className="w-full h-9 md:h-11 pl-10 pr-4 border border-outline-variant rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-on-surface text-xs md:text-sm" />
+                          <span className="text-xs md:text-sm text-on-surface font-medium shrink-0">010</span>
+                          <span className="text-outline shrink-0">-</span>
+                          <input
+                            ref={phoneMidRef}
+                            type="tel" inputMode="numeric" maxLength={4} placeholder="0000"
+                            value={phoneMid}
+                            onChange={(e) => {
+                              const v = e.target.value.replace(/\D/g, '').slice(0, 4);
+                              setPhoneMid(v);
+                              if (v.length === 4) phoneLastRef.current?.focus();
+                            }}
+                            className="w-12 md:w-14 shrink-0 bg-transparent outline-none text-xs md:text-sm text-center"
+                          />
+                          <span className="text-outline shrink-0">-</span>
+                          <input
+                            ref={phoneLastRef}
+                            type="tel" inputMode="numeric" maxLength={4} placeholder="0000"
+                            value={phoneLast}
+                            onChange={(e) => setPhoneLast(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                            onKeyDown={(e) => { if (e.key === 'Backspace' && !phoneLast) phoneMidRef.current?.focus(); }}
+                            className="w-12 md:w-14 shrink-0 bg-transparent outline-none text-xs md:text-sm text-center"
+                          />
                         </div>
                       </div>
 
@@ -240,22 +300,52 @@ function Register() {
                       {isStaff && (
                         <div>
                           <label className="text-xs md:text-sm font-medium text-on-surface block mb-0.5 md:mb-1.5">담당 부서</label>
-                          <div className="relative">
-                            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[20px]">business</span>
-                            <select
-                              value={selectedDept}
-                              onChange={(e) => setSelectedDept(e.target.value)}
-                              className="w-full h-9 md:h-11 pl-10 pr-4 border border-outline-variant rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-on-surface text-xs md:text-sm bg-white appearance-none"
+                          <div className="relative" ref={deptBoxRef}>
+                            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[20px] z-10">business</span>
+                            <button
+                              type="button"
+                              onClick={() => setDeptOpen((o) => !o)}
+                              className="w-full h-9 md:h-11 pl-10 pr-9 border border-outline-variant rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-left text-xs md:text-sm bg-white flex items-center text-on-surface"
                             >
-                              {DEPT_OPTIONS.map((d) => (
-                                <option key={d.dept} value={d.dept}>{d.dept}</option>
-                              ))}
-                            </select>
-                            <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-outline text-[20px] pointer-events-none">expand_more</span>
+                              {selectedDept || '담당 부서 선택'}
+                            </button>
+                            <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-outline text-[20px] pointer-events-none">
+                              {deptOpen ? 'expand_less' : 'expand_more'}
+                            </span>
+
+                            {deptOpen && (
+                              <div className="absolute z-30 mt-1 w-full bg-white border border-outline-variant rounded-xl shadow-lg overflow-hidden">
+                                <div className="p-2 border-b border-outline-variant/60">
+                                  <div className="relative">
+                                    <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-outline text-[18px]">search</span>
+                                    <input
+                                      autoFocus
+                                      value={deptSearch}
+                                      onChange={(e) => setDeptSearch(e.target.value)}
+                                      placeholder="부서 검색..."
+                                      className="w-full h-8 pl-8 pr-3 rounded-lg border border-outline-variant text-xs outline-none focus:border-primary"
+                                    />
+                                  </div>
+                                </div>
+                                <div className="max-h-44 overflow-y-auto">
+                                  {filteredDepts.length === 0 ? (
+                                    <p className="px-3 py-3 text-xs text-on-surface-variant text-center">검색 결과가 없습니다.</p>
+                                  ) : filteredDepts.map((d) => (
+                                    <button
+                                      key={d}
+                                      type="button"
+                                      onClick={() => { setSelectedDept(d); setDeptOpen(false); setDeptSearch(''); }}
+                                      className={`w-full text-left px-3 py-2 text-xs md:text-sm transition-colors hover:bg-surface-container-low ${
+                                        d === selectedDept ? 'text-primary font-bold bg-primary/5' : 'text-on-surface'
+                                      }`}
+                                    >
+                                      {d}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
-                          <p className="text-xs text-on-surface-variant mt-1.5 pl-1">
-                            관할: {DEPT_OPTIONS.find((d) => d.dept === selectedDept)?.deptGroup.join(', ')}
-                          </p>
                         </div>
                       )}
 
@@ -271,6 +361,7 @@ function Register() {
                             <span className="material-symbols-outlined text-[20px]">{showPw ? 'visibility_off' : 'visibility'}</span>
                           </button>
                         </div>
+                        <p className="text-[11px] text-on-surface-variant mt-1 pl-1">8자 이상, 특수문자 포함</p>
                       </div>
 
                       {/* 비밀번호 확인 */}

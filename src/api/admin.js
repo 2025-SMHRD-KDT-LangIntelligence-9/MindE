@@ -31,6 +31,10 @@ export const updateUserDeptApi = (userId, departmentId) =>
 export const getDepartmentsApi = () =>
   client.get('/admin/departments').then((r) => r.data);
 
+// 회원가입(비로그인)용 공개 부서 목록. 백엔드에 공개 엔드포인트가 없으면 null 반환.
+export const getPublicDepartmentsApi = () =>
+  client.get('/departments').then((r) => r.data).catch(() => null);
+
 export const createDepartmentApi = (name) =>
   client.post('/admin/departments', { name }).then((r) => r.data);
 

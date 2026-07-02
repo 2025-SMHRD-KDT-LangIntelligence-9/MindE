@@ -1,4 +1,5 @@
-﻿import { useNavigate } from 'react-router-dom';
+﻿import { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import logo from '../assets/logo.png';
 import { useApp } from '../store/AppContext';
 import NotificationDropdown from '../components/NotificationDropdown';
@@ -7,6 +8,11 @@ function CitizenLayout({ pageTitle, activeMenu, children }) {
   const navigate = useNavigate();
   const { notifications, markAllRead, currentUser, logout } = useApp();
   const handleLogout = () => { logout(); navigate('/login'); };
+
+  // 로그인(토큰) 없이 접근하면 로그인 페이지로 (뒤로/앞으로가기 포함)
+  useEffect(() => {
+    if (!localStorage.getItem('token')) navigate('/login', { replace: true });
+  }, [navigate]);
 
   const menuItems = [
     { key: 'home',          label: '홈',             icon: 'home',             path: '/home' },

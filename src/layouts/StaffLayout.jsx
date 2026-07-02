@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import logo from '../assets/logo.png';
 import { useApp } from '../store/AppContext';
@@ -9,6 +9,11 @@ function StaffLayout({ pageTitle, activeMenu, children }) {
   const { currentUser, logout, myDeptComplaints } = useApp();
   const handleLogout = () => { logout(); navigate('/login'); };
   const [readIds, setReadIds] = useState(new Set());
+
+  // 로그인(토큰) 없이 접근하면 로그인 페이지로 (뒤로/앞으로가기 포함)
+  useEffect(() => {
+    if (!localStorage.getItem('token')) navigate('/login', { replace: true });
+  }, [navigate]);
 
   const menuItems = [
     { key: 'complaints', label: '민원 처리', icon: 'assignment',             path: '/staff' },

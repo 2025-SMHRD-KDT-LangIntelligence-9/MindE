@@ -7,7 +7,7 @@ import { loginApi, getMeApi } from '../../api/auth';
 function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, stats } = useApp();
+  const { login, stats, currentUser, logout } = useApp();
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
@@ -15,6 +15,16 @@ function Login() {
   useEffect(() => {
     const saved = localStorage.getItem('savedEmail');
     if (saved) { setEmail(saved); setRememberMe(true); }
+  }, []);
+
+  // 로그인 페이지에 도달했다는 것은 다시 로그인이 필요하다는 의미.
+  // 로그인 후 뒤로가기 등으로 이 페이지가 새로 마운트되면(기존 토큰 존재) 세션을 끊어
+  // 재로그인해야 접속되도록 한다. (최초 로그인 시도 때는 마운트 시점에 토큰이 없어 안전)
+  useEffect(() => {
+    if (localStorage.getItem('token') || currentUser.role !== 'guest') {
+      logout();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const [showPw, setShowPw]     = useState(false);
   const [error, setError]       = useState('');
@@ -53,7 +63,7 @@ function Login() {
         login('admin', { name: me.name });
         navigate('/admin');
       } else if (type === 'staff') {
-        login('staff', { name: me.name, dept: me.dept ?? '', deptGroup: me.deptGroup ?? [] });
+        login('staff', { name: me.name, dept: me.department_name ?? '', deptGroup: me.department_name ? [me.department_name] : [] });
         navigate('/staff');
       } else {
         login('citizen', { id: String(me.user_id), name: me.name, email: me.email, phone: me.phone ?? '' });

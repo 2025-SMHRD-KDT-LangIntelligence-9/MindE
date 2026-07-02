@@ -40,6 +40,52 @@ const sideSteps = [
   { num: 4, label: 'PDF 생성 및 접수 연계', sub: '서류 생성 및 접수하기' },
 ];
 
+// PDF 문서 3페이지 정의 (미리보기·전체화면·인쇄에서 공용). fv = 필드 값.
+function buildPdfPages(fv) {
+  const b = '1px solid #000';
+  const th = (s, extra = {}) => ({ border: b, background: '#f0f0f0', padding: s ? '3px 6px' : '2px 4px', fontWeight: 700, textAlign: 'center', fontSize: s ? 9 : 7, verticalAlign: 'middle', whiteSpace: 'nowrap', ...extra });
+  const td = (s, extra = {}) => ({ border: b, padding: s ? '3px 6px' : '2px 4px', fontSize: s ? 9 : 7, verticalAlign: 'middle', ...extra });
+  return [
+    { label: '기본 정보', content: (s) => (
+      <div style={{ fontFamily: "'Malgun Gothic','Noto Sans KR',sans-serif", color: '#000' }}>
+        <p style={{ fontSize: s ? 7 : 5, color: '#555', marginBottom: s ? 4 : 2, borderBottom: '1px solid #ccc', paddingBottom: s ? 3 : 2 }}>□ 서울교통법원 사용고지 &nbsp;[별지 제44호 서식]</p>
+        <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: s ? 6 : 4 }}><tbody><tr>
+          <td style={{ border: b, padding: s ? '6px 10px' : '4px 6px', width: '65%' }}><p style={{ fontSize: s ? 18 : 13, fontWeight: 900, letterSpacing: '2px', textAlign: 'center', margin: 0 }}>교통사고사실확인원</p></td>
+          <td style={{ border: b, padding: s ? '4px 6px' : '2px 4px', verticalAlign: 'top' }}><p style={{ fontSize: s ? 7 : 5, fontWeight: 700, marginBottom: s ? 10 : 6 }}>교통사고</p><p style={{ fontSize: s ? 7 : 5, fontWeight: 700 }}>접수번호</p></td>
+        </tr></tbody></table>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: s ? 9 : 7 }}><tbody>
+          <tr><td style={th(s, { width: '12%' })}>성명</td><td style={td(s, { width: '38%' })}>{fv.name}</td><td style={th(s, { width: '20%' })}>주민등록번호</td><td style={td(s)}>{fv.rrn}</td></tr>
+          <tr><td style={th(s)}>연락처</td><td colSpan={3} style={td(s)}>{fv.phone}</td></tr>
+          <tr><td style={th(s)}>주소</td><td colSpan={3} style={td(s)}>{fv.address}</td></tr>
+          <tr><td style={th(s)}>발생일시</td><td colSpan={3} style={td(s)}>{fv.date}</td></tr>
+          <tr><td style={th(s)}>발생장소</td><td colSpan={3} style={td(s)}>{fv.location}</td></tr>
+          <tr><td style={th(s)}>민원유형</td><td colSpan={3} style={td(s)}>{fv.type}</td></tr>
+        </tbody></table>
+      </div>
+    ) },
+    { label: '사고개요', content: (s) => (
+      <div style={{ fontFamily: "'Malgun Gothic','Noto Sans KR',sans-serif", color: '#000' }}>
+        <p style={{ fontSize: s ? 7 : 5, color: '#555', marginBottom: s ? 4 : 2, borderBottom: '1px solid #ccc', paddingBottom: s ? 3 : 2 }}>□ 서울교통법원 사용고지 &nbsp;[별지 제44호 서식] — 사고개요</p>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: s ? 9 : 7 }}><tbody>
+          <tr><td style={th(s, { width: '14%' })}>사고일시</td><td style={td(s)}>{fv.date}</td></tr>
+          <tr><td style={th(s)}>발생장소</td><td style={td(s)}>{fv.location}</td></tr>
+          <tr><td style={th(s)}>사고내용</td><td style={{ border: b, height: s ? 80 : 55, padding: s ? '4px 6px' : '2px 4px', verticalAlign: 'top', fontSize: s ? 9 : 7 }}><p style={{ margin: 0, lineHeight: 1.7 }}>{fv.summary}</p></td></tr>
+        </tbody></table>
+      </div>
+    ) },
+    { label: '확인·서명', content: (s) => (
+      <div style={{ fontFamily: "'Malgun Gothic','Noto Sans KR',sans-serif", color: '#000' }}>
+        <p style={{ fontSize: s ? 7 : 5, color: '#555', marginBottom: s ? 4 : 2, borderBottom: '1px solid #ccc', paddingBottom: s ? 3 : 2 }}>□ 서울교통법원 사용고지 &nbsp;[별지 제44호 서식] — 확인 및 서명</p>
+        <div style={{ border: b, padding: s ? '8px 10px' : '5px 6px', marginBottom: s ? 10 : 7, fontSize: s ? 9 : 7, lineHeight: 1.8 }}>위와 같이 교통사고를 확인한 사실이 있음을 확인합니다.</div>
+        <div style={{ fontSize: s ? 9 : 7, marginBottom: s ? 10 : 7, textAlign: 'right' }}>{fv.date || ' '}</div>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: s ? 9 : 7 }}><tbody>
+          <tr><td style={th(s, { width: '20%' })}>신 청 인</td><td style={td(s)}>{fv.name}</td><td style={{ border: b, width: s ? 50 : 34, height: s ? 50 : 34, textAlign: 'center', fontSize: s ? 7 : 5, color: '#aaa', verticalAlign: 'middle' }}>서명<br />날인</td></tr>
+        </tbody></table>
+      </div>
+    ) },
+  ];
+}
+
 function DocumentOCR() {
   const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState(1); // 1-indexed
@@ -53,6 +99,7 @@ function DocumentOCR() {
   const [zoom, setZoom] = useState(100);
   const [fullscreenPage, setFullscreenPage] = useState(null);
   const [uploadedFile, setUploadedFile] = useState(null);
+  const [fileUrl, setFileUrl] = useState(null);
   const [dragOverUpload, setDragOverUpload] = useState(false);
   const [dragOverStep2, setDragOverStep2] = useState(false);
   const [zoom2, setZoom2] = useState(100);
@@ -97,10 +144,28 @@ function DocumentOCR() {
     if (files && files[0]) {
       const f = files[0];
       setUploadedFile(f);
+      setFileUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(f); });
       ocrDoneRef.current = false;
       const sizeMB = (f.size / 1024 / 1024).toFixed(2);
       setFieldValues((prev) => ({ ...prev, docname: f.name, size: `${sizeMB} MB` }));
     }
+  };
+
+  // objectURL 정리
+  useEffect(() => () => { if (fileUrl) URL.revokeObjectURL(fileUrl); }, [fileUrl]);
+
+  const isImg = uploadedFile?.type?.startsWith('image/');
+  const isPdf = uploadedFile?.type === 'application/pdf';
+
+  // PDF 저장 = 브라우저 인쇄(다이얼로그에서 'PDF로 저장' 선택). 라이브러리 불필요, 한글 정상.
+  // document.title이 기본 저장 파일명이 되므로 잠시 바꿨다가 복원.
+  const handleSavePdf = () => {
+    setShowSaveDialog(false);
+    const prev = document.title;
+    document.title = (saveFileName || '민원서류').replace(/\.pdf$/i, '');
+    const restore = () => { document.title = prev; window.removeEventListener('afterprint', restore); };
+    window.addEventListener('afterprint', restore);
+    setTimeout(() => window.print(), 150);
   };
 
   return (
@@ -110,6 +175,23 @@ function DocumentOCR() {
           <span className="material-symbols-outlined text-base">check_circle</span>{toast}
         </div>
       )}
+      {/* 인쇄(PDF로 저장) 전용 영역 — 평소엔 화면 밖, 인쇄 시에만 표시 */}
+      <style>{`
+        .ocr-print-root { position: fixed; left: -10000px; top: 0; width: 210mm; }
+        @media print {
+          body * { visibility: hidden !important; }
+          .ocr-print-root, .ocr-print-root * { visibility: visible !important; }
+          .ocr-print-root { left: 0 !important; }
+          .ocr-print-page { page-break-after: always; padding: 12mm; }
+          .ocr-print-page:last-child { page-break-after: auto; }
+        }
+      `}</style>
+      <div className="ocr-print-root">
+        {buildPdfPages(fieldValues).map((p, i) => (
+          <div key={i} className="ocr-print-page">{p.content(true)}</div>
+        ))}
+      </div>
+
       <div className="flex gap-5" style={{ minHeight: 'calc(100vh - 8rem)' }}>
 
         {/* ── 왼쪽 사이드 ── */}
@@ -311,21 +393,23 @@ function DocumentOCR() {
                       <span className="material-symbols-outlined text-5xl">cloud_upload</span>
                       <p className="text-sm font-bold">여기에 놓으세요</p>
                     </div>
-                  ) : (
-                    <div
-                      className="bg-white border border-outline-variant rounded-lg shadow-md w-full max-w-xs aspect-[3/4] flex flex-col items-center justify-center gap-3 p-6 transition-transform"
+                  ) : fileUrl && isImg ? (
+                    <img
+                      src={fileUrl}
+                      alt={uploadedFile?.name || '문서'}
+                      className="max-w-full max-h-full object-contain rounded-lg shadow-md"
                       style={{ transform: `scale(${zoom2 / 100})`, transformOrigin: 'center center' }}
-                    >
-                      <span className="material-symbols-outlined text-on-surface-variant/30 text-6xl">description</span>
-                      <div className="space-y-1.5 w-full">
-                        {[80,65,90,55,70,60,75,50].map((w, i) => (
-                          <div key={i} className="h-2 bg-surface-container rounded-full" style={{ width: `${w}%` }} />
-                        ))}
-                      </div>
-                      <p className="text-xs text-on-surface-variant text-center mt-2">{uploadedFile ? uploadedFile.name : '문서'} · {step2Page + 1}페이지</p>
-                      <div className="w-16 h-16 border-2 border-outline-variant rounded flex items-center justify-center">
-                        <span className="material-symbols-outlined text-on-surface-variant/30">qr_code_2</span>
-                      </div>
+                    />
+                  ) : fileUrl && isPdf ? (
+                    <iframe
+                      src={fileUrl}
+                      title={uploadedFile?.name || '문서'}
+                      className="w-full h-full min-h-[420px] rounded-lg border border-outline-variant bg-white"
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center gap-3 text-on-surface-variant/50 py-16">
+                      <span className="material-symbols-outlined text-6xl">description</span>
+                      <p className="text-xs">{uploadedFile ? uploadedFile.name : '업로드된 문서가 없습니다'}</p>
                     </div>
                   )}
                 </div>
@@ -351,18 +435,6 @@ function DocumentOCR() {
                   >
                     <span className="material-symbols-outlined text-base text-on-surface-variant">fullscreen</span>
                   </button>
-                </div>
-                <div className="px-5 py-3 border-t border-outline-variant/50 flex items-center gap-2 overflow-x-auto shrink-0">
-                  {[1,2,3,4,5,6].map((n) => (
-                    <button
-                      key={n}
-                      onClick={() => setStep2Page(n - 1)}
-                      className={`w-12 h-14 rounded border-2 shrink-0 flex items-center justify-center cursor-pointer transition-colors ${step2Page === n - 1 ? 'border-primary bg-primary/5' : 'border-outline-variant bg-surface-container-low hover:border-primary/50'}`}
-                    >
-                      <span className="text-[10px] font-bold text-on-surface-variant">{n}</span>
-                    </button>
-                  ))}
-                  <p className="text-[10px] text-on-surface-variant shrink-0 ml-1">{step2Page + 1}/6</p>
                 </div>
               </div>
 
@@ -942,7 +1014,7 @@ function DocumentOCR() {
         <div className="fixed inset-0 bg-black/80 z-50 flex flex-col" onClick={() => setStep2Fullscreen(false)}>
           <div className="flex items-center justify-between px-6 py-4 shrink-0" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-3">
-              <span className="text-white text-sm font-bold">문서 미리보기 — {step2Page + 1} / 6페이지</span>
+              <span className="text-white text-sm font-bold">문서 미리보기 · {uploadedFile?.name || '문서'}</span>
               <div className="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-1.5">
                 <button
                   onClick={() => setZoom2((z) => Math.max(50, z - 25))}
@@ -969,27 +1041,21 @@ function DocumentOCR() {
             </button>
           </div>
           <div className="flex-1 overflow-auto flex items-center justify-center p-6" onClick={(e) => e.stopPropagation()}>
-            <div
-              className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-sm aspect-[3/4] flex flex-col items-center justify-center gap-4"
-              style={{ transform: `scale(${zoom2 / 100})`, transformOrigin: 'top center' }}
-            >
-              <span className="material-symbols-outlined text-on-surface-variant/30 text-7xl">description</span>
-              <div className="space-y-2 w-full">
-                {[80,65,90,55,70,60,75,50,60,70].map((w, i) => (
-                  <div key={i} className="h-2 bg-surface-container rounded-full" style={{ width: `${w}%` }} />
-                ))}
+            {fileUrl && isImg ? (
+              <img
+                src={fileUrl}
+                alt={uploadedFile?.name || '문서'}
+                className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+                style={{ transform: `scale(${zoom2 / 100})`, transformOrigin: 'top center' }}
+              />
+            ) : fileUrl && isPdf ? (
+              <iframe src={fileUrl} title={uploadedFile?.name || '문서'} className="w-full h-full bg-white rounded-lg" />
+            ) : (
+              <div className="flex flex-col items-center gap-3 text-white/60">
+                <span className="material-symbols-outlined text-7xl">description</span>
+                <p className="text-sm">{uploadedFile ? uploadedFile.name : '업로드된 문서가 없습니다'}</p>
               </div>
-              <p className="text-sm text-on-surface-variant text-center mt-2">{uploadedFile ? uploadedFile.name : '문서'} · {step2Page + 1}페이지</p>
-            </div>
-          </div>
-          <div className="flex items-center justify-center gap-2 pb-5 shrink-0" onClick={(e) => e.stopPropagation()}>
-            {[1,2,3,4,5,6].map((n) => (
-              <button
-                key={n}
-                onClick={() => setStep2Page(n - 1)}
-                className={`w-10 h-12 rounded border-2 flex items-center justify-center text-[10px] font-bold transition-colors ${step2Page === n - 1 ? 'border-primary bg-primary text-white' : 'border-white/30 bg-white/10 text-white hover:border-primary/50'}`}
-              >{n}</button>
-            ))}
+            )}
           </div>
         </div>
       )}
@@ -1004,21 +1070,6 @@ function DocumentOCR() {
             </div>
             <div className="p-6 space-y-4">
               <div>
-                <label className="text-xs font-bold text-on-surface-variant block mb-1.5">저장 위치</label>
-                <div className="flex gap-2">
-                  <div className="flex-1 flex items-center gap-2 px-3 py-2.5 bg-surface-container-low rounded-xl border border-outline-variant text-sm text-on-surface-variant truncate">
-                    <span className="material-symbols-outlined text-base shrink-0">folder</span>
-                    <span className="truncate text-xs">C:\Users\사용자\다운로드</span>
-                  </div>
-                  <button
-                    onClick={() => showToast('폴더 선택 기능은 연동 후 사용 가능합니다.')}
-                    className="px-3 py-2 text-xs font-bold border border-outline-variant rounded-xl hover:bg-surface-container-low transition-colors shrink-0"
-                  >
-                    찾아보기
-                  </button>
-                </div>
-              </div>
-              <div>
                 <label className="text-xs font-bold text-on-surface-variant block mb-1.5">파일 이름</label>
                 <input
                   value={saveFileName}
@@ -1026,9 +1077,12 @@ function DocumentOCR() {
                   className="w-full px-3 py-2.5 border border-outline-variant rounded-xl text-sm outline-none focus:border-primary transition-colors"
                 />
               </div>
-              <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 rounded-xl border border-blue-200">
-                <span className="material-symbols-outlined text-blue-500 text-base">info</span>
-                <p className="text-xs text-blue-700">PDF 형식으로 저장됩니다 (A4, 컬러)</p>
+              <div className="flex items-start gap-2 px-3 py-2.5 bg-blue-50 rounded-xl border border-blue-200">
+                <span className="material-symbols-outlined text-blue-500 text-base shrink-0">info</span>
+                <p className="text-xs text-blue-700 leading-relaxed">
+                  인쇄 창이 열리면 <b>대상(프린터)</b>을 <b>"PDF로 저장"</b>으로 선택하세요.
+                  브라우저 다운로드 폴더에 저장됩니다.
+                </p>
               </div>
             </div>
             <div className="flex gap-2 px-6 py-4 border-t border-outline-variant">
@@ -1039,11 +1093,11 @@ function DocumentOCR() {
                 취소
               </button>
               <button
-                onClick={() => { setShowSaveDialog(false); showToast(`PDF가 저장되었습니다: ${saveFileName}`); }}
+                onClick={handleSavePdf}
                 className="flex-1 py-2.5 rounded-xl bg-primary text-white text-sm font-bold hover:brightness-95 transition-all flex items-center justify-center gap-1.5"
               >
-                <span className="material-symbols-outlined text-base">save</span>
-                저장
+                <span className="material-symbols-outlined text-base">print</span>
+                PDF로 저장
               </button>
             </div>
           </div>

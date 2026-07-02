@@ -28,7 +28,19 @@ function AdminSettings() {
 
   // 카테고리 state
   const [categories, setCategories] = useState([]);
-  const [catModal, setCatModal] = useState({ open: false, mode: 'add', idx: null, category_id: null, name: '', desc: '', icon: 'corporate_fare' });
+  const [catModal, setCatModal] = useState({ open: false, mode: 'add', idx: null, category_id: null, name: '', desc: '', icon: 'corporate_fare', department_id: '' });
+
+  // 카테고리-부서 매핑 (백엔드 미지원 → localStorage 임시 저장)
+  const [catDeptMap, setCatDeptMap] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('minde_catDeptMap') || '{}'); } catch { return {}; }
+  });
+  const updateCatDeptMap = (catId, deptId) => {
+    const next = deptId
+      ? { ...catDeptMap, [String(catId)]: String(deptId) }
+      : Object.fromEntries(Object.entries(catDeptMap).filter(([k]) => k !== String(catId)));
+    setCatDeptMap(next);
+    localStorage.setItem('minde_catDeptMap', JSON.stringify(next));
+  };
 
   // 부서 state
   const [departments, setDepartments] = useState([]);
@@ -49,6 +61,8 @@ function AdminSettings() {
         name: c.name,
         desc: '',
         icon: 'corporate_fare',
+        department_id: c.department_id ?? '',
+        department_name: c.department_name ?? '',
       }))))
       .catch(() => {});
   }, []);
@@ -83,19 +97,22 @@ function AdminSettings() {
   ];
 
   /* ── 카테고리 핸들러 ── */
-  const openCatAdd  = () => setCatModal({ open: true, mode: 'add', idx: null, category_id: null, name: '', desc: '', icon: 'corporate_fare' });
-  const openCatEdit = (c, i) => setCatModal({ open: true, mode: 'edit', idx: i, category_id: c.category_id, name: c.name, desc: c.desc, icon: c.icon });
+  const openCatAdd  = () => setCatModal({ open: true, mode: 'add', idx: null, category_id: null, name: '', desc: '', icon: 'corporate_fare', department_id: '' });
+  const openCatEdit = (c, i) => setCatModal({ open: true, mode: 'edit', idx: i, category_id: c.category_id, name: c.name, desc: c.desc, icon: c.icon, department_id: catDeptMap[String(c.category_id)] || c.department_id || '' });
   const saveCat = async () => {
     if (!catModal.name.trim()) return;
+    const dept = departments.find((d) => String(d.department_id) === String(catModal.department_id));
     try {
       if (catModal.mode === 'add') {
         const res = await createCategoryApi(catModal.name.trim());
-        const entry = { category_id: res.category_id, name: res.name, desc: catModal.desc.trim(), icon: catModal.icon };
+        const entry = { category_id: res.category_id, name: res.name, desc: catModal.desc.trim(), icon: catModal.icon, department_id: catModal.department_id, department_name: dept?.name ?? '' };
         setCategories((prev) => [...prev, entry]);
+        if (catModal.department_id) updateCatDeptMap(res.category_id, catModal.department_id);
       } else {
         await updateCategoryApi(catModal.category_id, catModal.name.trim());
-        const entry = { category_id: catModal.category_id, name: catModal.name.trim(), desc: catModal.desc.trim(), icon: catModal.icon };
+        const entry = { category_id: catModal.category_id, name: catModal.name.trim(), desc: catModal.desc.trim(), icon: catModal.icon, department_id: catModal.department_id, department_name: dept?.name ?? '' };
         setCategories((prev) => prev.map((c, i) => i === catModal.idx ? entry : c));
+        updateCatDeptMap(catModal.category_id, catModal.department_id);
       }
       showToast(catModal.mode === 'add' ? '카테고리가 추가되었습니다.' : '카테고리가 수정되었습니다.');
       setCatModal((m) => ({ ...m, open: false }));
@@ -131,6 +148,7 @@ function AdminSettings() {
       if (deleteConfirm.type === 'category') {
         await deleteCategoryApi(deleteConfirm.id);
         setCategories((prev) => prev.filter((_, i) => i !== deleteConfirm.idx));
+        updateCatDeptMap(deleteConfirm.id, '');
       }
       if (deleteConfirm.type === 'dept') {
         await deleteDepartmentApi(deleteConfirm.id);
@@ -173,6 +191,14 @@ function AdminSettings() {
                   className="w-full h-10 px-3 border border-outline-variant rounded-xl text-sm outline-none focus:border-primary" />
               </div>
               <div>
+                <label className="text-xs font-bold text-on-surface-variant mb-1 block">담당 부서</label>
+                <select value={catModal.department_id} onChange={(e) => setCatModal((m) => ({ ...m, department_id: e.target.value }))}
+                  className="w-full h-10 px-3 border border-outline-variant rounded-xl text-sm outline-none focus:border-primary bg-white">
+                  <option value="">부서 선택</option>
+                  {departments.map((d) => <option key={d.department_id} value={d.department_id}>{d.name}</option>)}
+                </select>
+              </div>
+              <div>
                 <label className="text-xs font-bold text-on-surface-variant mb-2 block">아이콘</label>
                 <div className="flex flex-wrap gap-2">
                   {ICON_OPTIONS.map((ic) => (
@@ -206,12 +232,6 @@ function AdminSettings() {
                 <label className="text-xs font-bold text-on-surface-variant mb-1 block">부서명 *</label>
                 <input value={deptModal.name} onChange={(e) => setDeptModal((m) => ({ ...m, name: e.target.value }))}
                   placeholder="예: 도로교통과"
-                  className="w-full h-10 px-3 border border-outline-variant rounded-xl text-sm outline-none focus:border-primary" />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-on-surface-variant mb-1 block">담당 민원 유형</label>
-                <input value={deptModal.type} onChange={(e) => setDeptModal((m) => ({ ...m, type: e.target.value }))}
-                  placeholder="예: 교통/도로"
                   className="w-full h-10 px-3 border border-outline-variant rounded-xl text-sm outline-none focus:border-primary" />
               </div>
               <div>
@@ -344,7 +364,15 @@ function AdminSettings() {
                     </div>
                     <div>
                       <h4 className="font-bold text-on-surface mb-1">{c.name}</h4>
-                      <p className="text-sm text-on-surface-variant">{c.desc}</p>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {c.desc && <p className="text-sm text-on-surface-variant">{c.desc}</p>}
+                        {(() => {
+                          const deptId = catDeptMap[String(c.category_id)] || String(c.department_id || '');
+                          const dept = departments.find((d) => String(d.department_id) === deptId);
+                          const name = dept?.name || c.department_name;
+                          return name ? <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-bold">{name}</span> : null;
+                        })()}
+                      </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
@@ -432,7 +460,17 @@ function AdminSettings() {
                 {departments.map((d, i) => (
                   <tr key={i} className="hover:bg-surface-container-low/50 transition-colors">
                     <td className="px-3 md:px-6 py-2 md:py-4 font-bold text-sm text-on-surface">{d.name}</td>
-                    <td className="px-3 md:px-6 py-2 md:py-4 text-sm text-on-surface-variant">{d.type}</td>
+                    <td className="px-3 md:px-6 py-2 md:py-4 text-sm text-on-surface-variant">
+                      {(() => {
+                        const assigned = categories.filter((c) => {
+                          const deptId = catDeptMap[String(c.category_id)] || String(c.department_id || '');
+                          return deptId !== '' && deptId === String(d.department_id);
+                        }).map((c) => c.name);
+                        return assigned.length > 0
+                          ? <div className="flex flex-wrap gap-1">{assigned.map((n) => <span key={n} className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-bold">{n}</span>)}</div>
+                          : <span className="text-on-surface-variant/40">-</span>;
+                      })()}
+                    </td>
                     <td className="px-3 md:px-6 py-2 md:py-4 text-sm text-on-surface-variant">{d.members}명</td>
                     <td className="px-3 md:px-6 py-2 md:py-4 text-sm font-bold text-primary">{d.active}건</td>
                     <td className="px-3 md:px-6 py-2 md:py-4">
@@ -556,7 +594,7 @@ function AdminSettings() {
                             <td className="px-2 md:px-4 py-2 md:py-3.5 align-middle text-center text-on-surface-variant text-xs truncate">{user.phone || '-'}</td>
                             <td className="px-2 md:px-4 py-2 md:py-3.5 align-middle text-center text-on-surface-variant text-xs truncate">{user.email || '-'}</td>
                             <td className="px-2 md:px-4 py-2 md:py-3.5 align-middle text-center text-on-surface-variant text-xs truncate">{user.dept || '-'}</td>
-                            <td className="px-2 md:px-4 py-2 md:py-3.5 align-middle text-center text-on-surface-variant text-xs truncate">{user.joinedAt}</td>
+                            <td className="px-2 md:px-4 py-2 md:py-3.5 align-middle text-center text-on-surface-variant text-xs truncate">{user.joinedAt || '-'}</td>
                             <td className="px-2 md:px-4 py-2 md:py-3.5 align-middle text-center" onClick={(e) => e.stopPropagation()}>
                               <select value={user.dept || ''}
                                 onChange={(e) => {
@@ -586,7 +624,7 @@ function AdminSettings() {
                             </span>
                           </td>
                           <td className="px-2 md:px-4 py-2 md:py-3.5 align-middle text-center text-on-surface-variant text-xs truncate">{user.dept || '-'}</td>
-                          <td className="px-2 md:px-4 py-2 md:py-3.5 align-middle text-center text-on-surface-variant text-xs truncate">{user.joinedAt}</td>
+                          <td className="px-2 md:px-4 py-2 md:py-3.5 align-middle text-center text-on-surface-variant text-xs truncate">{user.joinedAt || '-'}</td>
                         </tr>
                       );
                     })}

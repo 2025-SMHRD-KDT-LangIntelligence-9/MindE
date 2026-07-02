@@ -65,3 +65,30 @@ export const uploadAttachmentApi = (id, file) => {
 
 export const getAttachmentsApi = (id) =>
   client.get(`/complaints/${id}/attachments`).then((r) => r.data);
+
+// 파일명 확장자로 미리보기 아이콘용 타입 추정 (백엔드 file_type은 image/document만 줌)
+const guessFileType = (name = '', backendType = '') => {
+  const ext = name.split('.').pop().toLowerCase();
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) return 'image';
+  if (ext === 'pdf') return 'pdf';
+  if (['doc', 'docx', 'hwp', 'txt'].includes(ext)) return 'doc';
+  if (['mp4', 'mov', 'avi', 'webm'].includes(ext)) return 'video';
+  return backendType === 'image' ? 'image' : 'file';
+};
+
+// 민원 상세 화면의 '민원인 첨부파일' 목록용 (백엔드 응답 → 화면 모양으로 변환)
+export const getCitizenAttachmentsApi = (id) =>
+  client.get(`/complaints/${id}/attachments`).then((r) =>
+    r.data.map((a) => ({
+      attachmentId: a.attachment_id,
+      name: a.original_filename ?? a.file_url?.split(/[\\/]/).pop() ?? '첨부파일',
+      type: guessFileType(a.original_filename, a.file_type),
+      size: null, // 백엔드가 파일 크기를 주지 않음
+    }))
+  );
+
+// 첨부파일을 인증 토큰과 함께 blob으로 받아 미리보기용 objectURL 반환
+export const getAttachmentBlobUrlApi = (attachmentId) =>
+  client
+    .get(`/attachments/${attachmentId}/download`, { responseType: 'blob' })
+    .then((r) => URL.createObjectURL(r.data));

@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import StaffLayout from '../../layouts/StaffLayout';
 import { useApp, CATEGORY_STYLE } from '../../store/AppContext';
 import { STATUS_STYLE as statusStyle } from '../../utils/statusStyle';
-import { uploadAttachmentApi } from '../../api/complaints';
+import { uploadAttachmentApi, getCitizenAttachmentsApi, getAttachmentBlobUrlApi } from '../../api/complaints';
 import FilePreviewModal from '../../components/FilePreviewModal';
 
 const STATUS_OPTIONS = ['접수', '처리 중', '보완 요청', '반려', '완료'];
@@ -35,6 +35,7 @@ function StaffUrgent() {
   const [dragOver,       setDragOver]       = useState(false);
   const [preview,        setPreview]        = useState(null);
   const [pendingStatus,  setPendingStatus]  = useState(null);
+  const [citizenFiles,   setCitizenFiles]   = useState([]);
   const fileInputRef = useRef(null);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 2500); };
@@ -49,6 +50,22 @@ function StaffUrgent() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, urgentList]);
+
+  // 민원 선택 시 민원인 첨부파일 목록 로드
+  useEffect(() => {
+    if (!selected?.id) { setCitizenFiles([]); return; }
+    let alive = true;
+    getCitizenAttachmentsApi(selected.id)
+      .then((list) => { if (alive) setCitizenFiles(list); })
+      .catch(() => { if (alive) setCitizenFiles([]); });
+    return () => { alive = false; };
+  }, [selected?.id]);
+
+  const openCitizenPreview = (f) => {
+    getAttachmentBlobUrlApi(f.attachmentId)
+      .then((url) => setPreview({ name: f.name, type: f.type, url }))
+      .catch(() => setPreview({ name: f.name, type: f.type, url: null }));
+  };
 
   const selectedData = selected ? urgentList.find((c) => c.id === selected.id) ?? selected : null;
 
@@ -253,7 +270,7 @@ function StaffUrgent() {
 
                 {/* 민원인 첨부파일 */}
                 {(() => {
-                  const files = selectedData.citizenFiles ?? [];
+                  const files = citizenFiles;
                   const fileIcon = (f) => {
                     if (f.type === 'image') return { icon: 'image',          color: 'text-sky-500',    bg: 'bg-sky-50' };
                     if (f.type === 'pdf')   return { icon: 'picture_as_pdf', color: 'text-red-500',    bg: 'bg-red-50' };
@@ -287,11 +304,13 @@ function StaffUrgent() {
                                 </div>
                                 <div className="flex-1 min-w-0">
                                   <p className="text-xs font-bold text-on-surface truncate">{f.name}</p>
-                                  <p className="text-[10px] text-on-surface-variant">{fmtSize(f.size)}</p>
+                                  {f.size != null && (
+                                    <p className="text-[10px] text-on-surface-variant">{fmtSize(f.size)}</p>
+                                  )}
                                 </div>
                                 <div className="flex items-center gap-2 shrink-0">
                                   <button
-                                    onClick={() => openFilePreview(f)}
+                                    onClick={() => openCitizenPreview(f)}
                                     className="flex items-center gap-1 text-[10px] font-bold text-red-600 hover:underline"
                                   >
                                     <span className="material-symbols-outlined text-sm">visibility</span>

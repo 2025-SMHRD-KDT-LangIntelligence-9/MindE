@@ -71,7 +71,7 @@ export function AppProvider({ children }) {
         } else if (type === 'admin') {
           setCurrentUser({ role: 'admin', name: me.name, dept: '', deptGroup: [] });
         } else if (type === 'staff') {
-          setCurrentUser({ role: 'staff', name: me.name, dept: me.dept ?? '', deptGroup: me.deptGroup ?? [] });
+          setCurrentUser({ role: 'staff', name: me.name, dept: me.department_name ?? '', deptGroup: me.department_name ? [me.department_name] : [] });
         }
       })
       .catch(() => localStorage.removeItem('token'));
@@ -89,22 +89,28 @@ export function AppProvider({ children }) {
       getUsersApi().then(setUsers).catch(() => {});
     }
     if (currentUser.role === 'citizen') {
-      getChatSessionsApi().then((data) => {
-        setChatSessions(data.map((s) => ({
-          id: `session-${s.session_id}`,
-          session_id: s.session_id,
-          title: s.title,
-          preview: '',
-          date: new Date(s.created_at).toLocaleDateString('ko-KR'),
-          time: '',
-          status: s.status,
-          category: '기타',
-          messages: 0,
-          conversation: null,
-        })));
-      }).catch(() => {});
+      refreshChatSessions();
     }
   }, [currentUser.role]);
+
+  // 백엔드가 세션을 자동 저장하므로, 목록은 GET /chat/sessions에서 새로고침해 가져온다.
+  const refreshChatSessions = async () => {
+    try {
+      const data = await getChatSessionsApi();
+      setChatSessions(data.map((s) => ({
+        id: `session-${s.session_id}`,
+        session_id: s.session_id,
+        title: s.title,
+        preview: '',
+        date: new Date(s.created_at).toLocaleDateString('ko-KR'),
+        time: '',
+        status: s.status,
+        category: '기타',
+        messages: 0,
+        conversation: null,
+      })));
+    } catch { /* ignore */ }
+  };
 
   const login = (role, userInfo = null) => {
     if (role === 'citizen') setCurrentUser({ role: 'citizen', id: userInfo?.id || '', name: userInfo?.name || '', email: userInfo?.email || '', phone: userInfo?.phone || '', dept: '', deptGroup: [] });
@@ -390,6 +396,7 @@ export function AppProvider({ children }) {
       addComplaint,
       saveChatSession,
       deleteChatSession,
+      refreshChatSessions,
       markAllRead,
       registerUser,
       approveUser,
