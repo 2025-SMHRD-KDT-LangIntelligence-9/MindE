@@ -82,6 +82,7 @@ function AdminLayout({ pageTitle, activeMenu, children }) {
           <NotificationDropdown
             items={notifItems}
             onMarkAllRead={handleMarkAllRead}
+            onReadItem={(n) => setReadIds((prev) => new Set(prev).add(n.id))}
             onClickItem={(n) => {
               if (n.complaintId) navigate(`/admin/monitoring?id=${n.complaintId}`);
               else navigate('/admin/settings?tab=users');

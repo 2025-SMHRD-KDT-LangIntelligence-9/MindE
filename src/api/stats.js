@@ -5,6 +5,11 @@ import client from './client';
 export const getStatsSummaryApi = () =>
   client.get('/admin/stats/summary').then((r) => r.data);
 
+// 공개(비로그인) 통계 — 랜딩/로그인/회원가입의 누적처리·총접수 표시용.
+// 백엔드에 공개 엔드포인트가 없으면 null 반환(404 등) → 프론트는 폴백.
+export const getPublicStatsApi = () =>
+  client.get('/stats/public').then((r) => r.data).catch(() => null);
+
 export const getStatsByCategoryApi = () =>
   client.get('/admin/stats/by-category').then((r) => r.data);
 

@@ -8,6 +8,8 @@ const roleStyle = {
   staff:   { label: '담당자',    bg: 'bg-emerald-50', text: 'text-emerald-600', icon: 'badge' },
 };
 
+const PAGE_SIZE = 10;
+
 function AdminUsers() {
   const { users, approveUser, rejectUser, updateUserDept } = useApp();
   const [search, setSearch] = useState('');
@@ -15,6 +17,7 @@ function AdminUsers() {
   const [pendingDepts, setPendingDepts] = useState({});
   const [editingDept, setEditingDept] = useState({});
   const [departments, setDepartments] = useState([]);
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     getDepartmentsApi()
@@ -51,6 +54,12 @@ function AdminUsers() {
   const active  = users.filter((u) => u.status === 'active' && (
     u.name.includes(search) || u.email.includes(search)
   ));
+
+  // 10명씩 페이지네이션
+  const totalPages = Math.max(1, Math.ceil(active.length / PAGE_SIZE));
+  const curPage = Math.min(page, totalPages);
+  const pagedActive = active.slice((curPage - 1) * PAGE_SIZE, curPage * PAGE_SIZE);
+  useEffect(() => { setPage(1); }, [search]);
 
   return (
     <AdminLayout pageTitle="사용자 관리" activeMenu="users">
@@ -156,7 +165,7 @@ function AdminUsers() {
                   <tr>
                     <td colSpan={6} className="text-center py-10 text-on-surface-variant text-sm">사용자가 없습니다.</td>
                   </tr>
-                ) : active.map((user) => {
+                ) : pagedActive.map((user) => {
                   const r = roleStyle[user.role] ?? roleStyle.citizen;
                   const isEditing = editingDept[user.id] !== undefined;
                   return (
@@ -209,6 +218,41 @@ function AdminUsers() {
               </tbody>
             </table>
             </div>
+            {/* 페이지네이션 */}
+            {active.length > PAGE_SIZE && (
+              <div className="flex items-center justify-between px-5 py-3 border-t border-outline-variant">
+                <p className="text-xs text-on-surface-variant">
+                  전체 {active.length}명 · {(curPage - 1) * PAGE_SIZE + 1}–{Math.min(curPage * PAGE_SIZE, active.length)}
+                </p>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={curPage === 1}
+                    className="w-8 h-8 rounded-lg border border-outline-variant flex items-center justify-center text-on-surface-variant hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <span className="material-symbols-outlined text-base">chevron_left</span>
+                  </button>
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((n) => (
+                    <button
+                      key={n}
+                      onClick={() => setPage(n)}
+                      className={`min-w-8 h-8 px-2 rounded-lg text-xs font-bold transition-colors ${
+                        n === curPage ? 'bg-primary text-white' : 'border border-outline-variant text-on-surface-variant hover:bg-slate-50'
+                      }`}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={curPage === totalPages}
+                    className="w-8 h-8 rounded-lg border border-outline-variant flex items-center justify-center text-on-surface-variant hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <span className="material-symbols-outlined text-base">chevron_right</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

@@ -1,7 +1,7 @@
 ﻿import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-function NotificationDropdown({ items, onMarkAllRead, onClickItem }) {
+function NotificationDropdown({ items, onMarkAllRead, onClickItem, onReadItem }) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -56,7 +56,12 @@ function NotificationDropdown({ items, onMarkAllRead, onClickItem }) {
             ) : items.map((n) => (
               <div
                 key={n.id}
-                onClick={() => { setOpen(false); if (onClickItem) onClickItem(n); else navigate(`/my-complaints?id=${n.complaintId}`); }}
+                onClick={() => {
+                  setOpen(false);
+                  onReadItem?.(n);   // 클릭한 알림 읽음 처리 (배지 즉시 감소)
+                  if (onClickItem) onClickItem(n);
+                  else if (n.complaintId) navigate(`/my-complaints?id=${n.complaintId}`);
+                }}
                 className={`flex items-start gap-3 px-4 py-3 transition-colors cursor-pointer hover:bg-surface-container-low ${n.read ? 'bg-white' : 'bg-primary/3'}`}
               >
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${n.iconBg ?? 'bg-slate-100'}`}>

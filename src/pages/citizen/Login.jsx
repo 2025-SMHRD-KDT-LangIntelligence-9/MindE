@@ -7,7 +7,7 @@ import { loginApi, getMeApi } from '../../api/auth';
 function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, stats, currentUser, logout } = useApp();
+  const { login, stats, publicStats, currentUser, logout } = useApp();
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
@@ -147,8 +147,8 @@ function Login() {
             {/* 통계 */}
             <div className="relative z-10 grid grid-cols-3 gap-2">
               {[
-                { value: `${stats.done}건`, label: '누적 처리' },
-                { value: `${stats.total}건`, label: '총 접수' },
+                { value: `${publicStats?.resolved ?? stats.done}건`, label: '누적 처리' },
+                { value: `${publicStats?.total ?? stats.total}건`, label: '총 접수' },
                 { value: '24시간',  label: '언제든 접수' },
               ].map((s) => (
                 <div key={s.label} className="bg-white/15 rounded-2xl py-3.5 text-center border border-white/20">

@@ -6,7 +6,7 @@ import { useApp } from '../../store/AppContext';
 function Landing() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { stats } = useApp();
+  const { stats, publicStats } = useApp();
 
   const [showWithdrawn, setShowWithdrawn] = useState(!!location.state?.withdrawn);
 
@@ -201,8 +201,8 @@ function Landing() {
               {/* 통계 */}
               <div className="flex items-center gap-4 md:gap-6">
                 {[
-                  { value: `${stats.done}건`, label: '누적 처리' },
-                  { value: `${stats.total}건`, label: '총 접수' },
+                  { value: `${publicStats?.resolved ?? stats.done}건`, label: '누적 처리' },
+                  { value: `${publicStats?.total ?? stats.total}건`, label: '총 접수' },
                   { value: '24시간',  label: '접수 가능' },
                 ].map((s, i) => (
                   <div key={s.label} className="flex items-center gap-4 md:gap-6">

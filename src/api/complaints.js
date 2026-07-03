@@ -24,6 +24,7 @@ const transform = (c) => ({
   reply:       c.reply       ?? null,
   replyDate:   c.reply_date  ?? null,
   citizenFiles: c.attachments ?? [],
+  chatSessionId: c.chat_session_id ?? null,  // 원본 챗봇 대화 세션(있으면 담당자가 조회 가능)
 });
 
 export const getComplaintsApi = () =>
@@ -47,6 +48,10 @@ export const updateComplaintStatusApi = (id, koreanStatus, note = null) =>
 
 export const getComplaintHistoryApi = (id) =>
   client.get(`/complaints/${id}/history`).then((r) => r.data);
+
+// 담당자용: 민원의 원본 챗봇 대화 조회. chat_session_id 없으면 404.
+export const getChatTranscriptApi = (id) =>
+  client.get(`/complaints/${id}/chat-transcript`).then((r) => r.data);
 
 export const saveMemoApi = (id, memo) =>
   client.patch(`/complaints/${id}/memo`, { memo }).then((r) => r.data);
@@ -76,14 +81,15 @@ const guessFileType = (name = '', backendType = '') => {
   return backendType === 'image' ? 'image' : 'file';
 };
 
-// 민원 상세 화면의 '민원인 첨부파일' 목록용 (백엔드 응답 → 화면 모양으로 변환)
-export const getCitizenAttachmentsApi = (id) =>
+// 민원 첨부파일 목록 (백엔드 응답 → 화면 모양). uploadedBy로 민원인/담당자 구분.
+export const getComplaintAttachmentsApi = (id) =>
   client.get(`/complaints/${id}/attachments`).then((r) =>
     r.data.map((a) => ({
       attachmentId: a.attachment_id,
       name: a.original_filename ?? a.file_url?.split(/[\\/]/).pop() ?? '첨부파일',
       type: guessFileType(a.original_filename, a.file_type),
-      size: null, // 백엔드가 파일 크기를 주지 않음
+      size: a.file_size ?? null,
+      uploadedBy: a.uploaded_by ?? null,
     }))
   );
 

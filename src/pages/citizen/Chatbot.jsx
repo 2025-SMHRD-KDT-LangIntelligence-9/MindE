@@ -6,10 +6,11 @@ import { chatAskApi, chatImageApi, chatFileApi, getChatSessionApi, chatVoiceRepl
 import { uploadAttachmentApi } from '../../api/complaints';
 
 const quickReplies = [
-  { icon: 'description',         label: '필요 서류 안내' },
-  { icon: 'route',               label: '신청 절차 안내' },
-  { icon: 'search',              label: '유사 사례 보기' },
-  { icon: 'chat_bubble_outline', label: '상담 종료' },
+  { icon: 'description', label: '필요 서류 안내',  action: 'send' },
+  { icon: 'route',       label: '신청 절차 안내',  action: 'send' },
+  { icon: 'search',      label: '유사 사례 보기',  action: 'send' },
+  { icon: 'menu_book',   label: '이용 가이드 보기', action: 'faq' },
+  { icon: 'logout',      label: '상담 종료',       action: 'end' },
 ];
 
 // 민원 내용 최소 길이 (백엔드 게이트: 10자 미만이면 400)
@@ -18,6 +19,18 @@ const MIN_COMPLAINT_LEN = 10;
 const LIVE_CHAT_KEY = 'minde_live_chat';
 // quick-reply 버튼 텍스트는 민원 내용에 포함하지 않음 (백엔드 안내사항)
 const QUICK_LABELS = quickReplies.map((r) => r.label);
+
+// 응답 대기 경과 시간(초) 카운터. 타이핑 인디케이터가 떠 있는 동안만 마운트되어
+// 100ms마다 자기 자신만 리렌더(챗봇 전체 리렌더 방지). 마운트 시점 = 요청 시작.
+function TypingElapsed() {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    const start = Date.now();
+    const id = setInterval(() => setElapsed((Date.now() - start) / 1000), 100);
+    return () => clearInterval(id);
+  }, []);
+  return <span className="tabular-nums opacity-70">{elapsed.toFixed(1)}s</span>;
+}
 
 
 const statusConfig = {
@@ -248,7 +261,9 @@ function MessageBubble({ msg, isSpeaking, onSpeak }) {
       </div>
       <div className="max-w-[80%] md:max-w-[72%]">
         <p className={`text-[10px] md:text-[11px] text-on-surface-variant mb-1 ${isAI ? 'ml-1' : 'mr-1 text-right'}`}>
-          {isAI ? `마음이 · ${msg.time}` : msg.time}
+          {isAI
+            ? `마음이 · ${msg.time}${msg.duration != null ? ` · ${msg.duration.toFixed(1)}s` : ''}`
+            : msg.time}
         </p>
         <div className={`px-3 py-2.5 md:px-4 md:py-3.5 rounded-2xl shadow-sm text-xs md:text-sm leading-relaxed ${
           isAI
@@ -338,6 +353,7 @@ function Chatbot() {
   const [input, setInput]                 = useState('');
   const [isTyping, setIsTyping]           = useState(false);
   const [typingStatus, setTypingStatus]   = useState('');
+  const [summaryLoading, setSummaryLoading] = useState(false); // 상담 요약 '요약 중' 표시 (빠른 답변 버튼 제외)
   const [historySearch, setHistorySearch] = useState('');
   const [filterStatus, setFilterStatus]   = useState('전체');
   const [isListening, setIsListening]     = useState(false);
@@ -352,6 +368,7 @@ function Chatbot() {
   const imageInputRef    = useRef(null);
   const fileInputRef     = useRef(null);
   const autoSubmitDone   = useRef(false);
+  const openingRef       = useRef(false);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -555,8 +572,9 @@ function Chatbot() {
     });
   };
 
-  const handleSend = async () => {
-    const text = input.trim();
+  const handleSend = async (overrideText) => {
+    // 빠른 답변 버튼 등에서 텍스트를 직접 넘겨 바로 전송 가능 (onClick 이벤트 객체는 무시)
+    const text = (typeof overrideText === 'string' ? overrideText : input).trim();
     if ((!text && attachedFiles.length === 0) || isTyping || viewingHistory) return;
     if (isListeningRef.current) stopListening();
 
@@ -567,7 +585,10 @@ function Chatbot() {
     setAttachedFiles([]);
     setIsTyping(true);
     setTypingStatus('처리 중');
+    // 빠른 답변 버튼(안내 조회)은 상담 요약 '요약 중' 표시를 띄우지 않음
+    setSummaryLoading(!QUICK_LABELS.includes(text));
 
+    const t0 = Date.now(); // 응답 생성 소요 시간 측정 시작
     try {
       const imageFile = sentFiles.find(f => f.isImage);
       // 주 이미지 외 나머지(문서·추가 이미지)는 /chat/file 로 세션에 먼저 저장 → 상담 내역에 표시
@@ -619,12 +640,13 @@ function Chatbot() {
         setImageNotes((prev) => [...prev, result.image_description]);
       }
 
-      setMessages(prev => [...prev, { role: 'ai', time: now(), text: result.answer }]);
+      setMessages(prev => [...prev, { role: 'ai', time: now(), text: result.answer, duration: (Date.now() - t0) / 1000 }]);
     } catch {
-      setMessages(prev => [...prev, { role: 'ai', time: now(), text: '서버 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.' }]);
+      setMessages(prev => [...prev, { role: 'ai', time: now(), text: '서버 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.', duration: (Date.now() - t0) / 1000 }]);
     } finally {
       setIsTyping(false);
       setTypingStatus('');
+      setSummaryLoading(false);
     }
   };
 
@@ -687,6 +709,7 @@ function Chatbot() {
   };
 
   const openSubmitModal = async () => {
+    if (openingRef.current || submitModal.open) return; // 연속 클릭/중복 오픈 방지
     // quick-reply 버튼 텍스트만 제외. (사진만 첨부한 메시지도 접수 가능하도록 텍스트 유무는 안 따짐)
     const userMsgs = messages.filter(
       (m) => m.role === 'user' && !(m.text?.trim() && QUICK_LABELS.includes(m.text.trim()))
@@ -700,29 +723,39 @@ function Chatbot() {
     const base = (textMsgs[0]?.text ?? imgContent).replace(/\n/g, ' ').trim();
     const title = base ? (base.length > 30 ? base.slice(0, 30) + '…' : base) : '사진 첨부 민원';
 
-    // 세션 초안(draft-complaint)은 모달 열 때 '딱 한 번' 호출해 폼을 채운다.
-    // 이후 유저가 편집하면 로컬 state만 바뀌고 API는 재호출하지 않음.
-    if (currentSessionId) {
-      setSubmitModal({ open: true, title: '', content: '', loading: true });
-      try {
-        const d = await createComplaintDraftApi(currentSessionId);
-        setSubmitModal({ open: true, title: d?.title || title, content: d?.content || content, loading: false });
-      } catch {
+    openingRef.current = true;
+    try {
+      // 세션 초안(draft-complaint)은 모달 열 때 '딱 한 번' 호출해 폼을 채운다.
+      // 접수 모달은 최종 확인용(제목·내용·첨부)만. 분류/담당은 오른쪽 상담 요약 카드가 담당.
+      if (currentSessionId) {
+        setSubmitModal({ open: true, title: '', content: '', loading: true });
+        try {
+          const d = await createComplaintDraftApi(currentSessionId);
+          // 로딩 중 닫혔으면(취소) 다시 뜨지 않게 유지
+          setSubmitModal((p) => (p.open ? { open: true, title: d?.title || title, content: d?.content || content, loading: false } : p));
+        } catch {
+          setSubmitModal((p) => (p.open ? { open: true, title, content, loading: false } : p));
+        }
+      } else {
         setSubmitModal({ open: true, title, content, loading: false });
       }
-    } else {
-      setSubmitModal({ open: true, title, content, loading: false });
+    } finally {
+      openingRef.current = false;
     }
   };
 
   const handleComplaintSubmit = async () => {
     if (!submitModal.title.trim() || submitModal.content.trim().length < MIN_COMPLAINT_LEN) return;
     setSubmitting(true);
+    // 분류/담당은 오른쪽 상담 요약 카드 값 사용 (표시와 접수 완료 팝업 일치)
+    const cat = summary.category ?? '기타';
+    const dept = summary.dept ?? null;
     try {
       const newId = await addComplaint({
         title: submitModal.title.trim(),
         content: submitModal.content.trim(),
-        category: summary.category ?? '기타',
+        category: cat,
+        chatSessionId: currentSessionId,   // 원본 챗봇 대화 세션 연결
       });
       // 채팅에 첨부한 파일들을 접수된 민원에 업로드 → 담당자에게 전달
       // (탭 이동/복원으로 File 객체가 사라진 이미지는 data URL에서 File을 재생성)
@@ -740,8 +773,8 @@ function Chatbot() {
       setSubmitModal({ open: false, title: '', content: '' });
       const doneInfo = {
         title: submitModal.title.trim(),
-        category: summary.category ?? '기타',
-        dept: summary.dept ?? null,
+        category: cat,
+        dept,
       };
       setSubmitDone(doneInfo);
       // 세션을 '민원 접수'로 표시 + 목록 갱신 (세션은 백엔드가 관리)
@@ -761,7 +794,11 @@ function Chatbot() {
     return () => window.removeEventListener('keydown', handler);
   }, [submitDone]);
 
-  const filteredHistory = chatSessions.filter(h => {
+  // 진행 중인 현재 상담은 아직 '내역'이 아니므로 목록에서 제외 (백엔드 자동 저장분이 딸려오는 것 방지)
+  const pastSessions = chatSessions.filter(
+    h => !(currentSessionId && String(h.session_id) === String(currentSessionId))
+  );
+  const filteredHistory = pastSessions.filter(h => {
     const matchSearch = h.title.includes(historySearch) || h.preview.includes(historySearch);
     const matchStatus = filterStatus === '전체' || h.status === filterStatus;
     return matchSearch && matchStatus;
@@ -823,7 +860,7 @@ function Chatbot() {
                   <span className="material-symbols-outlined text-sm md:text-base">history</span>
                   <span className="hidden sm:inline">상담 내역</span>
                   <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${view === 'history' || viewingHistory ? 'bg-primary/10 text-primary' : 'bg-white/20 text-white'}`}>
-                    {chatSessions.length}
+                    {pastSessions.length}
                   </span>
                 </button>
               </div>
@@ -876,8 +913,9 @@ function Chatbot() {
                         ))}
                       </div>
                       {typingStatus && (
-                        <span className="text-[11px] md:text-xs text-primary/70 font-medium ml-1 animate-pulse">
-                          {typingStatus}…
+                        <span className="text-[11px] md:text-xs text-primary/70 font-medium ml-1 flex items-center gap-1.5">
+                          <span className="animate-pulse">{typingStatus}…</span>
+                          <TypingElapsed />
                         </span>
                       )}
                     </div>
@@ -890,7 +928,11 @@ function Chatbot() {
                     {quickReplies.map((r) => (
                       <button
                         key={r.label}
-                        onClick={() => { setInput(r.label); textareaRef.current?.focus(); }}
+                        onClick={() => {
+                          if (r.action === 'faq') navigate('/faq');       // 이용 가이드 → 자주 묻는 질문
+                          else if (r.action === 'end') startNewChat();     // 상담 종료 → 새 채팅
+                          else handleSend(r.label);                        // 나머지 → 바로 전송
+                        }}
                         className="flex items-center gap-1.5 text-xs bg-white border border-primary/30 text-primary px-3 py-1.5 rounded-full font-bold hover:bg-primary hover:text-white transition-all shadow-sm"
                       >
                         <span className="material-symbols-outlined text-sm">{r.icon}</span>
@@ -1102,6 +1144,12 @@ function Chatbot() {
               </div>
             </div>
             <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-4">
+              {summaryLoading && !viewingHistory && (
+                <div className="flex items-center gap-2 px-3 py-2.5 bg-primary/5 border border-primary/20 rounded-xl">
+                  <span className="material-symbols-outlined text-primary text-base animate-spin">progress_activity</span>
+                  <span className="text-xs font-bold text-primary animate-pulse">{typingStatus || '요약 중'}…</span>
+                </div>
+              )}
               <div className="flex items-center justify-between">
                 <p className="text-[11px] text-on-surface-variant font-medium">민원 유형</p>
                 {(viewingHistory?.category ?? summary.category) ? (
@@ -1175,27 +1223,14 @@ function Chatbot() {
             </div>
           </div>
 
-          <div className="shrink-0 bg-gradient-to-br from-primary/8 to-[#3a7fd4]/5 rounded-2xl border border-primary/15 p-5">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="material-symbols-outlined text-primary text-lg">help_outline</span>
-              <h4 className="text-sm font-bold text-primary">도움이 필요하신가요?</h4>
-            </div>
-            <p className="text-xs text-on-surface-variant leading-relaxed mb-4">자주 묻는 질문과 이용 가이드를 확인해 보세요.</p>
-            <button
-              onClick={() => navigate('/faq')}
-              className="w-full text-xs font-bold text-primary border border-primary/40 bg-white py-2.5 rounded-xl hover:bg-primary/5 transition-colors shadow-sm"
-            >
-              이용 가이드 보기 →
-            </button>
-          </div>
         </aside>
 
       </div>
 
-      {/* 민원 접수 모달 */}
+      {/* 민원 접수 모달 (배경 클릭/ESC로는 안 닫힘 — 취소/X/접수로만) */}
       {submitModal.open && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center" onClick={() => setSubmitModal(p => ({ ...p, open: false }))}>
-          <div className="bg-white rounded-2xl shadow-2xl w-[480px] overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-2xl shadow-2xl w-[480px] overflow-hidden">
             <div className="px-6 pt-6 pb-4 border-b border-outline-variant/50 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
@@ -1241,6 +1276,7 @@ function Chatbot() {
                   </p>
                 )}
               </div>
+              {/* 분류/담당 (오른쪽 상담 요약과 동일한 값) */}
               {summary.category && (
                 <div className="flex items-center gap-2 text-xs text-on-surface-variant bg-surface-container-low/60 px-3 py-2 rounded-xl">
                   <span className="material-symbols-outlined text-base text-primary">category</span>
@@ -1277,17 +1313,17 @@ function Chatbot() {
 
               <div className="flex gap-2 pt-1">
                 <button
-                  onClick={() => setSubmitModal(p => ({ ...p, open: false }))}
-                  className="flex-1 py-2.5 rounded-xl border border-outline-variant text-sm font-bold text-on-surface-variant hover:bg-slate-50"
-                >
-                  취소
-                </button>
-                <button
                   onClick={handleComplaintSubmit}
                   disabled={submitting || submitModal.loading || !submitModal.title.trim() || submitModal.content.trim().length < MIN_COMPLAINT_LEN}
                   className="flex-1 py-2.5 rounded-xl bg-primary text-white text-sm font-bold hover:brightness-105 shadow-md shadow-primary/25 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {submitting ? '접수 중...' : '접수하기'}
+                </button>
+                <button
+                  onClick={() => setSubmitModal(p => ({ ...p, open: false }))}
+                  className="flex-1 py-2.5 rounded-xl border border-outline-variant text-sm font-bold text-on-surface-variant hover:bg-slate-50"
+                >
+                  취소
                 </button>
               </div>
             </div>

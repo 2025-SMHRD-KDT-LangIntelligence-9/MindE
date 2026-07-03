@@ -29,7 +29,7 @@ const iconColorMap = {
 
 function Notifications() {
   const navigate = useNavigate();
-  const { notifications, markAllRead } = useApp();
+  const { notifications, markAllRead, markOneRead } = useApp();
   const [tab, setTab] = useState('all');
 
   const filtered = notifications.filter((n) => {
@@ -133,7 +133,7 @@ function Notifications() {
                     return (
                       <div
                         key={n.id}
-                        onClick={() => navigate(`/my-complaints?id=${n.complaintId}`)}
+                        onClick={() => { markOneRead(n.id); if (n.complaintId) navigate(`/my-complaints?id=${n.complaintId}`); }}
                         className={`bg-white border rounded-2xl flex gap-3 md:gap-4 p-3 md:p-4 transition-all cursor-pointer hover:shadow-md ${
                           n.read
                             ? 'border-outline-variant/60'

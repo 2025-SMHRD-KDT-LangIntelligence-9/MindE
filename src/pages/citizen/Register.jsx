@@ -7,7 +7,7 @@ import { getPublicDepartmentsApi } from '../../api/admin';
 
 function Register() {
   const navigate = useNavigate();
-  const { stats } = useApp();
+  const { stats, publicStats } = useApp();
 
   const [mode, setMode] = useState('citizen');
   const [showPw, setShowPw] = useState(false);
@@ -20,6 +20,7 @@ function Register() {
   const [passwordConfirm, setPasswordConfirm] = useState('');
   const [selectedDept, setSelectedDept] = useState(DEPT_OPTIONS[0].dept);
   const [departments, setDepartments] = useState(DEPT_OPTIONS.map((d) => d.dept));
+  const [deptIdByName, setDeptIdByName] = useState({});
   const [deptOpen, setDeptOpen] = useState(false);
   const [deptSearch, setDeptSearch] = useState('');
   const [done, setDone] = useState(false);
@@ -38,6 +39,7 @@ function Register() {
         const names = list.map((d) => d.name).filter(Boolean);
         if (names.length) {
           setDepartments(names);
+          setDeptIdByName(Object.fromEntries(list.map((d) => [d.name, d.department_id])));
           setSelectedDept((cur) => (names.includes(cur) ? cur : names[0]));
         }
       }
@@ -89,6 +91,8 @@ function Register() {
         password,
         phone,
         apply_as_staff: isStaff,
+        // 담당자 가입 시 선택 부서 저장 (백엔드 UserCreate.department_id)
+        ...(isStaff && deptIdByName[selectedDept] != null ? { department_id: deptIdByName[selectedDept] } : {}),
       });
 
       if (isStaff) {
@@ -137,8 +141,8 @@ function Register() {
             {/* 통계 */}
             <div className="relative z-10 grid grid-cols-3 gap-2">
               {[
-                { value: `${stats.done}건`, label: '누적 처리' },
-                { value: `${stats.total}건`, label: '총 접수' },
+                { value: `${publicStats?.resolved ?? stats.done}건`, label: '누적 처리' },
+                { value: `${publicStats?.total ?? stats.total}건`, label: '총 접수' },
                 { value: '24시간',  label: '언제든 접수' },
               ].map((s) => (
                 <div key={s.label} className="bg-white/15 rounded-2xl py-3.5 text-center border border-white/20">

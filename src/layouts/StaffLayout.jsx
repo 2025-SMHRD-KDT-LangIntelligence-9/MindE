@@ -70,6 +70,7 @@ function StaffLayout({ pageTitle, activeMenu, children }) {
           <NotificationDropdown
             items={notifItems}
             onMarkAllRead={handleMarkAllRead}
+            onReadItem={(n) => setReadIds((prev) => new Set(prev).add(n.id))}
             onClickItem={(n) => navigate(n.urgency === '긴급' ? `/staff/urgent?id=${n.complaintId}` : `/staff?id=${n.complaintId}`)}
           />
           <div className="flex items-center gap-1 md:gap-2 pl-2 md:pl-3 border-l border-slate-300">

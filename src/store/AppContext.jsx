@@ -4,6 +4,7 @@ import { getComplaintsApi, getAllComplaintsApi, addComplaintApi, updateComplaint
 import { getNotificationsApi, markAllReadApi } from '../api/notifications';
 import { getUsersApi, approveStaffApi, rejectStaffApi, updateUserDeptApi, deleteUserApi } from '../api/admin';
 import { saveChatSessionApi, getChatSessionsApi, deleteChatSessionApi } from '../api/chat';
+import { getPublicStatsApi } from '../api/stats';
 
 /* 긴급도 공통 색상 */
 export const URGENCY_STYLE = {
@@ -55,9 +56,15 @@ export function AppProvider({ children }) {
   const [chatSessions, setChatSessions] = useState(INITIAL_CHAT_SESSIONS);
   const [users, setUsers] = useState(INITIAL_USERS);
   const [staffFiles, setStaffFiles] = useState({});
+  const [publicStats, setPublicStats] = useState(null);
   const [currentUser, setCurrentUser] = useState({
     role: 'guest', name: '', dept: '', deptGroup: [],
   });
+
+  // 공개 통계 (비로그인 랜딩/로그인/가입 페이지의 누적처리·총접수 표시용)
+  useEffect(() => {
+    getPublicStatsApi().then((d) => { if (d) setPublicStats(d); });
+  }, []);
 
   // 앱 시작 시 토큰 있으면 세션 복원
   useEffect(() => {
@@ -226,9 +233,10 @@ export function AppProvider({ children }) {
   };
 
   // 새 민원 접수 (시민이 챗봇/OCR로 제출)
-  const addComplaint = async ({ title, content, category }) => {
+  const addComplaint = async ({ title, content, category, chatSessionId }) => {
     try {
-      const result = await addComplaintApi({ title, content, category });
+      // chat_session_id: 챗봇 대화 → 접수일 때 원본 세션 연결 (없으면 null)
+      const result = await addComplaintApi({ title, content, category, chat_session_id: chatSessionId ?? null });
       setComplaints((prev) => [result, ...prev]);
       setNotifications((prev) => [
         {
@@ -354,6 +362,10 @@ export function AppProvider({ children }) {
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
   };
 
+  // 개별 알림 읽음 (백엔드에 단건 API가 없어 로컬 상태만 갱신 → 배지 즉시 반영)
+  const markOneRead = (id) =>
+    setNotifications((prev) => prev.map((n) => (String(n.id) === String(id) ? { ...n, read: true } : n)));
+
   // 담당자 본인 부서 민원 (deptGroup 기반 필터)
   // deptGroup이 빈 배열이면 백엔드가 부서 정보를 아직 안 내려준 것이므로 전체 표시
   const myDeptComplaints = currentUser.role === 'staff'
@@ -384,6 +396,7 @@ export function AppProvider({ children }) {
       users,
       staffFiles,
       stats,
+      publicStats,
       currentUser,
       myDeptComplaints,
       login,
@@ -398,6 +411,7 @@ export function AppProvider({ children }) {
       deleteChatSession,
       refreshChatSessions,
       markAllRead,
+      markOneRead,
       registerUser,
       approveUser,
       rejectUser,

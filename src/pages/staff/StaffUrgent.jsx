@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import StaffLayout from '../../layouts/StaffLayout';
 import { useApp, CATEGORY_STYLE } from '../../store/AppContext';
 import { STATUS_STYLE as statusStyle } from '../../utils/statusStyle';
-import { uploadAttachmentApi, getCitizenAttachmentsApi, getAttachmentBlobUrlApi } from '../../api/complaints';
+import { uploadAttachmentApi, getComplaintAttachmentsApi, getAttachmentBlobUrlApi } from '../../api/complaints';
 import FilePreviewModal from '../../components/FilePreviewModal';
 
 const STATUS_OPTIONS = ['접수', '처리 중', '보완 요청', '반려', '완료'];
@@ -21,7 +21,7 @@ function StatusBadge({ status }) {
 }
 
 function StaffUrgent() {
-  const { myDeptComplaints, currentUser, updateComplaintStatus, saveMemo, saveReply, staffFiles, addStaffFile, removeStaffFile } = useApp();
+  const { myDeptComplaints, currentUser, updateComplaintStatus, saveMemo, saveReply } = useApp();
   const [searchParams] = useSearchParams();
 
   const urgentList = myDeptComplaints.filter((c) => c.urgency === '긴급');
@@ -35,7 +35,8 @@ function StaffUrgent() {
   const [dragOver,       setDragOver]       = useState(false);
   const [preview,        setPreview]        = useState(null);
   const [pendingStatus,  setPendingStatus]  = useState(null);
-  const [citizenFiles,   setCitizenFiles]   = useState([]);
+  const [attachments,    setAttachments]    = useState([]);
+  const [changingStatus, setChangingStatus] = useState(false);
   const fileInputRef = useRef(null);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 2500); };
@@ -51,15 +52,12 @@ function StaffUrgent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, urgentList]);
 
-  // 민원 선택 시 민원인 첨부파일 목록 로드
-  useEffect(() => {
-    if (!selected?.id) { setCitizenFiles([]); return; }
-    let alive = true;
-    getCitizenAttachmentsApi(selected.id)
-      .then((list) => { if (alive) setCitizenFiles(list); })
-      .catch(() => { if (alive) setCitizenFiles([]); });
-    return () => { alive = false; };
-  }, [selected?.id]);
+  // 민원 선택 시 첨부파일 목록 로드
+  const loadAttachments = (id) => {
+    if (!id) { setAttachments([]); return; }
+    getComplaintAttachmentsApi(id).then(setAttachments).catch(() => setAttachments([]));
+  };
+  useEffect(() => { loadAttachments(selected?.id); }, [selected?.id]);
 
   const openCitizenPreview = (f) => {
     getAttachmentBlobUrlApi(f.attachmentId)
@@ -69,11 +67,20 @@ function StaffUrgent() {
 
   const selectedData = selected ? urgentList.find((c) => c.id === selected.id) ?? selected : null;
 
-  const handleStatusChange = () => {
-    if (!selectedData || !pendingStatus || pendingStatus === selectedData.status) return;
-    updateComplaintStatus(selectedData.id, pendingStatus);
-    setSelected((s) => ({ ...s, status: pendingStatus }));
-    showToast(`상태가 '${pendingStatus}'(으)로 변경되었습니다.`);
+  const ownerId = selectedData ? String(selectedData.citizenId ?? '') : '';
+  const citizenFiles = attachments.filter((f) => String(f.uploadedBy ?? '') === ownerId);
+  const staffFilesList = attachments.filter((f) => String(f.uploadedBy ?? '') !== ownerId);
+
+  const handleStatusChange = async () => {
+    if (changingStatus || !selectedData || !pendingStatus || pendingStatus === selectedData.status) return;
+    setChangingStatus(true);
+    try {
+      await updateComplaintStatus(selectedData.id, pendingStatus);
+      setSelected((s) => ({ ...s, status: pendingStatus }));
+      showToast(`상태가 '${pendingStatus}'(으)로 변경되었습니다.`);
+    } finally {
+      setChangingStatus(false);
+    }
   };
 
   const handleSaveMemo = () => {
@@ -88,17 +95,12 @@ function StaffUrgent() {
     showToast('답변이 등록되었습니다.');
   };
 
-  const currentFiles = selectedData ? (staffFiles[selectedData.id] ?? []) : [];
-
-  const addFiles = (fileList) => {
-    Array.from(fileList).forEach((f) => {
-      addStaffFile(selectedData.id, f);
-      uploadAttachmentApi(selectedData.id, f).catch(() => {});
-    });
-  };
-
-  const removeFile = (index) => {
-    removeStaffFile(selectedData.id, index);
+  const addFiles = async (fileList) => {
+    const files = Array.from(fileList);
+    if (!selectedData?.id || files.length === 0) return;
+    await Promise.all(files.map((f) => uploadAttachmentApi(selectedData.id, f).catch(() => {})));
+    loadAttachments(selectedData.id);
+    showToast('첨부파일이 업로드되었습니다.');
   };
 
   const getFileIcon = (name) => {
@@ -423,10 +425,10 @@ function StaffUrgent() {
                 <div className="bg-white rounded-xl border border-outline-variant p-4">
                   <p className="text-xs font-bold text-on-surface mb-3 flex items-center gap-1.5">
                     <span className="material-symbols-outlined text-sm text-red-600">attach_file</span>
-                    첨부파일
-                    {currentFiles.length > 0 && (
+                    담당자 첨부파일
+                    {staffFilesList.length > 0 && (
                       <span className="ml-1 bg-red-100 text-red-600 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                        {currentFiles.length}
+                        {staffFilesList.length}
                       </span>
                     )}
                   </p>
@@ -452,33 +454,24 @@ function StaffUrgent() {
                     <p className="text-xs font-bold text-on-surface-variant">클릭하거나 파일을 끌어다 놓으세요</p>
                     <p className="text-[10px] text-on-surface-variant/60">PDF, 이미지, Word, Excel 등</p>
                   </div>
-                  {currentFiles.length > 0 && (
+                  {staffFilesList.length > 0 && (
                     <div className="mt-3 space-y-2">
-                      {currentFiles.map((file, idx) => (
-                        <div key={idx} className="flex items-center gap-3 px-3 py-2.5 bg-surface-container-low/60 rounded-xl">
+                      {staffFilesList.map((file, idx) => (
+                        <div key={file.attachmentId ?? idx} className="flex items-center gap-3 px-3 py-2.5 bg-surface-container-low/60 rounded-xl">
                           <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center shrink-0">
                             <span className="material-symbols-outlined text-red-500 text-base">{getFileIcon(file.name)}</span>
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-bold text-on-surface truncate">{file.name}</p>
-                            <p className="text-[10px] text-on-surface-variant">{formatSize(file.size)}</p>
+                            {file.size != null && <p className="text-[10px] text-on-surface-variant">{formatSize(file.size)}</p>}
                           </div>
-                          <div className="flex items-center gap-1 shrink-0">
-                            <button
-                              onClick={() => openFilePreview(file)}
-                              className="w-6 h-6 rounded-lg hover:bg-red-100 flex items-center justify-center transition-colors"
-                              title="미리보기"
-                            >
-                              <span className="material-symbols-outlined text-red-500 text-base">visibility</span>
-                            </button>
-                            <button
-                              onClick={() => removeFile(idx)}
-                              className="w-6 h-6 rounded-lg hover:bg-error/10 flex items-center justify-center transition-colors"
-                              title="삭제"
-                            >
-                              <span className="material-symbols-outlined text-on-surface-variant hover:text-error text-base">close</span>
-                            </button>
-                          </div>
+                          <button
+                            onClick={() => openCitizenPreview(file)}
+                            className="w-6 h-6 rounded-lg hover:bg-red-100 flex items-center justify-center transition-colors shrink-0"
+                            title="미리보기"
+                          >
+                            <span className="material-symbols-outlined text-red-500 text-base">visibility</span>
+                          </button>
                         </div>
                       ))}
                     </div>
@@ -500,7 +493,7 @@ function StaffUrgent() {
               <div className="shrink-0 px-3 md:px-6 py-2 md:py-4 border-t border-outline-variant/60">
                 <button
                   onClick={handleStatusChange}
-                  disabled={!pendingStatus || pendingStatus === selectedData.status}
+                  disabled={changingStatus || !pendingStatus || pendingStatus === selectedData.status}
                   className="w-full py-3.5 rounded-xl text-sm font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-red-600 text-white hover:brightness-110 flex items-center justify-center gap-2"
                 >
                   <span className="material-symbols-outlined text-base">task_alt</span>

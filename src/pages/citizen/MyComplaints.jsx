@@ -3,7 +3,9 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import CitizenLayout from '../../layouts/CitizenLayout';
 import { useApp, CATEGORY_STYLE } from '../../store/AppContext';
 import EmptyState from '../../components/EmptyState';
+import FilePreviewModal from '../../components/FilePreviewModal';
 import { STATUS_STYLE as statusConfig } from '../../utils/statusStyle';
+import { getComplaintAttachmentsApi, getAttachmentBlobUrlApi } from '../../api/complaints';
 
 const steps = ['접수', '검토', '처리', '완료'];
 
@@ -15,13 +17,15 @@ const statusFilterOptions   = ['전체 상태', '접수', '처리 중', '보완 
 function MyComplaints() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { stats, notifications, staffFiles } = useApp();
+  const { stats, notifications } = useApp();
   const complaints = stats.myComplaints;
 
   const [filterType,   setFilterType]   = useState('전체 유형');
   const [filterStatus, setFilterStatus] = useState('전체 상태');
   const [search,       setSearch]       = useState('');
   const [selected,     setSelected]     = useState(null);
+  const [attachments,  setAttachments]  = useState([]);  // 이 민원의 첨부(민원인+담당자)
+  const [preview,      setPreview]      = useState(null);
 
   // URL ?id= 파라미터로 진입 시 해당 민원 자동 선택
   useEffect(() => {
@@ -34,6 +38,32 @@ function MyComplaints() {
 
   // selected 복원: complaints가 업데이트되면 최신 데이터 반영
   const selectedData = selected ? complaints.find((c) => c.id === selected.id) ?? selected : null;
+
+  // 선택 민원의 첨부파일 로드 (담당자가 올린 파일 포함 — 백엔드 기준으로 유지)
+  useEffect(() => {
+    if (!selectedData?.id) { setAttachments([]); return; }
+    let alive = true;
+    getComplaintAttachmentsApi(selectedData.id)
+      .then((list) => { if (alive) setAttachments(list); })
+      .catch(() => { if (alive) setAttachments([]); });
+    return () => { alive = false; };
+  }, [selectedData?.id]);
+
+  // 첨부 미리보기 / 다운로드 (토큰 인증 blob)
+  const openAttachment = async (att) => {
+    try { setPreview({ name: att.name, type: att.type, url: await getAttachmentBlobUrlApi(att.attachmentId) }); }
+    catch { setPreview({ name: att.name, type: att.type, url: null }); }
+  };
+  const downloadAttachment = async (att) => {
+    try {
+      const url = await getAttachmentBlobUrlApi(att.attachmentId);
+      const a = document.createElement('a');
+      a.href = url; a.download = att.name;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch { /* ignore */ }
+  };
+  const fmtSize = (b) => b == null ? '' : b < 1024 ? `${b}B` : b < 1024*1024 ? `${(b/1024).toFixed(1)}KB` : `${(b/(1024*1024)).toFixed(1)}MB`;
 
   const filtered = complaints.filter((c) => {
     const matchType   = filterType   === '전체 유형' || c.category === filterType;
@@ -55,6 +85,10 @@ function MyComplaints() {
     const c   = selectedData;
     const cfg = statusConfig[c.status] ?? statusConfig['접수'];
     const step = statusToStep[c.status] ?? 1;
+
+    // 담당자가 올린 첨부(업로더 != 민원 소유자)만 — 민원인에게 보낸 자료
+    const ownerId = String(c.citizenId ?? '');
+    const staffAttachments = attachments.filter((a) => String(a.uploadedBy ?? '') !== ownerId);
 
     // 이 민원과 관련된 알림 이력 (담당자 처리 기록)
     const complaintHistory = notifications
@@ -230,42 +264,53 @@ function MyComplaints() {
               )}
             </div>
 
-            {/* 담당자 첨부파일 */}
-            {(staffFiles[c.id] ?? []).length > 0 && (
-              <div className="px-8 py-6 border-b border-outline-variant">
+            {/* 담당자 첨부파일 (담당자가 보낸 자료 — 미리보기/다운로드 가능). 없어도 섹션은 항상 표시 */}
+            <div className="px-8 py-6 border-b border-outline-variant">
                 <div className="flex items-center gap-2 mb-3">
                   <span className="material-symbols-outlined text-primary text-base">attach_file</span>
                   <p className="text-xs font-bold text-on-surface-variant">담당자 첨부 파일</p>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary">{staffFiles[c.id].length}개</span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary">{staffAttachments.length}개</span>
                 </div>
+                {staffAttachments.length === 0 ? (
+                  <div className="bg-surface-container-low rounded-xl px-4 py-5 flex items-center gap-3">
+                    <span className="material-symbols-outlined text-outline text-xl">folder_off</span>
+                    <p className="text-sm text-on-surface-variant">담당자가 첨부한 파일이 없습니다.</p>
+                  </div>
+                ) : (
                 <div className="flex flex-col gap-2">
-                  {staffFiles[c.id].map((file, idx) => {
-                    const ext = file.name.split('.').pop().toLowerCase();
-                    const isImg = file.type?.startsWith('image/') || ['jpg','jpeg','png','gif','webp'].includes(ext);
+                  {staffAttachments.map((file) => {
+                    const isImg = file.type === 'image';
                     return (
-                      <div key={idx} className="flex items-center gap-3 bg-surface-container-low rounded-xl px-3 py-2.5">
+                      <div key={file.attachmentId} className="flex items-center gap-3 bg-surface-container-low rounded-xl px-3 py-2.5">
                         <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
                           <span className="material-symbols-outlined text-primary text-sm">
-                            {isImg ? 'image' : ext === 'pdf' ? 'picture_as_pdf' : 'description'}
+                            {isImg ? 'image' : file.type === 'pdf' ? 'picture_as_pdf' : 'description'}
                           </span>
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-bold text-on-surface truncate">{file.name}</p>
-                          <p className="text-[11px] text-on-surface-variant">
-                            {file.size < 1024 ? `${file.size}B` : file.size < 1024*1024 ? `${(file.size/1024).toFixed(1)}KB` : `${(file.size/(1024*1024)).toFixed(1)}MB`}
-                          </p>
+                          {file.size != null && <p className="text-[11px] text-on-surface-variant">{fmtSize(file.size)}</p>}
                         </div>
-                        {isImg && file.url && (
-                          <a href={file.url} target="_blank" rel="noreferrer" className="shrink-0 text-[11px] font-bold text-primary hover:underline flex items-center gap-1">
-                            <span className="material-symbols-outlined text-sm">open_in_new</span>보기
-                          </a>
-                        )}
+                        <button
+                          onClick={() => openAttachment(file)}
+                          className="shrink-0 text-[11px] font-bold text-primary hover:underline flex items-center gap-1"
+                          title="미리보기"
+                        >
+                          <span className="material-symbols-outlined text-sm">visibility</span>보기
+                        </button>
+                        <button
+                          onClick={() => downloadAttachment(file)}
+                          className="shrink-0 text-[11px] font-bold text-on-surface-variant hover:text-primary flex items-center gap-1"
+                          title="다운로드"
+                        >
+                          <span className="material-symbols-outlined text-sm">download</span>저장
+                        </button>
                       </div>
                     );
                   })}
                 </div>
-              </div>
-            )}
+                )}
+            </div>
 
             {/* 담당 부서 */}
             <div className="px-8 py-6 border-b border-outline-variant">
@@ -301,6 +346,7 @@ function MyComplaints() {
 
           </div>
         </div>
+        {preview && <FilePreviewModal file={preview} onClose={() => setPreview(null)} />}
       </CitizenLayout>
     );
   }

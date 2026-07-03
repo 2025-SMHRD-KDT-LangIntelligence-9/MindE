@@ -63,7 +63,16 @@ function FilePreviewModal({ file, onClose }) {
             </div>
           )}
         </div>
-        <div className="px-5 py-3 border-t border-outline-variant flex justify-end">
+        <div className="px-5 py-3 border-t border-outline-variant flex justify-end gap-2">
+          {file.url && (
+            <a
+              href={file.url}
+              download={file.name}
+              className="px-5 py-2 text-sm font-bold text-primary hover:bg-primary/5 rounded-lg transition-colors flex items-center gap-1.5"
+            >
+              <span className="material-symbols-outlined text-base">download</span>다운로드
+            </a>
+          )}
           <button onClick={onClose} className="px-5 py-2 text-sm font-bold text-on-surface-variant hover:text-on-surface transition-colors">
             닫기
           </button>

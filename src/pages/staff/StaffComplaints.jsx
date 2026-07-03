@@ -5,7 +5,7 @@ import { useApp, CATEGORY_STYLE, URGENCY_STYLE } from '../../store/AppContext';
 import EmptyState from '../../components/EmptyState';
 import { STATUS_STYLE as statusStyle } from '../../utils/statusStyle';
 import FilePreviewModal from '../../components/FilePreviewModal';
-import { uploadAttachmentApi, getCitizenAttachmentsApi, getAttachmentBlobUrlApi } from '../../api/complaints';
+import { uploadAttachmentApi, getComplaintAttachmentsApi, getAttachmentBlobUrlApi, getChatTranscriptApi } from '../../api/complaints';
 
 const STATUS_OPTIONS = ['접수', '처리 중', '보완 요청', '반려', '완료'];
 
@@ -26,7 +26,7 @@ function UrgencyBadge({ urgency }) {
 }
 
 function StaffComplaints() {
-  const { myDeptComplaints, currentUser, updateComplaintStatus, saveMemo, saveReply, staffFiles, addStaffFile, removeStaffFile } = useApp();
+  const { myDeptComplaints, currentUser, updateComplaintStatus, saveMemo, saveReply } = useApp();
   const complaints = myDeptComplaints;
   const [searchParams] = useSearchParams();
 
@@ -40,7 +40,10 @@ function StaffComplaints() {
   const [dragOver, setDragOver]           = useState(false);
   const [preview, setPreview]             = useState(null);
   const [pendingStatus, setPendingStatus] = useState(null);
-  const [citizenFiles, setCitizenFiles]   = useState([]);
+  const [attachments, setAttachments]     = useState([]);   // 민원 첨부 전체(민원인+담당자)
+  const [changingStatus, setChangingStatus] = useState(false);
+  const [transcript, setTranscript]       = useState(null);   // 원본 챗봇 대화 모달
+  const [transcriptLoading, setTranscriptLoading] = useState(false);
   const fileInputRef                      = useRef(null);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 2500); };
@@ -56,15 +59,12 @@ function StaffComplaints() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, complaints]);
 
-  // 민원 선택 시 민원인 첨부파일 목록 로드
-  useEffect(() => {
-    if (!selected?.id) { setCitizenFiles([]); return; }
-    let alive = true;
-    getCitizenAttachmentsApi(selected.id)
-      .then((list) => { if (alive) setCitizenFiles(list); })
-      .catch(() => { if (alive) setCitizenFiles([]); });
-    return () => { alive = false; };
-  }, [selected?.id]);
+  // 민원 선택 시 첨부파일 목록 로드
+  const loadAttachments = (id) => {
+    if (!id) { setAttachments([]); return; }
+    getComplaintAttachmentsApi(id).then(setAttachments).catch(() => setAttachments([]));
+  };
+  useEffect(() => { loadAttachments(selected?.id); }, [selected?.id]);
 
   const openCitizenPreview = (f) => {
     getAttachmentBlobUrlApi(f.attachmentId)
@@ -74,11 +74,36 @@ function StaffComplaints() {
 
   const selectedData = selected ? complaints.find((c) => c.id === selected.id) ?? selected : null;
 
-  const handleStatusChange = () => {
-    if (!selectedData || !pendingStatus || pendingStatus === selectedData.status) return;
-    updateComplaintStatus(selectedData.id, pendingStatus);
-    setSelected((s) => ({ ...s, status: pendingStatus }));
-    showToast(`상태가 '${pendingStatus}'(으)로 변경되었습니다.`);
+  // uploadedBy 로 민원인/담당자 첨부 분리 (소유자 == 민원인)
+  const ownerId = selectedData ? String(selectedData.citizenId ?? '') : '';
+  const citizenFiles = attachments.filter((f) => String(f.uploadedBy ?? '') === ownerId);
+  const staffFilesList = attachments.filter((f) => String(f.uploadedBy ?? '') !== ownerId);
+
+  const handleStatusChange = async () => {
+    if (changingStatus || !selectedData || !pendingStatus || pendingStatus === selectedData.status) return;
+    setChangingStatus(true);
+    try {
+      await updateComplaintStatus(selectedData.id, pendingStatus);
+      setSelected((s) => ({ ...s, status: pendingStatus }));
+      showToast(`상태가 '${pendingStatus}'(으)로 변경되었습니다.`);
+    } finally {
+      setChangingStatus(false);
+    }
+  };
+
+  const openTranscript = async () => {
+    if (!selectedData?.id || transcriptLoading) return;
+    setTranscriptLoading(true);
+    try {
+      setTranscript(await getChatTranscriptApi(selectedData.id));
+    } catch (e) {
+      const msg = e?.response?.status === 404
+        ? '이 민원은 챗봇 대화 없이 접수되었거나 대화가 삭제되었습니다.'
+        : '원본 대화를 불러올 수 없습니다.';
+      setTranscript({ error: msg });
+    } finally {
+      setTranscriptLoading(false);
+    }
   };
 
   const handleSaveMemo = () => {
@@ -93,17 +118,12 @@ function StaffComplaints() {
     showToast('답변이 등록되었습니다.');
   };
 
-  const currentFiles = selectedData ? (staffFiles[selectedData.id] ?? []) : [];
-
-  const addFiles = (fileList) => {
-    Array.from(fileList).forEach((f) => {
-      addStaffFile(selectedData.id, f);
-      uploadAttachmentApi(selectedData.id, f).catch(() => {});
-    });
-  };
-
-  const removeFile = (index) => {
-    removeStaffFile(selectedData.id, index);
+  const addFiles = async (fileList) => {
+    const files = Array.from(fileList);
+    if (!selectedData?.id || files.length === 0) return;
+    await Promise.all(files.map((f) => uploadAttachmentApi(selectedData.id, f).catch(() => {})));
+    loadAttachments(selectedData.id);   // 업로드 후 백엔드에서 다시 로드 → 새로고침해도 유지
+    showToast('첨부파일이 업로드되었습니다.');
   };
 
   const getFileIcon = (name) => {
@@ -144,6 +164,40 @@ function StaffComplaints() {
   return (
     <StaffLayout pageTitle="민원 처리" activeMenu="complaints">
       <FilePreviewModal file={preview} onClose={closePreview} />
+
+      {/* 원본 챗봇 대화 모달 */}
+      {transcript && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setTranscript(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-outline-variant flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="material-symbols-outlined text-primary">forum</span>
+                <h3 className="font-bold text-on-surface text-base truncate">원본 상담 대화{transcript.title ? ` · ${transcript.title}` : ''}</h3>
+              </div>
+              <button onClick={() => setTranscript(null)} className="shrink-0 text-on-surface-variant hover:text-on-surface">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5 space-y-3 bg-surface-container-low/30">
+              {transcript.error ? (
+                <p className="text-sm text-on-surface-variant text-center py-10">{transcript.error}</p>
+              ) : (transcript.messages ?? []).length === 0 ? (
+                <p className="text-sm text-on-surface-variant text-center py-10">대화 내용이 없습니다.</p>
+              ) : (
+                (transcript.messages ?? []).map((m, i) => (
+                  <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-[82%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words ${
+                      m.role === 'user' ? 'bg-primary text-white' : 'bg-white border border-outline-variant text-on-surface'
+                    }`}>
+                      {m.content}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {toast && (
         <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-[#1e3a5f] text-white text-sm font-bold px-5 py-3 rounded-xl shadow-lg flex items-center gap-2">
@@ -259,6 +313,18 @@ function StaffComplaints() {
                   </p>
                   <p className="text-sm text-on-surface leading-relaxed">{selectedData.content}</p>
                 </div>
+
+                {/* 원본 챗봇 대화 (chat_session_id 있을 때만) */}
+                {selectedData.chatSessionId != null && (
+                  <button
+                    onClick={openTranscript}
+                    disabled={transcriptLoading}
+                    className="flex items-center gap-2 text-xs font-bold text-primary border border-primary/40 px-4 py-2 rounded-xl hover:bg-primary/5 transition-colors disabled:opacity-60"
+                  >
+                    <span className="material-symbols-outlined text-base">forum</span>
+                    {transcriptLoading ? '불러오는 중…' : '원본 대화 보기'}
+                  </button>
+                )}
 
                 {/* 민원인 첨부파일 */}
                 {(() => {
@@ -415,10 +481,10 @@ function StaffComplaints() {
                 <div className="bg-white rounded-xl border border-outline-variant p-4">
                   <p className="text-xs font-bold text-on-surface mb-3 flex items-center gap-1.5">
                     <span className="material-symbols-outlined text-sm text-[#1e3a5f]">attach_file</span>
-                    첨부파일
-                    {currentFiles.length > 0 && (
+                    담당자 첨부파일
+                    {staffFilesList.length > 0 && (
                       <span className="ml-1 bg-primary/10 text-primary text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                        {currentFiles.length}
+                        {staffFilesList.length}
                       </span>
                     )}
                   </p>
@@ -448,33 +514,24 @@ function StaffComplaints() {
                   </div>
 
                   {/* 파일 목록 */}
-                  {currentFiles.length > 0 && (
+                  {staffFilesList.length > 0 && (
                     <div className="mt-3 space-y-2">
-                      {currentFiles.map((file, idx) => (
-                        <div key={idx} className="flex items-center gap-3 px-3 py-2.5 bg-surface-container-low/60 rounded-xl">
+                      {staffFilesList.map((file, idx) => (
+                        <div key={file.attachmentId ?? idx} className="flex items-center gap-3 px-3 py-2.5 bg-surface-container-low/60 rounded-xl">
                           <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
                             <span className="material-symbols-outlined text-primary text-base">{getFileIcon(file.name)}</span>
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-bold text-on-surface truncate">{file.name}</p>
-                            <p className="text-[10px] text-on-surface-variant">{formatSize(file.size)}</p>
+                            {file.size != null && <p className="text-[10px] text-on-surface-variant">{formatSize(file.size)}</p>}
                           </div>
-                          <div className="flex items-center gap-1 shrink-0">
-                            <button
-                              onClick={() => openFilePreview(file)}
-                              className="w-6 h-6 rounded-lg hover:bg-primary/10 flex items-center justify-center transition-colors"
-                              title="미리보기"
-                            >
-                              <span className="material-symbols-outlined text-primary text-base">visibility</span>
-                            </button>
-                            <button
-                              onClick={() => removeFile(idx)}
-                              className="w-6 h-6 rounded-lg hover:bg-error/10 flex items-center justify-center transition-colors"
-                              title="삭제"
-                            >
-                              <span className="material-symbols-outlined text-on-surface-variant hover:text-error text-base">close</span>
-                            </button>
-                          </div>
+                          <button
+                            onClick={() => openCitizenPreview(file)}
+                            className="w-6 h-6 rounded-lg hover:bg-primary/10 flex items-center justify-center transition-colors shrink-0"
+                            title="미리보기"
+                          >
+                            <span className="material-symbols-outlined text-primary text-base">visibility</span>
+                          </button>
                         </div>
                       ))}
                     </div>
@@ -496,7 +553,7 @@ function StaffComplaints() {
               <div className="shrink-0 px-3 md:px-6 py-2 md:py-4 border-t border-outline-variant/60">
                 <button
                   onClick={handleStatusChange}
-                  disabled={!pendingStatus || pendingStatus === selectedData.status}
+                  disabled={changingStatus || !pendingStatus || pendingStatus === selectedData.status}
                   className="w-full py-3.5 rounded-xl text-sm font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-[#1e3a5f] text-white hover:brightness-110 flex items-center justify-center gap-2"
                 >
                   <span className="material-symbols-outlined text-base">task_alt</span>

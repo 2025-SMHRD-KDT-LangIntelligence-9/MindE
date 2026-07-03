@@ -35,11 +35,12 @@ export const getDepartmentsApi = () =>
 export const getPublicDepartmentsApi = () =>
   client.get('/departments').then((r) => r.data).catch(() => null);
 
-export const createDepartmentApi = (name) =>
-  client.post('/admin/departments', { name }).then((r) => r.data);
+// phone: 백엔드가 DepartmentCreate/Update에 phone을 받으면 저장됨(미지원 시 무시)
+export const createDepartmentApi = (name, phone) =>
+  client.post('/admin/departments', { name, ...(phone != null ? { phone } : {}) }).then((r) => r.data);
 
-export const updateDepartmentApi = (id, name) =>
-  client.patch(`/admin/departments/${id}`, { name }).then((r) => r.data);
+export const updateDepartmentApi = (id, name, phone) =>
+  client.patch(`/admin/departments/${id}`, { name, ...(phone != null ? { phone } : {}) }).then((r) => r.data);
 
 export const deleteDepartmentApi = (id) =>
   client.delete(`/admin/departments/${id}`);
@@ -47,11 +48,12 @@ export const deleteDepartmentApi = (id) =>
 export const getCategoriesApi = () =>
   client.get('/admin/categories').then((r) => r.data);
 
-export const createCategoryApi = (name) =>
-  client.post('/admin/categories', { name }).then((r) => r.data);
+// departmentId: 카테고리 담당 부서 (nullable). 백엔드가 department_id 로 저장.
+export const createCategoryApi = (name, departmentId) =>
+  client.post('/admin/categories', { name, department_id: departmentId ?? null }).then((r) => r.data);
 
-export const updateCategoryApi = (id, name) =>
-  client.patch(`/admin/categories/${id}`, { name }).then((r) => r.data);
+export const updateCategoryApi = (id, name, departmentId) =>
+  client.patch(`/admin/categories/${id}`, { name, department_id: departmentId ?? null }).then((r) => r.data);
 
 export const deleteCategoryApi = (id) =>
   client.delete(`/admin/categories/${id}`);

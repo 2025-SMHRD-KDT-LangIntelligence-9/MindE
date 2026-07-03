@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AdminLayout from '../../layouts/AdminLayout';
+import Pagination from '../../components/Pagination';
 import { useApp } from '../../store/AppContext';
+
+const PAGE_SIZE = 10;
 import { getDepartmentsApi, getCategoriesApi, createCategoryApi, updateCategoryApi, deleteCategoryApi, createDepartmentApi, updateDepartmentApi, deleteDepartmentApi } from '../../api/admin';
 
 const roleStyle = {
@@ -14,7 +17,7 @@ const ICON_OPTIONS = ['corporate_fare','directions_car','medical_services','park
 function AdminSettings() {
   const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState('category');
-  const { users, approveUser, rejectUser, deleteUser, updateUserDept } = useApp();
+  const { users, complaints, approveUser, rejectUser, deleteUser, updateUserDept } = useApp();
 
   useEffect(() => {
     const tab = searchParams.get('tab');
@@ -25,6 +28,9 @@ function AdminSettings() {
   const [toast, setToast]               = useState('');
   const [selectedUser, setSelectedUser] = useState(null);
   const [roleFilter, setRoleFilter]     = useState('citizen');
+  const [deptFilter, setDeptFilter]     = useState('');  // 사용자 관리 부서 필터
+  const [deptPage, setDeptPage]         = useState(1);   // 조직 및 부서 관리 페이지
+  const [userPage, setUserPage]         = useState(1);   // 사용자 관리 페이지
 
   // 카테고리 state
   const [categories, setCategories] = useState([]);
@@ -49,6 +55,7 @@ function AdminSettings() {
       .then((data) => setDepartments(data.map((d) => ({
         department_id: d.department_id,
         name: d.name,
+        phone: d.contact_phone ?? d.phone ?? '',   // 대표 번호 (라이브: contact_phone)
         type: '',
         members: 0,
         active: 0,
@@ -66,7 +73,7 @@ function AdminSettings() {
       }))))
       .catch(() => {});
   }, []);
-  const [deptModal, setDeptModal] = useState({ open: false, mode: 'add', idx: null, department_id: null, name: '', type: '', status: '정상' });
+  const [deptModal, setDeptModal] = useState({ open: false, mode: 'add', idx: null, department_id: null, name: '', phone: '', type: '', status: '정상' });
 
   // 삭제 확인 모달
   const [deleteConfirm, setDeleteConfirm] = useState({ open: false, type: '', idx: null, id: null, label: '' });
@@ -85,10 +92,28 @@ function AdminSettings() {
   const active  = users.filter((u) => {
     if (u.status !== 'active') return false;
     if (u.role !== roleFilter) return false;
+    if (roleFilter === 'staff' && deptFilter && u.dept !== deptFilter) return false;
     return u.name.includes(search) || (u.email || '').includes(search);
   });
   const citizenCount = users.filter((u) => u.role === 'citizen' && u.status === 'active').length;
   const staffCount   = users.filter((u) => u.role === 'staff'   && u.status === 'active').length;
+
+  // 10개씩 페이지네이션 (사용자 목록은 검색/역할 변경 시 1페이지로)
+  useEffect(() => { setUserPage(1); }, [search, roleFilter, deptFilter]);
+  const userTotalPages = Math.max(1, Math.ceil(active.length / PAGE_SIZE));
+  const curUserPage = Math.min(userPage, userTotalPages);
+  const pagedActive = active.slice((curUserPage - 1) * PAGE_SIZE, curUserPage * PAGE_SIZE);
+
+  const deptTotalPages = Math.max(1, Math.ceil(departments.length / PAGE_SIZE));
+  const curDeptPage = Math.min(deptPage, deptTotalPages);
+  const pagedDepartments = departments.slice((curDeptPage - 1) * PAGE_SIZE, curDeptPage * PAGE_SIZE);
+
+  // 부서별 실데이터 집계 (부서명으로 매칭) — 담당자 수 / 처리 중 / 처리 완료
+  const deptStaffCount = (name) => users.filter((u) => u.role === 'staff' && u.status === 'active' && u.dept === name).length;
+  const deptReceivedCount = (name) => complaints.filter((c) => c.dept === name && c.status === '접수').length;
+  const deptDoneCount = (name) => complaints.filter((c) => c.dept === name && c.status === '완료').length;
+  const totalStaffAssigned = departments.reduce((s, d) => s + deptStaffCount(d.name), 0);
+  const totalReceived = departments.reduce((s, d) => s + deptReceivedCount(d.name), 0);
 
   const tabs = [
     { key: 'category', label: '민원 카테고리 설정' },
@@ -102,15 +127,16 @@ function AdminSettings() {
   const saveCat = async () => {
     if (!catModal.name.trim()) return;
     const dept = departments.find((d) => String(d.department_id) === String(catModal.department_id));
+    const deptId = catModal.department_id ? Number(catModal.department_id) : null;  // 백엔드에 department_id 저장
     try {
       if (catModal.mode === 'add') {
-        const res = await createCategoryApi(catModal.name.trim());
-        const entry = { category_id: res.category_id, name: res.name, desc: catModal.desc.trim(), icon: catModal.icon, department_id: catModal.department_id, department_name: dept?.name ?? '' };
+        const res = await createCategoryApi(catModal.name.trim(), deptId);
+        const entry = { category_id: res.category_id, name: res.name, desc: catModal.desc.trim(), icon: catModal.icon, department_id: res.department_id ?? catModal.department_id, department_name: res.department_name ?? dept?.name ?? '' };
         setCategories((prev) => [...prev, entry]);
-        if (catModal.department_id) updateCatDeptMap(res.category_id, catModal.department_id);
+        updateCatDeptMap(res.category_id, catModal.department_id);
       } else {
-        await updateCategoryApi(catModal.category_id, catModal.name.trim());
-        const entry = { category_id: catModal.category_id, name: catModal.name.trim(), desc: catModal.desc.trim(), icon: catModal.icon, department_id: catModal.department_id, department_name: dept?.name ?? '' };
+        const res = await updateCategoryApi(catModal.category_id, catModal.name.trim(), deptId);
+        const entry = { category_id: catModal.category_id, name: catModal.name.trim(), desc: catModal.desc.trim(), icon: catModal.icon, department_id: res?.department_id ?? catModal.department_id, department_name: res?.department_name ?? dept?.name ?? '' };
         setCategories((prev) => prev.map((c, i) => i === catModal.idx ? entry : c));
         updateCatDeptMap(catModal.category_id, catModal.department_id);
       }
@@ -122,18 +148,19 @@ function AdminSettings() {
   };
 
   /* ── 부서 핸들러 ── */
-  const openDeptAdd  = () => setDeptModal({ open: true, mode: 'add', idx: null, department_id: null, name: '', type: '', status: '정상' });
-  const openDeptEdit = (d, i) => setDeptModal({ open: true, mode: 'edit', idx: i, department_id: d.department_id, name: d.name, type: d.type || '', status: d.status || '정상' });
+  const openDeptAdd  = () => setDeptModal({ open: true, mode: 'add', idx: null, department_id: null, name: '', phone: '', type: '', status: '정상' });
+  const openDeptEdit = (d, i) => setDeptModal({ open: true, mode: 'edit', idx: i, department_id: d.department_id, name: d.name, phone: d.phone || '', type: d.type || '', status: d.status || '정상' });
   const saveDept = async () => {
     if (!deptModal.name.trim()) return;
     try {
+      const phone = deptModal.phone.trim();
       if (deptModal.mode === 'add') {
-        const res = await createDepartmentApi(deptModal.name.trim());
-        const entry = { department_id: res.department_id, name: res.name, type: deptModal.type.trim(), members: 0, active: 0, status: deptModal.status };
+        const res = await createDepartmentApi(deptModal.name.trim(), phone || null);
+        const entry = { department_id: res.department_id, name: res.name, phone: res.phone ?? phone, type: deptModal.type.trim(), members: 0, active: 0, status: deptModal.status };
         setDepartments((prev) => [...prev, entry]);
       } else {
-        await updateDepartmentApi(deptModal.department_id, deptModal.name.trim());
-        setDepartments((prev) => prev.map((d, i) => i === deptModal.idx ? { ...d, name: deptModal.name.trim(), type: deptModal.type.trim(), status: deptModal.status } : d));
+        await updateDepartmentApi(deptModal.department_id, deptModal.name.trim(), phone || null);
+        setDepartments((prev) => prev.map((d, i) => i === deptModal.idx ? { ...d, name: deptModal.name.trim(), phone, type: deptModal.type.trim(), status: deptModal.status } : d));
       }
       showToast(deptModal.mode === 'add' ? '부서가 추가되었습니다.' : '부서 정보가 수정되었습니다.');
       setDeptModal((m) => ({ ...m, open: false }));
@@ -232,6 +259,12 @@ function AdminSettings() {
                 <label className="text-xs font-bold text-on-surface-variant mb-1 block">부서명 *</label>
                 <input value={deptModal.name} onChange={(e) => setDeptModal((m) => ({ ...m, name: e.target.value }))}
                   placeholder="예: 도로교통과"
+                  className="w-full h-10 px-3 border border-outline-variant rounded-xl text-sm outline-none focus:border-primary" />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-on-surface-variant mb-1 block">대표 번호</label>
+                <input value={deptModal.phone} onChange={(e) => setDeptModal((m) => ({ ...m, phone: e.target.value }))}
+                  placeholder="예: 061-286-7450"
                   className="w-full h-10 px-3 border border-outline-variant rounded-xl text-sm outline-none focus:border-primary" />
               </div>
               <div>
@@ -349,45 +382,47 @@ function AdminSettings() {
                 </button>
               </div>
             </div>
-            <div className="space-y-2 md:space-y-4">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               {categories.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-6 md:py-12 text-on-surface-variant/50 gap-2">
+                <div className="col-span-full flex flex-col items-center justify-center py-6 md:py-12 text-on-surface-variant/50 gap-2">
                   <span className="material-symbols-outlined text-4xl">category</span>
                   <p className="text-sm">등록된 카테고리가 없습니다. 추가해 주세요.</p>
                 </div>
               )}
-              {categories.map((c, i) => (
-                <div key={i} className="flex items-center justify-between p-3 md:p-5 border border-outline-variant rounded-2xl">
-                  <div className="flex items-center gap-3 md:gap-5">
-                    <div className="w-10 h-10 md:w-14 md:h-14 rounded-2xl bg-primary/5 flex items-center justify-center text-primary">
+              {categories.map((c, i) => {
+                const deptId = catDeptMap[String(c.category_id)] || String(c.department_id || '');
+                const dept = departments.find((d) => String(d.department_id) === deptId);
+                const deptName = dept?.name || c.department_name;
+                return (
+                <div key={i} className="border border-outline-variant rounded-2xl p-4 flex flex-col gap-3 hover:border-primary/40 transition-colors">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="w-11 h-11 rounded-xl bg-primary/5 flex items-center justify-center text-primary shrink-0">
                       <span className="material-symbols-outlined text-2xl">{c.icon}</span>
                     </div>
-                    <div>
-                      <h4 className="font-bold text-on-surface mb-1">{c.name}</h4>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {c.desc && <p className="text-sm text-on-surface-variant">{c.desc}</p>}
-                        {(() => {
-                          const deptId = catDeptMap[String(c.category_id)] || String(c.department_id || '');
-                          const dept = departments.find((d) => String(d.department_id) === deptId);
-                          const name = dept?.name || c.department_name;
-                          return name ? <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-bold">{name}</span> : null;
-                        })()}
-                      </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button onClick={() => openCatEdit(c, i)}
+                        className="p-1.5 hover:bg-surface-container-low rounded-lg text-on-surface-variant transition-colors">
+                        <span className="material-symbols-outlined text-lg">edit</span>
+                      </button>
+                      <button onClick={() => setDeleteConfirm({ open: true, type: 'category', idx: i, id: c.category_id, label: c.name })}
+                        className="p-1.5 hover:bg-error-container rounded-lg text-on-surface-variant hover:text-error transition-colors">
+                        <span className="material-symbols-outlined text-lg">delete</span>
+                      </button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className="bg-emerald-50 text-emerald-600 px-3 py-1 rounded-full text-xs font-bold">활성</span>
-                    <button onClick={() => openCatEdit(c, i)}
-                      className="p-2 hover:bg-surface-container-low rounded-lg text-on-surface-variant transition-colors">
-                      <span className="material-symbols-outlined text-lg">edit</span>
-                    </button>
-                    <button onClick={() => setDeleteConfirm({ open: true, type: 'category', idx: i, id: c.category_id, label: c.name })}
-                      className="p-2 hover:bg-error-container rounded-lg text-on-surface-variant hover:text-error transition-colors">
-                      <span className="material-symbols-outlined text-lg">delete</span>
-                    </button>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <h4 className="font-bold text-on-surface truncate">{c.name}</h4>
+                      <span className="bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0">활성</span>
+                    </div>
+                    {c.desc && <p className="text-sm text-on-surface-variant line-clamp-2">{c.desc}</p>}
                   </div>
+                  {deptName && (
+                    <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-bold self-start">{deptName}</span>
+                  )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           </section>
 
@@ -419,9 +454,9 @@ function AdminSettings() {
         <div className="space-y-3 md:space-y-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
             {[
-              { label: '총 부서 수',   value: `${departments.length}개`,                              icon: 'corporate_fare' },
-              { label: '전체 담당자',  value: `${departments.reduce((s, d) => s + d.members, 0)}명`, icon: 'group' },
-              { label: '처리 중 민원', value: `${departments.reduce((s, d) => s + d.active, 0)}건`,  icon: 'pending_actions' },
+              { label: '총 부서 수',   value: `${departments.length}개`,          icon: 'corporate_fare' },
+              { label: '전체 담당자',  value: `${totalStaffAssigned}명`,          icon: 'group' },
+              { label: '접수 민원',    value: `${totalReceived}건`,               icon: 'inbox' },
               { label: '정상 운영',    value: `${departments.filter((d) => d.status === '정상').length}개`, icon: 'check_circle' },
             ].map((c) => (
               <div key={c.label} className="bg-white p-3 md:p-5 rounded-xl border border-outline-variant flex items-center gap-2 md:gap-4">
@@ -448,31 +483,26 @@ function AdminSettings() {
             <table className="w-full text-left">
               <thead className="border-b border-outline-variant">
                 <tr>
-                  {['부서명','담당 민원 유형','담당자 수','처리 중','상태','관리'].map((h) => (
+                  {['부서명','대표 번호','담당자 수','접수','처리 완료','상태','관리'].map((h) => (
                     <th key={h} className="px-6 py-3 text-xs font-bold text-on-surface-variant">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-outline-variant/50">
                 {departments.length === 0 && (
-                  <tr><td colSpan={6} className="text-center py-10 text-on-surface-variant text-sm">등록된 부서가 없습니다.</td></tr>
+                  <tr><td colSpan={7} className="text-center py-10 text-on-surface-variant text-sm">등록된 부서가 없습니다.</td></tr>
                 )}
-                {departments.map((d, i) => (
+                {pagedDepartments.map((d, localI) => {
+                  const i = (curDeptPage - 1) * PAGE_SIZE + localI;  // 전역 인덱스(수정/삭제 핸들러용)
+                  return (
                   <tr key={i} className="hover:bg-surface-container-low/50 transition-colors">
                     <td className="px-3 md:px-6 py-2 md:py-4 font-bold text-sm text-on-surface">{d.name}</td>
-                    <td className="px-3 md:px-6 py-2 md:py-4 text-sm text-on-surface-variant">
-                      {(() => {
-                        const assigned = categories.filter((c) => {
-                          const deptId = catDeptMap[String(c.category_id)] || String(c.department_id || '');
-                          return deptId !== '' && deptId === String(d.department_id);
-                        }).map((c) => c.name);
-                        return assigned.length > 0
-                          ? <div className="flex flex-wrap gap-1">{assigned.map((n) => <span key={n} className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-bold">{n}</span>)}</div>
-                          : <span className="text-on-surface-variant/40">-</span>;
-                      })()}
+                    <td className="px-3 md:px-6 py-2 md:py-4 text-sm text-on-surface-variant tabular-nums">
+                      {d.phone ? <a href={`tel:${d.phone}`} className="hover:text-primary">{d.phone}</a> : <span className="text-on-surface-variant/40">-</span>}
                     </td>
-                    <td className="px-3 md:px-6 py-2 md:py-4 text-sm text-on-surface-variant">{d.members}명</td>
-                    <td className="px-3 md:px-6 py-2 md:py-4 text-sm font-bold text-primary">{d.active}건</td>
+                    <td className="px-3 md:px-6 py-2 md:py-4 text-sm text-on-surface-variant">{deptStaffCount(d.name)}명</td>
+                    <td className="px-3 md:px-6 py-2 md:py-4 text-sm font-bold text-primary">{deptReceivedCount(d.name)}건</td>
+                    <td className="px-3 md:px-6 py-2 md:py-4 text-sm font-bold text-emerald-600">{deptDoneCount(d.name)}건</td>
                     <td className="px-3 md:px-6 py-2 md:py-4">
                       <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold ${
                         d.status === '정상' ? 'bg-emerald-50 text-emerald-600' : 'bg-error-container text-error'
@@ -491,10 +521,12 @@ function AdminSettings() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
             </div>
+            <Pagination page={curDeptPage} total={departments.length} pageSize={PAGE_SIZE} onChange={setDeptPage} unit="개" />
           </div>
         </div>
       )}
@@ -540,12 +572,21 @@ function AdminSettings() {
 
             {/* 전체 회원 */}
             <div>
-              <div className="flex items-center justify-between mb-1">
-                <h2 className="text-sm font-bold text-on-surface">전체 회원</h2>
-                <div className="relative w-52">
-                  <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-base">search</span>
-                  <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="이름 또는 이메일"
-                    className="w-full h-9 pl-9 pr-3 border border-outline-variant rounded-xl text-xs outline-none focus:border-primary" />
+              <div className="flex items-center justify-between mb-1 gap-2">
+                <h2 className="text-sm font-bold text-on-surface shrink-0">전체 회원</h2>
+                <div className="flex items-center gap-2 min-w-0">
+                  {roleFilter === 'staff' && (
+                    <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)}
+                      className="h-9 px-2 border border-outline-variant rounded-xl text-xs outline-none focus:border-primary bg-white max-w-[150px] truncate">
+                      <option value="">전체 부서</option>
+                      {departments.map((d) => <option key={d.department_id} value={d.name}>{d.name}</option>)}
+                    </select>
+                  )}
+                  <div className="relative w-52">
+                    <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-base">search</span>
+                    <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="이름 또는 이메일"
+                      className="w-full h-9 pl-9 pr-3 border border-outline-variant rounded-xl text-xs outline-none focus:border-primary" />
+                  </div>
                 </div>
               </div>
 
@@ -555,7 +596,7 @@ function AdminSettings() {
                   { key: 'citizen', label: '일반',   count: citizenCount },
                   { key: 'staff',   label: '담당자', count: staffCount },
                 ].map((f) => (
-                  <button key={f.key} onClick={() => { setRoleFilter(f.key); setSelectedUser(null); }}
+                  <button key={f.key} onClick={() => { setRoleFilter(f.key); setSelectedUser(null); setDeptFilter(''); }}
                     className={`flex items-center gap-1.5 pb-2.5 px-1 text-sm font-bold whitespace-nowrap border-b-2 -mb-px transition-colors ${
                       roleFilter === f.key ? 'text-primary border-primary' : 'text-on-surface-variant border-transparent hover:text-on-surface'
                     }`}>
@@ -583,7 +624,7 @@ function AdminSettings() {
                   <tbody className="divide-y divide-outline-variant/40">
                     {active.length === 0 ? (
                       <tr><td colSpan={6} className="text-center py-10 text-on-surface-variant text-sm">사용자가 없습니다.</td></tr>
-                    ) : active.map((user) => {
+                    ) : pagedActive.map((user) => {
                       const r = roleStyle[user.role] ?? roleStyle.citizen;
                       const isSelected = selectedUser?.id === user.id;
                       if (roleFilter === 'staff') {
@@ -631,6 +672,7 @@ function AdminSettings() {
                   </tbody>
                 </table>
                 </div>
+                <Pagination page={curUserPage} total={active.length} pageSize={PAGE_SIZE} onChange={setUserPage} unit="명" />
               </div>
             </div>
           </div>

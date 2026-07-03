@@ -6,7 +6,7 @@ import NotificationDropdown from '../components/NotificationDropdown';
 
 function CitizenLayout({ pageTitle, activeMenu, children }) {
   const navigate = useNavigate();
-  const { notifications, markAllRead, currentUser, logout } = useApp();
+  const { notifications, markAllRead, markOneRead, currentUser, logout } = useApp();
   const handleLogout = () => { logout(); navigate('/login'); };
 
   // 로그인(토큰) 없이 접근하면 로그인 페이지로 (뒤로/앞으로가기 포함)
@@ -55,7 +55,7 @@ function CitizenLayout({ pageTitle, activeMenu, children }) {
         </nav>
 
         <div className="flex items-center gap-1 md:gap-2 shrink-0 ml-auto md:ml-0 md:pl-4">
-          <NotificationDropdown items={notifItems} onMarkAllRead={markAllRead} />
+          <NotificationDropdown items={notifItems} onMarkAllRead={markAllRead} onReadItem={(n) => markOneRead(n.id)} />
           <div className="flex items-center gap-1 md:gap-2 pl-2 md:pl-3 border-l border-slate-300">
             <span className="text-sm font-bold text-slate-700 hidden sm:inline">{currentUser.name || '시민'} 님</span>
             <button
