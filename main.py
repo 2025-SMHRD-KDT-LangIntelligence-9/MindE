@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from contextlib import asynccontextmanager
 
 from database import get_db
-from routers import users, complaints, attachments, admin, notifications, chat
+from routers import users, complaints, attachments, admin, notifications, chat, public
 import chatbot_service as svc
 
 
@@ -49,6 +49,7 @@ app.include_router(attachments.attachment_router)
 app.include_router(admin.router)
 app.include_router(notifications.router)
 app.include_router(chat.router)
+app.include_router(public.router)
 
 
 @app.get("/")

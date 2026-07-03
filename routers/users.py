@@ -45,12 +45,22 @@ async def signup(payload: schemas.UserCreate, db: AsyncSession = Depends(get_db)
     if exists:
         raise HTTPException(status_code=409, detail="이미 등록된 이메일입니다.")
     user_type = "pending_staff" if payload.apply_as_staff else "citizen"
+
+    # 담당자 신청 시에만 부서 지정 (apply_as_staff=False 이면 department_id 무시)
+    dept_id = None
+    if payload.apply_as_staff and payload.department_id is not None:
+        dept = await db.get(models.Department, payload.department_id)
+        if not dept:
+            raise HTTPException(status_code=404, detail="지정한 부서를 찾을 수 없습니다.")
+        dept_id = payload.department_id
+
     user = models.User(
         name=payload.name,
         email=payload.email,
         phone=payload.phone,
         password_hash=pwd_context.hash(payload.password),
         user_type=user_type,
+        department_id=dept_id,
     )
     db.add(user)
     await db.commit()

@@ -13,6 +13,7 @@ class UserCreate(BaseModel):
     password: str
     phone: str | None = None
     apply_as_staff: bool = False
+    department_id: int | None = None   # apply_as_staff=True 일 때만 사용됨
 
 
 class UserOut(BaseModel):
