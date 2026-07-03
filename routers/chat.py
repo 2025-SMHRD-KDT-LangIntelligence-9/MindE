@@ -447,6 +447,10 @@ class DraftComplaintOut(BaseModel):
     title: str
     content: str
     attachments: list[dict] = []
+    # LLM이 top-3 후보 중 골라준 최종 분류/부서 (프론트가 그대로 표시)
+    category: dict | None = None       # {category_id, name}
+    department: dict | None = None     # {department_id, name, phone}
+    urgency_score: float | None = None
 
 
 @router.post("/sessions/{session_id}/draft-complaint", response_model=DraftComplaintOut)
@@ -518,9 +522,43 @@ async def draft_complaint_from_session(
     if not content:
         content = conversation[:200]
 
+    # ─── title+content로 LLM 재판정 (분류기 top-1 오분류 방지) ───
+    # answer_chatbot 흐름: 분류기 top-3 → LLM이 의미상 맞는 것 선택 → 부서 매핑
+    # 클러스터는 안 만듦 (create_cluster=False)
+    category_out = None
+    department_out = None
+    urgency_score = None
+    try:
+        analysis = await svc.answer_chatbot(f"{title}\n{content}", create_cluster=False)
+        md = analysis.get("metadata") or {}
+        if md.get("tool_used"):
+            cls = md.get("classification") or {}
+            depts = md.get("departments") or []
+            urg = md.get("urgency") or {}
+            if cls.get("category_id"):
+                category_out = {
+                    "category_id": cls["category_id"],
+                    "name": cls.get("category"),
+                }
+            if depts:
+                d0 = depts[0]
+                department_out = {
+                    "department_id": d0.get("department_id"),
+                    "name": d0.get("name"),
+                    "phone": d0.get("phone"),
+                }
+            if urg.get("probability_urgent") is not None:
+                urgency_score = round(float(urg["probability_urgent"]), 4)
+    except Exception:
+        # 분류 실패해도 초안은 반환 (프론트가 접수 시 재분류)
+        pass
+
     return DraftComplaintOut(
         session_id=session_id,
         title=title[:200],
         content=content,
         attachments=attachments_all,
+        category=category_out,
+        department=department_out,
+        urgency_score=urgency_score,
     )
