@@ -82,6 +82,7 @@ async def upload_attachment(
         file_url=str(saved_path),           # 저장 경로
         file_type=file_type,                # image / document
         original_filename=file.filename,    # 사용자가 올린 원래 이름
+        file_size=len(content),             # bytes
     )
     db.add(attachment)
     await db.commit()

@@ -127,6 +127,7 @@ class AttachmentOut(BaseModel):
     file_url: str
     file_type: str
     original_filename: str | None
+    file_size: int | None = None   # bytes
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
