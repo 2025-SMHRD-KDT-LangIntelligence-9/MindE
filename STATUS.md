@@ -1,6 +1,6 @@
 # 진행 상황 (Resume용)
 
-마지막 업데이트: 2026-07-02 (인프라 + 통계 API + 세션 첨부 + 클러스터 정책 개편)
+마지막 업데이트: 2026-07-03 (프론트 요청 대응 + 접수 민원 자동 RAG 인덱싱)
 
 ## ✅ 완료 상태
 
@@ -226,6 +226,64 @@ d68c9b3 — v10-relabel + HF 자동 다운로드 + Query Decomposition + 법령 
 - **신규 파일**: `scripts/health_monitor.py`
 - **DB**: rag_documents 그대로, complaint_clusters 43→1, complaints 6→2, 스키마 변경 X
 
+## 이번 세션 (2026-07-03) 추가 작업
+
+### 프론트 요청사항 반영 (7건)
+- **draft-complaint에 category/department/urgency_score** — 분류기 top-1 오분류 방지, LLM 재판정 결과 반환
+- **UserOut에 department_name, created_at** — 담당자 부서 필터·관리자 가입일
+- **AttachmentOut에 file_size** (bytes) + **uploaded_by** (업로더 user_id) — 시민/담당자 첨부 구분
+- **GET /departments** (인증 X) — 회원가입 부서 드롭다운용
+- **UserCreate에 department_id** — 담당자 신청 시 부서 함께 저장
+- **GET /stats/public** (인증 X) — 랜딩용 총 접수/완료 수
+
+### 마이그레이션 v5
+`scripts/migrate_v5.sql` — `complaint_attachments`에 file_size + uploaded_by 컬럼 추가, 옛 데이터 backfill.
+
+### 접수 민원 자동 RAG 인덱싱 ⭐
+- `POST /complaints` 접수 시 `chatbot_service.index_complaint_for_rag(...)` 자동 호출
+- 새 민원이 rag_documents에 `source_type='complaint'`로 임베딩·저장
+- `search_cases` 확장 — `case`(국민신문고) + `complaint`(우리 platform) 통합 검색
+- 응답에 `source_type` 필드 추가 — 프론트가 배지 표시 가능
+- 실측: 접수 후 즉시 다른 유저의 유사 사례 검색에 노출 (top-1 sim 0.72)
+- 옛 민원 5건도 backfill 완료
+
+### SYSTEM_PROMPT 후속 턴 답변 간결화
+- 카테고리 재소개는 첫 턴만
+- 부서/전화번호 재안내 금지 (history 있으면)
+- 답변 길이 질문 정보량에 맞춤
+- 결과: "그러면 신고할 수 있어요?" → "네, 신고 가능합니다..." 자연스러운 흐름
+
+### 새 라우터
+- `routers/public.py` (신규) — 인증 없는 공개 엔드포인트 담기
+  - `GET /departments`
+  - `GET /stats/public`
+
+### 새 엔드포인트
+- `POST /chat/sessions/{id}/draft-complaint` — 세션 대화 → 민원 접수 초안 자동 생성 (title/content/category/department/attachments)
+
+### 속도 측정 (PPT용)
+- 잡담: 0.75s (게이트 종료)
+- 단일 민원: 6~12s
+- 다중 3건 병렬: 10.4s (순차 대비 42% 절약)
+
+### DB 정리
+- rag_documents 총 **89,551건** (case 37,909 + procedure 46,157 + law 5,441 + dept 39 + complaint 5)
+- complaint_clusters: 1건만 유지 (오염 정리 완료)
+- complaints: 5건 (테스트 접수 포함)
+
+### 커밋 히스토리 (backend-ai 오늘)
+```
+7565814  접수 민원 자동 RAG 인덱싱 (유사 사례 확장)
+6c1b44a  GET /stats/public (프론트 요청 6번)
+12b824f  담당자 회원가입 부서 지원 (프론트 요청 5번)
+68af9be  AttachmentOut에 uploaded_by 추가 (프론트 요청 4번)
+be55222  AttachmentOut에 file_size 추가 (프론트 요청 3번)
+5c22840  draft-complaint에 category/department/urgency
+3a76bcd  UserOut에 department_name, created_at
+0c77c02  POST /chat/sessions/{id}/draft-complaint
+e0df8b3  SYSTEM_PROMPT — 후속 턴 답변 간결화
+```
+
 ## 백엔드 통합 (backend-ai 폴더)
 
 - `C:\Users\smhrd\Desktop\backend-ai\` — self-contained (HF 자동 다운로드 반영)
@@ -240,10 +298,13 @@ d68c9b3 — v10-relabel + HF 자동 다운로드 + Query Decomposition + 법령 
 ### 발표 전 남은 작업
 | 우선순위 | 항목 | 시간 | 담당 |
 |---|---|---|---|
-| 🔴 | 프론트 담당자에게 오늘 변경사항 통합 인계 (통계 API 11개, 첨부 저장, timestamp, /chat/file 등) | 30분 | 사용자 |
+| 🔴 | 프론트 담당자에게 오늘(7/3) 7건 변경사항 통합 인계 | 15분 | 사용자 |
 | 🔴 | 프론트 SPA 새로고침 404 이슈 전달 — 프록시를 `/api/*` 만 잡도록 (진단 완료) | 5분 | 사용자 |
 | 🔴 | 발표 데모 시나리오 확정 + 리허설 | 1시간 | 사용자 |
-| 🟡 | 발표 리허설 겸 샘플 민원 5~10건 접수 (관리자 대시보드 채우기) | 20분 | 사용자 |
+| 🔴 | 답변 LLM 모델 비교 (gpt-4o-mini vs gpt-4o 등) — PPT | 1시간 | AI |
+| 🔴 | 멀티모달(Vision) 학습 모델 필요 여부 검토 문구 정리 — PPT | 30분 | AI |
+| 🟡 | 컨피던스 개선 지표 (v9 F1 0.873 → v10 0.896) 그래프/표 정리 — PPT | 20분 | AI |
+| 🟡 | 발표용 샘플 민원 5~10건 접수 (관리자 대시보드 채우기) | 20분 | 사용자 |
 | 🟡 | 11 카테고리 골고루 실측 (예상 못한 케이스 대비) | 30분 | AI |
 | 🟡 | HTTPS 붙이기 (Cloudflare Tunnel) — 발표 완성도 | 30분 | 사용자 |
 | 🟡 | HF 토큰 회전 (이전 노출) | 5분 | 사용자 |
