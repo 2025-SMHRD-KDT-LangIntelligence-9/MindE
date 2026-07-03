@@ -286,21 +286,31 @@ def check_urgency(text: str) -> dict:
     }
 
 
-def _search_rag(query: str, source_type: str, category_id: Optional[int] = None, limit: int = 5) -> list[dict]:
-    """공통 RAG 벡터 검색 (pgvector cosine)."""
+def _search_rag(query: str, source_type, category_id: Optional[int] = None, limit: int = 5) -> list[dict]:
+    """공통 RAG 벡터 검색 (pgvector cosine).
+
+    source_type: str 또는 list[str]. list면 여러 소스 통합 검색.
+    """
     import numpy as np
     query = (query or '').strip()
     if not query:
         return []
     qv = _get_embed().encode(query, normalize_embeddings=True).astype(np.float32)
     conn = _get_db()
-    sql = """
-        SELECT document_id, title, content, category_id,
+    if isinstance(source_type, (list, tuple)):
+        types_tuple = tuple(source_type)
+        source_clause = 'source_type = ANY(%s)'
+        source_param = [list(types_tuple)]
+    else:
+        source_clause = 'source_type=%s'
+        source_param = [source_type]
+    sql = f"""
+        SELECT document_id, title, content, category_id, source_type,
                1 - (embedding <=> %s::vector) AS similarity
         FROM rag_documents
-        WHERE source_type=%s AND embedding IS NOT NULL
+        WHERE {source_clause} AND embedding IS NOT NULL
     """
-    params = [qv.tolist(), source_type]
+    params = [qv.tolist()] + source_param
     if category_id is not None:
         sql += ' AND category_id=%s'
         params.append(category_id)
@@ -315,7 +325,8 @@ def _search_rag(query: str, source_type: str, category_id: Optional[int] = None,
             'title': r[1],
             'content': r[2][:500] + ('...' if len(r[2]) > 500 else ''),
             'category_id': r[3],
-            'similarity': round(float(r[4]), 4),
+            'source_type': r[4],
+            'similarity': round(float(r[5]), 4),
         }
         for r in rows
     ]
@@ -347,14 +358,39 @@ def search_laws(query: str, category_id: Optional[int] = None, limit: int = 5) -
 
 
 def search_cases(query: str, category_id: Optional[int] = None, limit: int = 5) -> list[dict]:
-    """국민신문고 유사 사례 검색 (질문+답변).
+    """유사 사례 검색 — 국민신문고 사례(case) + 우리 platform 접수 민원(complaint) 통합.
 
-    크롤링한 epeople 사례에서 의미적으로 비슷한 민원 + 공식 답변을 반환.
     답변 작성 시 "이런 비슷한 민원은 이렇게 처리했습니다" 참조용.
+    반환에 source_type 포함 ('case' | 'complaint') — 프론트가 구분 표시 가능.
 
-    Args, Returns: search_laws와 동일 구조.
+    Args, Returns: search_laws와 동일 구조 + source_type 필드.
     """
-    return _search_rag(query, 'case', category_id, limit)
+    return _search_rag(query, ['case', 'complaint'], category_id, limit)
+
+
+def index_complaint_for_rag(complaint_id: int, title: str, content: str, category_id: Optional[int] = None) -> Optional[int]:
+    """접수된 민원을 rag_documents에 임베딩·저장. 유사 사례 검색용.
+
+    실패해도 예외 던지지 않음 (접수 자체는 성공해야 하므로).
+
+    Returns: document_id (신규) 또는 None (실패).
+    """
+    text = f"{title}\n\n{content}"
+    try:
+        embed = _get_embed().encode(text, normalize_embeddings=True)
+        conn = _get_db()
+        with conn.cursor() as c:
+            c.execute(
+                """INSERT INTO rag_documents (title, content, category_id, source_type, embedding)
+                   VALUES (%s, %s, %s, 'complaint', %s)
+                   RETURNING document_id""",
+                (title[:200], content[:3000], category_id, embed.tolist()),
+            )
+            doc_id = c.fetchone()[0]
+        conn.commit()
+        return int(doc_id)
+    except Exception:
+        return None
 
 
 _procedure_title_idf = None

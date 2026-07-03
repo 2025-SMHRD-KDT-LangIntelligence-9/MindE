@@ -134,6 +134,17 @@ async def create_complaint(
 
     await db.commit()
     await db.refresh(complaint)
+
+    # 접수된 민원을 rag_documents에 자동 임베딩 → 이후 유사 사례 검색에 포함
+    # 실패해도 접수 자체는 성공 (임베딩은 부수 효과).
+    await asyncio.to_thread(
+        svc.index_complaint_for_rag,
+        complaint.complaint_id,
+        title,
+        content,
+        category_id,
+    )
+
     return await build_complaint_out(db, complaint)
 
 
