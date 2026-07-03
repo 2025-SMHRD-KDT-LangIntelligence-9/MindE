@@ -210,6 +210,9 @@ class ComplaintAttachment(Base):
     file_type: Mapped[str] = mapped_column(String(20), nullable=False)  # image/document
     original_filename: Mapped[str | None] = mapped_column(String(255))
     file_size: Mapped[int | None] = mapped_column(BigInteger)   # bytes
+    uploaded_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("users.user_id")
+    )  # 업로드한 유저 (시민/담당자 구분용)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP, nullable=False, server_default=func.now()
     )

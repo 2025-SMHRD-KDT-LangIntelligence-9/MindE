@@ -127,7 +127,8 @@ class AttachmentOut(BaseModel):
     file_url: str
     file_type: str
     original_filename: str | None
-    file_size: int | None = None   # bytes
+    file_size: int | None = None    # bytes
+    uploaded_by: int | None = None  # 업로더 user_id (시민/담당자 구분용)
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

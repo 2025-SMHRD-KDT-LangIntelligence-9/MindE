@@ -83,6 +83,7 @@ async def upload_attachment(
         file_type=file_type,                # image / document
         original_filename=file.filename,    # 사용자가 올린 원래 이름
         file_size=len(content),             # bytes
+        uploaded_by=current_user.user_id,   # 업로더 (시민/담당자 구분)
     )
     db.add(attachment)
     await db.commit()
