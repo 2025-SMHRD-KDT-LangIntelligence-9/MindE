@@ -306,9 +306,7 @@ export function AppProvider({ children }) {
 
   // 관리자가 회원 강제 탈퇴
   const deleteUser = async (userId) => {
-    try {
-      await deleteUserApi(userId);
-    } catch {}
+    await deleteUserApi(userId);
     setUsers((prev) => prev.filter((u) => u.id !== userId));
   };
 

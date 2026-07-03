@@ -349,6 +349,7 @@ function Chatbot() {
   const [submitModal, setSubmitModal] = useState({ open: false, title: '', content: '' });
   const [submitting, setSubmitting]   = useState(false);
   const [submitDone, setSubmitDone]   = useState(null); // { title, category, dept } | null
+  const [pendingFormSubmit, setPendingFormSubmit] = useState(null); // 서식 제출 → 접수 대기 { title, content, category, formName }
   const [viewingHistory, setViewingHistory] = useState(null);
   const [input, setInput]                 = useState('');
   const [isTyping, setIsTyping]           = useState(false);
@@ -368,6 +369,7 @@ function Chatbot() {
   const imageInputRef    = useRef(null);
   const fileInputRef     = useRef(null);
   const autoSubmitDone   = useRef(false);
+  const formSubmitDone   = useRef(false);
   const openingRef       = useRef(false);
 
   useEffect(() => {
@@ -437,6 +439,38 @@ function Chatbot() {
       }, 1200);
     }, 600);
     window.history.replaceState({}, '');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 민원 서식 페이지 '제출하기'로 넘어온 경우: 서류 파일을 상담에 올리고 접수 여부를 물음
+  useEffect(() => {
+    const fs = location.state?.formSubmit;
+    if (!fs || formSubmitDone.current) return;
+    formSubmitDone.current = true;
+    window.history.replaceState({}, '');
+    (async () => {
+      const { formName, fileName, fileText, title, content, category } = fs;
+      // 실제 파일 객체 (상담 세션 + 접수 민원 양쪽에 첨부됨)
+      const file = new File([fileText], fileName, { type: 'text/plain' });
+      try {
+        const r = await chatFileApi(file, '', currentSessionId);
+        if (r?.session_id) setCurrentSessionId(r.session_id);
+      } catch { /* 업로드 실패해도 접수 흐름은 진행 */ }
+      setMessages((prev) => [...prev, {
+        role: 'user', time: now(),
+        text: `민원 서식 「${formName}」을(를) 제출합니다.`,
+        files: [{ name: fileName, size: file.size, type: 'text/plain', url: null, isImage: false, file }],
+      }]);
+      setIsTyping(true);
+      setTimeout(() => {
+        setMessages((prev) => [...prev, {
+          role: 'ai', time: now(),
+          text: `업로드하신 **${formName}** 서류를 확인했습니다. 📄\n\n이 내용으로 민원을 접수해 드릴까요?\n\`네\`라고 답해 주시면 바로 접수를 진행합니다.`,
+        }]);
+        setIsTyping(false);
+        setPendingFormSubmit({ title, content, category, formName });
+      }, 800);
+    })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -572,11 +606,41 @@ function Chatbot() {
     });
   };
 
+  // 접수 여부 질문에 대한 긍정 응답 판별
+  const isAffirmative = (t) =>
+    /(^|\s)(네|넵|예|응|웅|어|그래|그래요|좋아|좋아요|좋습니다|당연|맞아|진행|해줘|해주세요|부탁|ㅇㅇ|ㅇㅋ|오케이|오키|ok|okay|yes|y)(\s|$|[.!~]|해)/i.test(` ${t} `)
+    || /접수/.test(t);
+
+  // 서식 제출 확인(긍정) → 바로 접수하지 않고 민원 접수 모달(요약창)을 열어 최종 확인
+  const confirmFormSubmit = (pending) => {
+    if (pending.category) setSummary((s) => ({ ...s, category: pending.category }));
+    setSubmitModal({ open: true, title: pending.title, content: pending.content, loading: false });
+    setMessages((prev) => [...prev, {
+      role: 'ai', time: now(),
+      text: '민원 접수 창을 열었습니다. 내용을 확인하신 뒤 **접수하기**를 눌러 주세요.',
+    }]);
+  };
+
   const handleSend = async (overrideText) => {
     // 빠른 답변 버튼 등에서 텍스트를 직접 넘겨 바로 전송 가능 (onClick 이벤트 객체는 무시)
     const text = (typeof overrideText === 'string' ? overrideText : input).trim();
     if ((!text && attachedFiles.length === 0) || isTyping || viewingHistory) return;
     if (isListeningRef.current) stopListening();
+
+    // 서식 제출 후 접수 여부 대기 중 → 응답을 접수 확인으로 처리
+    if (pendingFormSubmit && text) {
+      const pending = pendingFormSubmit;
+      setPendingFormSubmit(null);
+      setMessages((prev) => [...prev, { role: 'user', time: now(), text }]);
+      setInput('');
+      setAttachedFiles([]);
+      if (isAffirmative(text)) {
+        confirmFormSubmit(pending);
+      } else {
+        setMessages((prev) => [...prev, { role: 'ai', time: now(), text: '접수를 진행하지 않았습니다. 추가로 궁금하신 점이 있으면 말씀해 주세요.' }]);
+      }
+      return;
+    }
 
     const sentFiles = attachedFiles;
     const userMsg = { role: 'user', time: now(), text, files: sentFiles };
@@ -1211,7 +1275,7 @@ function Chatbot() {
                 )}
               </div>
             </div>
-            <div className="shrink-0 p-4 border-t border-outline-variant/60">
+            <div className="shrink-0 p-4 border-t border-outline-variant/60 space-y-2">
               <button
                 onClick={openSubmitModal}
                 disabled={messages.filter(m => m.role === 'user').length === 0}
@@ -1219,6 +1283,21 @@ function Chatbot() {
               >
                 <span className="material-symbols-outlined text-base">edit_document</span>
                 민원 접수하기
+              </button>
+              <button
+                onClick={() => {
+                  // 상담 내용을 서식 작성 소스로 전달 (사진만 보낸 경우 이미지 분석/AI 요약도 포함)
+                  const userText = messages.filter((m) => m.role === 'user' && m.text?.trim()).map((m) => m.text.trim()).join('\n');
+                  const imgText  = imageNotes.join('\n').trim();
+                  const aiText   = messages.filter((m) => m.role === 'ai' && m.text?.trim()).map((m) => m.text.trim()).join('\n');
+                  const sourceText = [userText, imgText].filter(Boolean).join('\n') || aiText;
+                  navigate('/document', { state: { formTab: true, sessionId: currentSessionId, category: summary.category, sourceText } });
+                }}
+                disabled={messages.filter(m => m.role === 'user').length === 0}
+                className="w-full border border-primary/40 text-primary text-sm font-bold py-3 rounded-xl hover:bg-primary/5 transition-all flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <span className="material-symbols-outlined text-base">list_alt</span>
+                민원 서식 작성하기
               </button>
             </div>
           </div>

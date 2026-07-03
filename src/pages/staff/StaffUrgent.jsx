@@ -71,28 +71,37 @@ function StaffUrgent() {
   const citizenFiles = attachments.filter((f) => String(f.uploadedBy ?? '') === ownerId);
   const staffFilesList = attachments.filter((f) => String(f.uploadedBy ?? '') !== ownerId);
 
-  const handleStatusChange = async () => {
-    if (changingStatus || !selectedData || !pendingStatus || pendingStatus === selectedData.status) return;
-    setChangingStatus(true);
-    try {
-      await updateComplaintStatus(selectedData.id, pendingStatus);
-      setSelected((s) => ({ ...s, status: pendingStatus }));
-      showToast(`상태가 '${pendingStatus}'(으)로 변경되었습니다.`);
-    } finally {
-      setChangingStatus(false);
-    }
-  };
+  // 메모는 담당자 내부용 → 전용 버튼으로 즉시 저장 (상태 변경과 무관)
+  const memoChanged = !!selectedData && memoInput !== (selectedData.memo ?? '');
 
   const handleSaveMemo = () => {
+    if (!selectedData || !memoChanged) return;
     saveMemo(selectedData.id, memoInput);
+    setSelected((s) => ({ ...s, memo: memoInput }));
     showToast('메모가 저장되었습니다.');
   };
 
-  const handleSaveReply = () => {
-    if (!replyInput.trim()) return;
-    saveReply(selectedData.id, replyInput.trim());
-    setSelected((s) => ({ ...s, reply: replyInput.trim() }));
-    showToast('답변이 등록되었습니다.');
+  // 답변/상태 변경 여부 (민원처리 버튼 클릭 시 함께 저장)
+  const replyChanged  = !!selectedData && replyInput.trim() !== '' && replyInput.trim() !== (selectedData.reply ?? '');
+  const statusChanged = !!selectedData && !!pendingStatus && pendingStatus !== selectedData.status;
+  const isDirty = replyChanged || statusChanged;
+
+  // 민원처리: 답변·상태를 함께 반영
+  const handleProcess = async () => {
+    if (changingStatus || !selectedData || !isDirty) return;
+    setChangingStatus(true);
+    try {
+      if (replyChanged)  await saveReply(selectedData.id, replyInput.trim());
+      if (statusChanged) await updateComplaintStatus(selectedData.id, pendingStatus);
+      setSelected((s) => ({
+        ...s,
+        ...(replyChanged ? { reply: replyInput.trim() } : {}),
+        ...(statusChanged ? { status: pendingStatus } : {}),
+      }));
+      showToast('민원이 처리되었습니다.');
+    } finally {
+      setChangingStatus(false);
+    }
   };
 
   const addFiles = async (fileList) => {
@@ -163,7 +172,17 @@ function StaffUrgent() {
         </div>
 
         {/* 상태별 카드 */}
-        <div className="grid grid-cols-3 md:grid-cols-5 gap-3">
+        <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
+          {/* 전체조회 */}
+          <button
+            onClick={() => setFilterStatus('전체')}
+            className={`rounded-2xl border p-2 md:p-4 text-center transition-all hover:shadow-md ${
+              filterStatus === '전체' ? 'border-red-500 bg-red-50' : 'bg-white border-outline-variant'
+            }`}
+          >
+            <p className="text-lg md:text-2xl font-bold text-on-surface">{urgentList.length}</p>
+            <p className="text-xs text-on-surface-variant mt-0.5 md:mt-1 font-medium">전체</p>
+          </button>
           {STATUS_OPTIONS.map((s) => {
             const st = statusStyle[s];
             return (
@@ -369,13 +388,14 @@ function StaffUrgent() {
                   <textarea
                     value={memoInput}
                     onChange={(e) => setMemoInput(e.target.value)}
-                    placeholder="긴급 대응 조치 내용을 기록하세요..."
+                    placeholder="긴급 대응 조치 내용을 기록하세요... (담당자만 확인)"
                     rows={4}
                     className="w-full px-3 py-2.5 border border-outline-variant rounded-xl text-sm outline-none focus:border-red-500 resize-none"
                   />
                   <button
                     onClick={handleSaveMemo}
-                    className="mt-2 w-full bg-red-600 text-white text-sm font-bold py-2.5 rounded-xl hover:brightness-110 transition-all flex items-center justify-center gap-1.5"
+                    disabled={!memoChanged}
+                    className="mt-2 w-full bg-red-600 text-white text-sm font-bold py-2.5 rounded-xl hover:brightness-110 transition-all flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <span className="material-symbols-outlined text-base">save</span>
                     메모 저장
@@ -409,16 +429,8 @@ function StaffUrgent() {
                   />
                   <div className="mt-2 flex items-center gap-1.5 text-[11px] text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
                     <span className="material-symbols-outlined text-sm shrink-0">info</span>
-                    답변 등록 후 하단 <strong className="mx-0.5">민원처리</strong> 버튼으로 상태를 변경해 주세요.
+                    답변·상태를 입력한 뒤 하단 <strong className="mx-0.5">민원처리</strong> 버튼을 누르면 함께 저장됩니다.
                   </div>
-                  <button
-                    onClick={handleSaveReply}
-                    disabled={!replyInput.trim() || replyInput.trim() === (selectedData.reply ?? '')}
-                    className="mt-2 w-full bg-emerald-600 text-white text-sm font-bold py-2.5 rounded-xl hover:brightness-110 transition-all flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    <span className="material-symbols-outlined text-base">mark_email_read</span>
-                    {selectedData.reply ? '답변 수정 등록' : '답변 등록'}
-                  </button>
                 </div>
 
                 {/* 담당자 첨부파일 */}
@@ -492,8 +504,8 @@ function StaffUrgent() {
               {/* 민원처리 버튼 */}
               <div className="shrink-0 px-3 md:px-6 py-2 md:py-4 border-t border-outline-variant/60">
                 <button
-                  onClick={handleStatusChange}
-                  disabled={changingStatus || !pendingStatus || pendingStatus === selectedData.status}
+                  onClick={handleProcess}
+                  disabled={changingStatus || !isDirty}
                   className="w-full py-3.5 rounded-xl text-sm font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-red-600 text-white hover:brightness-110 flex items-center justify-center gap-2"
                 >
                   <span className="material-symbols-outlined text-base">task_alt</span>

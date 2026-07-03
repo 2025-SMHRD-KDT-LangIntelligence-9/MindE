@@ -343,11 +343,15 @@ function AdminSettings() {
             <div className="flex gap-2">
               <button onClick={() => setWithdrawModal({ open: false, user: null })}
                 className="flex-1 h-10 rounded-xl border border-outline-variant text-sm text-on-surface-variant hover:bg-surface-container-low transition-colors">취소</button>
-              <button onClick={() => {
-                deleteUser(withdrawModal.user.id);
-                showToast(`${withdrawModal.user.name}님의 계정이 탈퇴 처리되었습니다.`);
+              <button onClick={async () => {
+                try {
+                  await deleteUser(withdrawModal.user.id);
+                  showToast(`${withdrawModal.user.name}님의 계정이 탈퇴 처리되었습니다.`);
+                  setSelectedUser(null);
+                } catch {
+                  showToast('탈퇴 처리 중 오류가 발생했습니다. 백엔드 팀에 문의하세요.');
+                }
                 setWithdrawModal({ open: false, user: null });
-                setSelectedUser(null);
               }}
                 className="flex-1 h-10 rounded-xl bg-error text-white text-sm font-bold hover:brightness-105 transition-all">탈퇴 처리</button>
             </div>

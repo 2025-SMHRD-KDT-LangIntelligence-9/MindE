@@ -1,35 +1,60 @@
-﻿import { useNavigate } from 'react-router-dom';
+﻿import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../../layouts/AdminLayout';
 import { useApp, CATEGORY_STYLE, URGENCY_STYLE } from '../../store/AppContext';
 import { STATUS_STYLE } from '../../utils/statusStyle';
+import { Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Label } from 'recharts';
+import WordCloud from 'react-d3-cloud';
+import { DEPARTMENTS } from '../../utils/departments';
+import { getStatsHotClustersApi } from '../../api/stats';
+
+const PIE_COLORS = ['#4472C4', '#FF9F43', '#54A7E0', '#00B4D8', '#7B68EE', '#FF6384', '#36A2EB', '#4BC0C0', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6'];
+
+const DEPT_COLOR_MAP = Object.fromEntries(
+  DEPARTMENTS.map((d, i) => [d.name, PIE_COLORS[i % PIE_COLORS.length]])
+);
 
 
 function AdminDashboard() {
   const navigate = useNavigate();
   const { complaints, stats } = useApp();
 
+  const [clusterWords, setClusterWords] = useState([]);
+  useEffect(() => {
+    getStatsHotClustersApi()
+      .then((data) => {
+        const list = Array.isArray(data) ? data : (data?.clusters ?? []);
+        setClusterWords(
+          list
+            .filter((c) => c.representative_content && c.complaint_count > 0)
+            .map((c) => ({ text: c.representative_content, value: c.complaint_count }))
+            .sort((a, b) => b.value - a.value)
+        );
+      })
+      .catch(() => {});
+  }, []);
+
   const urgentRows = complaints.filter((c) => c.urgency === '긴급').slice(0, 5);
 
-  // 최근 7일 민원 현황
-  const last7Days = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() - (6 - i));
-    const dateStr = d.toISOString().slice(0, 10);
-    const count = complaints.filter((c) => c.createdDate === dateStr).length;
-    return { date: dateStr.slice(5).replace('-', '/'), count };
-  });
-  const hasRecentData = last7Days.some((d) => d.count > 0);
+  // 금일 부서별 접수 현황
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayCountMap = complaints
+    .filter((c) => c.createdDate === todayStr && c.dept)
+    .reduce((acc, c) => { acc[c.dept] = (acc[c.dept] || 0) + 1; return acc; }, {});
+  const todayDeptData = DEPARTMENTS
+    .map((dept) => ({ name: dept.name, value: todayCountMap[dept.name] || 0, color: DEPT_COLOR_MAP[dept.name] }))
+    .sort((a, b) => b.value - a.value);
+  const todayTotal = todayDeptData.reduce((s, d) => s + d.value, 0);
 
-  // 부서별 민원 건수 (실제 데이터)
-  const deptCountMap = complaints.reduce((acc, c) => {
-    if (c.dept) acc[c.dept] = (acc[c.dept] || 0) + 1;
-    return acc;
-  }, {});
-  const deptData = Object.entries(deptCountMap)
-    .map(([dept, count]) => ({ dept, count }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 5);
-  const maxDeptCount = Math.max(...deptData.map((d) => d.count), 1);
+  // 이번달 부서별 접수 현황
+  const thisMonthStr = new Date().toISOString().slice(0, 7);
+  const monthCountMap = complaints
+    .filter((c) => c.createdDate?.startsWith(thisMonthStr) && c.dept)
+    .reduce((acc, c) => { acc[c.dept] = (acc[c.dept] || 0) + 1; return acc; }, {});
+  const monthDeptData = DEPARTMENTS
+    .map((dept) => ({ name: dept.name, value: monthCountMap[dept.name] || 0, color: DEPT_COLOR_MAP[dept.name] }))
+    .sort((a, b) => b.value - a.value);
+  const monthDeptTotal = monthDeptData.reduce((s, d) => s + d.value, 0);
 
   const total      = complaints.length;
   const cReceived  = complaints.filter((c) => c.status === '접수').length;
@@ -66,58 +91,98 @@ function AdminDashboard() {
         ))}
       </div>
 
-      {/* 최근 7일 + 부서별 민원 */}
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-3 md:gap-5 mb-3 md:mb-6">
-        <div className="col-span-1 md:col-span-8 bg-white rounded-2xl border border-outline-variant p-3 md:p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-3 md:mb-5">
-            <div>
-              <h3 className="font-bold text-sm text-on-surface">최근 7일 민원 접수 현황</h3>
-              <p className="text-xs text-on-surface-variant mt-0.5">날짜별 민원 접수 건수</p>
+      {/* 3개 도넛 차트 */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-5 mb-3 md:mb-6">
+
+        {/* 금일 부서별 접수현황 */}
+        <div className="bg-white rounded-2xl border border-outline-variant p-3 md:p-5 shadow-sm">
+          <h3 className="font-bold text-sm text-on-surface mb-0.5">금일 부서별 접수현황</h3>
+          <p className="text-xs text-on-surface-variant mb-3">오늘 접수된 민원 {todayTotal}건</p>
+          <div className="flex items-start gap-3">
+            <div style={{ width: 140, height: 140, flexShrink: 0 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={todayDeptData.filter(d => d.value > 0)} cx="50%" cy="50%" innerRadius={36} outerRadius={60} dataKey="value" paddingAngle={2}>
+                    {todayDeptData.filter(d => d.value > 0).map((d) => <Cell key={d.name} fill={d.color} />)}
+                    <Label content={({ viewBox: { cx, cy } }) => (
+                      <text textAnchor="middle">
+                        <tspan x={cx} y={cy - 4} fontSize={15} fontWeight="700" fill="#1e3a5f">{todayTotal}</tspan>
+                        <tspan x={cx} y={cy + 11} fontSize={9} fill="#6b7280">건</tspan>
+                      </text>
+                    )} position="center" />
+                  </Pie>
+                  <Tooltip formatter={(v, name) => [`${v}건`, name]} contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e5e7eb' }} />
+                </PieChart>
+              </ResponsiveContainer>
             </div>
-          </div>
-          <div className="flex items-end justify-between gap-2 h-28 md:h-44 pt-2">
-            {last7Days.map((d) => {
-              const maxCount = Math.max(...last7Days.map((x) => x.count), 1);
-              const heightPct = d.count > 0 ? Math.max((d.count / maxCount) * 100, 8) : 0;
-              return (
-                <div key={d.date} className="flex-1 flex flex-col items-center gap-1.5">
-                  <span className="text-xs font-bold text-primary">{d.count > 0 ? `${d.count}건` : ''}</span>
-                  <div className="w-full flex items-end justify-center" style={{ height: 'clamp(60px, 10vw, 120px)' }}>
-                    <div
-                      className="w-full rounded-t-lg bg-primary/75 transition-all duration-500"
-                      style={{ height: `${heightPct}%` }}
-                    />
-                  </div>
-                  <span className="text-[11px] text-on-surface-variant">{d.date}</span>
+            <div className="flex-1 min-w-0" style={{ columns: 3, columnGap: '8px' }}>
+              {todayDeptData.map((d) => (
+                <div key={d.name} className="flex items-center gap-1 min-w-0 break-inside-avoid mb-0.5">
+                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: d.color }} />
+                  <span className="text-[10px] text-on-surface truncate flex-1">{d.name}</span>
+                  <span className="text-[10px] font-bold tabular-nums flex-shrink-0 ml-0.5" style={{ color: d.value > 0 ? '#1e3a5f' : '#d1d5db' }}>{d.value}</span>
                 </div>
-              );
-            })}
+              ))}
+            </div>
           </div>
         </div>
 
-        <div className="col-span-1 md:col-span-4 bg-white rounded-2xl border border-outline-variant p-3 md:p-6 shadow-sm">
-          <h3 className="font-bold text-sm text-on-surface mb-3 md:mb-5">부서별 민원 현황</h3>
-          {deptData.length === 0 ? (
-            <p className="text-sm text-on-surface-variant text-center py-8">데이터가 없습니다.</p>
+        {/* 이번달 부서별 접수현황 */}
+        <div className="bg-white rounded-2xl border border-outline-variant p-3 md:p-5 shadow-sm">
+          <h3 className="font-bold text-sm text-on-surface mb-0.5">이번달 부서별 접수현황</h3>
+          <p className="text-xs text-on-surface-variant mb-3">이번달 접수된 민원 {monthDeptTotal}건</p>
+          <div className="flex items-start gap-3">
+            <div style={{ width: 140, height: 140, flexShrink: 0 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={monthDeptData.filter(d => d.value > 0)} cx="50%" cy="50%" innerRadius={36} outerRadius={60} dataKey="value" paddingAngle={2}>
+                    {monthDeptData.filter(d => d.value > 0).map((d) => <Cell key={d.name} fill={d.color} />)}
+                    <Label content={({ viewBox: { cx, cy } }) => (
+                      <text textAnchor="middle">
+                        <tspan x={cx} y={cy - 4} fontSize={15} fontWeight="700" fill="#1e3a5f">{monthDeptTotal}</tspan>
+                        <tspan x={cx} y={cy + 11} fontSize={9} fill="#6b7280">건</tspan>
+                      </text>
+                    )} position="center" />
+                  </Pie>
+                  <Tooltip formatter={(v, name) => [`${v}건`, name]} contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e5e7eb' }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="flex-1 min-w-0" style={{ columns: 3, columnGap: '8px' }}>
+              {monthDeptData.map((d) => (
+                <div key={d.name} className="flex items-center gap-1 min-w-0 break-inside-avoid mb-0.5">
+                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: d.color }} />
+                  <span className="text-[10px] text-on-surface truncate flex-1">{d.name}</span>
+                  <span className="text-[10px] font-bold tabular-nums flex-shrink-0 ml-0.5" style={{ color: d.value > 0 ? '#1e3a5f' : '#d1d5db' }}>{d.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* 반복민원 키워드 */}
+        <div className="bg-white rounded-2xl border border-outline-variant p-3 md:p-5 shadow-sm">
+          <h3 className="font-bold text-sm text-on-surface mb-0.5">반복민원 키워드</h3>
+          <p className="text-xs text-on-surface-variant mb-3">반복 접수된 민원 클러스터</p>
+          {clusterWords.length === 0 ? (
+            <p className="text-sm text-on-surface-variant text-center py-6">클러스터 데이터가 없습니다.</p>
           ) : (
-            <div className="space-y-2 md:space-y-4">
-              {deptData.map((d) => {
-                const pct = Math.round((d.count / maxDeptCount) * 100);
-                return (
-                  <div key={d.dept}>
-                    <div className="flex justify-between text-xs mb-1.5">
-                      <span className="font-medium text-on-surface">{d.dept}</span>
-                      <span className="font-bold text-primary">{d.count}건</span>
-                    </div>
-                    <div className="w-full h-2 bg-surface-container rounded-full overflow-hidden">
-                      <div className="h-full rounded-full bg-primary/70" style={{ width: `${pct}%` }} />
-                    </div>
-                  </div>
-                );
-              })}
+            <div style={{ height: 220 }}>
+              <WordCloud
+                data={clusterWords}
+                width={500}
+                height={220}
+                font="Noto Sans KR, Malgun Gothic, sans-serif"
+                fontWeight="bold"
+                fontSize={(d) => Math.sqrt(d.value) * 12}
+                rotate={(_, i) => (i % 3 === 0 ? 90 : 0)}
+                padding={3}
+                fill={(_, i) => PIE_COLORS[i % PIE_COLORS.length]}
+              />
             </div>
           )}
         </div>
+
       </div>
 
       {/* 긴급 민원 테이블 */}

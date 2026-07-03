@@ -27,12 +27,14 @@ function MyComplaints() {
   const [attachments,  setAttachments]  = useState([]);  // 이 민원의 첨부(민원인+담당자)
   const [preview,      setPreview]      = useState(null);
 
-  // URL ?id= 파라미터로 진입 시 해당 민원 자동 선택
+  // URL ?id= 를 단일 기준으로: id 있으면 해당 민원 상세, 없으면 목록
   useEffect(() => {
     const idParam = searchParams.get('id');
     if (idParam) {
       const found = complaints.find((c) => c.id === idParam);
       if (found) setSelected(found);
+    } else {
+      setSelected(null);   // id 없으면 목록으로 (알림→상세 후 메뉴 재진입 시 목록 복귀)
     }
   }, [searchParams, complaints]);
 
@@ -418,7 +420,7 @@ function MyComplaints() {
                 ) : filtered.map((c) => {
                   const cfg = statusConfig[c.status] ?? statusConfig['접수'];
                   return (
-                    <tr key={c.id} onClick={() => setSelected(c)} className="hover:bg-surface-container-low/50 cursor-pointer transition-colors">
+                    <tr key={c.id} onClick={() => navigate(`/my-complaints?id=${c.id}`)} className="hover:bg-surface-container-low/50 cursor-pointer transition-colors">
                       <td className="px-5 py-3 text-xs font-bold text-primary">{c.id}</td>
                       <td className="px-5 py-3 text-sm text-on-surface">{c.title}</td>
                       <td className="px-5 py-3">{(() => { const s = CATEGORY_STYLE[c.category] ?? CATEGORY_STYLE['기타']; return <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${s.bg} ${s.text}`}>{c.category}</span>; })()}</td>
