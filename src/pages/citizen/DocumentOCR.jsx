@@ -2,7 +2,7 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import CitizenLayout from '../../layouts/CitizenLayout';
 import { useApp } from '../../store/AppContext';
-import { getFormTemplatesApi, getFormTemplateApi, fillFormApi } from '../../api/forms';
+import { getFormTemplatesApi, getFormTemplateApi, fillFormApi, renderFormPdfApi } from '../../api/forms';
 import FormPdfOverlay from '../../components/FormPdfOverlay';
 import ZoomableImage from '../../components/ZoomableImage';
 import { flattenMappings, fieldName } from '../../utils/formMappings';
@@ -142,12 +142,28 @@ function DocumentOCR() {
     finally { setDownloading(false); }
   };
 
-  // 확인 모달에서 실제 다운로드
+  // 확인 모달에서 실제 다운로드 — 백엔드 렌더 엔드포인트 사용 (한글 폰트·정렬 정확)
   const confirmDownload = async () => {
     if (!downloadPages) return;
-    const { savePagesAsPdf } = await import('../../utils/formPdf');
-    savePagesAsPdf(downloadPages, `${selectedTemplate?.name || '민원서식'}.pdf`);
-    setDownloadPages(null);
+    setDownloading(true);
+    try {
+      const blob = await renderFormPdfApi(selectedTemplateId, fields);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${selectedTemplate?.name || '민원서식'}_filled.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      // 백엔드 렌더 실패 시 프론트 렌더로 폴백
+      const { savePagesAsPdf } = await import('../../utils/formPdf');
+      savePagesAsPdf(downloadPages, `${selectedTemplate?.name || '민원서식'}.pdf`);
+    } finally {
+      setDownloading(false);
+      setDownloadPages(null);
+    }
   };
 
   // 마운트: 서식 목록 로드 + 초기 서식 선택 (1회)
