@@ -17,7 +17,6 @@
 | Recharts | 3 | 관리자 통계 차트 (파이·도넛·라인 차트) |
 | pdfjs-dist | 4 | PDF 파일을 이미지로 렌더링 (서류 미리보기) |
 | jspdf | 4 | 작성된 서식을 PDF 파일로 생성·다운로드 |
-| react-d3-cloud | 1 | 반복 민원 키워드 워드클라우드 시각화 |
 | Material Symbols | (CDN) | 아이콘 폰트 (Google Fonts) |
 
 ---
