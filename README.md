@@ -7,16 +7,18 @@
 
 ## 기술 스택
 
-| 항목 | 버전 |
-|------|------|
-| React | 19 |
-| Vite | 5 |
-| Tailwind CSS | 4 |
-| React Router DOM | 7 |
-| Axios | 1.6 |
-| Recharts | 2 |
-| pdf-lib | (PDF 렌더링) |
-| Material Symbols | (CDN) |
+| 라이브러리 | 버전 | 용도 |
+|------------|------|------|
+| React | 19 | UI 컴포넌트 프레임워크 |
+| Vite | 5 | 번들러 / 개발 서버 |
+| Tailwind CSS | 4 | 유틸리티 기반 CSS 스타일링 |
+| React Router DOM | 7 | 클라이언트 사이드 라우팅 |
+| Axios | 1.6 | HTTP 클라이언트 (API 통신) |
+| Recharts | 3 | 관리자 통계 차트 (파이·도넛·라인 차트) |
+| pdfjs-dist | 4 | PDF 파일을 이미지로 렌더링 (서류 미리보기) |
+| jspdf | 4 | 작성된 서식을 PDF 파일로 생성·다운로드 |
+| react-d3-cloud | 1 | 반복 민원 키워드 워드클라우드 시각화 |
+| Material Symbols | (CDN) | 아이콘 폰트 (Google Fonts) |
 
 ---
 
