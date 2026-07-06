@@ -154,7 +154,7 @@ function AdminStats() {
     <AdminLayout pageTitle="통계 및 인사이트" activeMenu="stats">
 
       {/* KPI 카드 */}
-      <div className="grid grid-cols-4 gap-3 mb-5">
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-5">
         {kpis.map((k) => (
           <Card key={k.label} className="flex items-center gap-3">
             <div className={`w-11 h-11 rounded-xl ${k.bg} flex items-center justify-center shrink-0`}>
@@ -169,10 +169,10 @@ function AdminStats() {
       </div>
 
       {/* 일별·월별 추이(좌) + 상태별·긴급도·사용자유형(우) */}
-      <div className="grid grid-cols-12 gap-5 mb-5">
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 mb-5">
 
         {/* 왼쪽: 일별 + 월별 */}
-        <div className="col-span-8 flex flex-col gap-5">
+        <div className="xl:col-span-8 flex flex-col gap-5">
           <Card>
             <ChartTitle title="일별 민원 접수 / 답변" sub="최근 7일" />
             {timeline.length === 0 ? <Empty /> : (
@@ -212,7 +212,7 @@ function AdminStats() {
         </div>
 
         {/* 오른쪽: 상태별(전체폭) + 긴급도·사용자유형(반반) */}
-        <div className="col-span-4 flex flex-col gap-5">
+        <div className="xl:col-span-4 flex flex-col gap-5">
           <Card>
             <ChartTitle title="상태별 분포" />
             {byStatus.length === 0 ? <Empty /> : (
@@ -250,7 +250,7 @@ function AdminStats() {
           </Card>
 
           {/* 긴급도 + 사용자유형 나란히 */}
-          <div className="grid grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             <Card>
               <ChartTitle title="긴급도" />
               {urgency.length === 0 ? <Empty /> : (
@@ -289,8 +289,8 @@ function AdminStats() {
       </div>
 
       {/* 긴급 민원 TOP + 인기 클러스터 */}
-      <div className="grid grid-cols-12 gap-5">
-        <Card className="col-span-6">
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
+        <Card className="xl:col-span-6">
           <ChartTitle title="긴급 민원 TOP" sub="긴급도 점수 순" />
           {urgentTop.length === 0 ? <Empty /> : (
             <div className="space-y-2">
@@ -308,7 +308,7 @@ function AdminStats() {
           )}
         </Card>
 
-        <Card className="col-span-6">
+        <Card className="xl:col-span-6">
           <ChartTitle title="자주 발생하는 민원 (클러스터)" sub="유사 민원 그룹" />
           {clusters.length === 0 ? <Empty /> : (
             <div className="space-y-2.5">

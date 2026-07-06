@@ -1,4 +1,5 @@
-﻿import { useNavigate } from 'react-router-dom';
+﻿import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../../layouts/AdminLayout';
 import { useApp, CATEGORY_STYLE, URGENCY_STYLE } from '../../store/AppContext';
 import { STATUS_STYLE } from '../../utils/statusStyle';
@@ -43,6 +44,7 @@ const DEPT_COLOR_MAP = Object.fromEntries(
   DEPARTMENTS.map((d, i) => [d.name, PIE_COLORS[i % PIE_COLORS.length]])
 );
 
+const WEEKDAY_LABELS = ['월', '화', '수', '목', '금', '토', '일'];
 
 function AdminDashboard() {
   const navigate = useNavigate();
@@ -62,20 +64,29 @@ function AdminDashboard() {
     .sort((a, b) => b.value - a.value);
   const categoryTotal = categoryData.reduce((s, d) => s + d.value, 0);
 
-  // 금일 부서별 접수 현황
-  const todayStr = new Date().toISOString().slice(0, 10);
+  // 요일별 부서별 접수 현황 (이번 주 기준)
+  const todayDate = new Date();
+  const todayDow = todayDate.getDay(); // 0=일 .. 6=토
+  const [selectedWeekday, setSelectedWeekday] = useState(todayDow === 0 ? 6 : todayDow - 1); // 월=0 .. 일=6
+  const mondayOffset = todayDow === 0 ? -6 : 1 - todayDow;
+  const weekStart = new Date(todayDate);
+  weekStart.setDate(todayDate.getDate() + mondayOffset);
+  const selectedDate = new Date(weekStart);
+  selectedDate.setDate(weekStart.getDate() + selectedWeekday);
+  const selectedDateStr = selectedDate.toISOString().slice(0, 10);
   const todayCountMap = complaints
-    .filter((c) => c.createdDate === todayStr && c.dept)
+    .filter((c) => c.createdDate === selectedDateStr && c.dept)
     .reduce((acc, c) => { acc[c.dept] = (acc[c.dept] || 0) + 1; return acc; }, {});
   const todayDeptData = DEPARTMENTS
     .map((dept) => ({ name: dept.name, value: todayCountMap[dept.name] || 0, color: DEPT_COLOR_MAP[dept.name] }))
     .sort((a, b) => b.value - a.value);
   const todayTotal = todayDeptData.reduce((s, d) => s + d.value, 0);
 
-  // 이번달 부서별 접수 현황
-  const thisMonthStr = new Date().toISOString().slice(0, 7);
+  // 월별 부서별 접수 현황
+  const [selectedMonth, setSelectedMonth] = useState(todayDate.getMonth() + 1); // 1~12
+  const selectedMonthStr = `${todayDate.getFullYear()}-${String(selectedMonth).padStart(2, '0')}`;
   const monthCountMap = complaints
-    .filter((c) => c.createdDate?.startsWith(thisMonthStr) && c.dept)
+    .filter((c) => c.createdDate?.startsWith(selectedMonthStr) && c.dept)
     .reduce((acc, c) => { acc[c.dept] = (acc[c.dept] || 0) + 1; return acc; }, {});
   const monthDeptData = DEPARTMENTS
     .map((dept) => ({ name: dept.name, value: monthCountMap[dept.name] || 0, color: DEPT_COLOR_MAP[dept.name] }))
@@ -105,7 +116,7 @@ function AdminDashboard() {
     <AdminLayout pageTitle="오늘의 대시보드" activeMenu="dashboard">
 
       {/* 요약 카드 */}
-      <div className="grid grid-cols-7 gap-3 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-7 gap-3 mb-6">
         {summaryCards.map((c) => (
           <div key={c.label} className="bg-white rounded-2xl border border-outline-variant p-4 shadow-sm flex flex-col items-center gap-2">
             <div className={`w-10 h-10 rounded-xl ${c.bg} flex items-center justify-center shrink-0`}>
@@ -118,12 +129,23 @@ function AdminDashboard() {
       </div>
 
       {/* 3개 도넛 차트 */}
-      <div className="grid grid-cols-3 gap-5 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 mb-6">
 
-        {/* 금일 부서별 접수현황 */}
+        {/* 요일별 부서별 접수현황 */}
         <div className="bg-white rounded-2xl border border-outline-variant p-5 shadow-sm">
-          <h3 className="font-bold text-sm text-on-surface mb-0.5">금일 부서별 접수현황</h3>
-          <p className="text-xs text-on-surface-variant mb-3">오늘 접수된 민원 {todayTotal}건</p>
+          <div className="flex items-start justify-between gap-2 mb-0.5">
+            <h3 className="font-bold text-sm text-on-surface">요일별 부서별 접수현황</h3>
+            <select
+              value={selectedWeekday}
+              onChange={(e) => setSelectedWeekday(Number(e.target.value))}
+              className="text-xs border border-outline-variant rounded-lg px-2 py-1 text-on-surface-variant bg-white focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              {WEEKDAY_LABELS.map((label, i) => (
+                <option key={label} value={i}>{label}요일</option>
+              ))}
+            </select>
+          </div>
+          <p className="text-xs text-on-surface-variant mb-3">{WEEKDAY_LABELS[selectedWeekday]}요일 접수된 민원 {todayTotal}건</p>
           <div className="flex items-center gap-3">
             <div style={{ width: 140, height: 140, flexShrink: 0, position: 'relative' }}>
               <ResponsiveContainer width="100%" height="100%">
@@ -160,10 +182,21 @@ function AdminDashboard() {
           </div>
         </div>
 
-        {/* 이번달 부서별 접수현황 */}
+        {/* 월별 부서별 접수현황 */}
         <div className="bg-white rounded-2xl border border-outline-variant p-5 shadow-sm">
-          <h3 className="font-bold text-sm text-on-surface mb-0.5">이번달 부서별 접수현황</h3>
-          <p className="text-xs text-on-surface-variant mb-3">이번달 접수된 민원 {monthDeptTotal}건</p>
+          <div className="flex items-start justify-between gap-2 mb-0.5">
+            <h3 className="font-bold text-sm text-on-surface">월별 부서별 접수현황</h3>
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(Number(e.target.value))}
+              className="text-xs border border-outline-variant rounded-lg px-2 py-1 text-on-surface-variant bg-white focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                <option key={m} value={m}>{m}월</option>
+              ))}
+            </select>
+          </div>
+          <p className="text-xs text-on-surface-variant mb-3">{selectedMonth}월 접수된 민원 {monthDeptTotal}건</p>
           <div className="flex items-center gap-3">
             <div style={{ width: 140, height: 140, flexShrink: 0, position: 'relative' }}>
               <ResponsiveContainer width="100%" height="100%">

@@ -70,7 +70,7 @@ function StaffStats() {
         </div>
 
         {/* 요약 카드 */}
-        <div className="grid grid-cols-8 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-3">
           {[
             { label: '총 민원', value: total,       icon: 'assignment',   color: 'text-[#1e3a5f]',  bg: 'bg-[#1e3a5f]/8' },
             { label: '접수',    value: received,    icon: 'inbox',        color: 'text-blue-600',   bg: 'bg-blue-50' },
@@ -91,7 +91,7 @@ function StaffStats() {
           ))}
         </div>
 
-        <div className="grid grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
           {/* 처리 완료율 */}
           <div className="bg-white rounded-2xl border border-outline-variant shadow-sm p-5 flex flex-col">
             <div className="flex items-center gap-2 mb-4">

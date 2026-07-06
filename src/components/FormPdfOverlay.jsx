@@ -62,6 +62,9 @@ function FieldOverlay({ pg, safePage, perPage, imgW, fields, onEditField, signat
           );
         }
 
+        // TODO: 체크박스·텍스트 입력 임시 비활성화
+        return null;
+
         if (isCheckboxField(f)) {
           const checked = !!(fields[name]);
           const boxSize = Math.max(fs * 1.1, 9);

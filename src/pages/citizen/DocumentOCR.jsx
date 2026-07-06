@@ -2,7 +2,7 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import CitizenLayout from '../../layouts/CitizenLayout';
 import { useApp } from '../../store/AppContext';
-import { getFormTemplatesApi, getFormTemplateApi, fillFormApi, renderFormPdfApi } from '../../api/forms';
+import { getFormTemplatesApi, getFormTemplateApi, fillFormApi, renderFormPdfApi, getFormDebugPreviewApi } from '../../api/forms';
 import FormPdfOverlay from '../../components/FormPdfOverlay';
 import ZoomableImage from '../../components/ZoomableImage';
 import { flattenMappings, fieldName } from '../../utils/formMappings';
@@ -129,6 +129,20 @@ function DocumentOCR() {
   const onEditField = (key, value) => setFields((prev) => ({ ...prev, [key]: value }));
   const onSign = (id, url) => { if (!id) return; setSignatures((prev) => ({ ...prev, [id]: url })); setLastSignature(url); };
 
+  const openDebugPreview = async () => {
+    if (!selectedTemplateId) return;
+    try {
+      const blob = await getFormDebugPreviewApi(selectedTemplateId);
+      console.log('[debug-preview] blob:', blob.type, blob.size);
+      const url = URL.createObjectURL(blob);
+      const win = window.open(url, '_blank');
+      if (!win) alert('팝업이 차단되었습니다. 브라우저 팝업 허용 후 다시 시도해주세요.');
+    } catch (e) {
+      console.error('[debug-preview] error:', e);
+      alert(`좌표 확인 실패: ${e?.response?.status ?? e?.message ?? '알 수 없는 오류'}`);
+    }
+  };
+
   // 파일 다운로드 → 먼저 실제 출력물을 렌더해 확인 모달로 보여줌
   const handleDownload = async () => {
     if (!template || downloading) return;
@@ -224,10 +238,10 @@ function DocumentOCR() {
 
   return (
     <CitizenLayout pageTitle="민원 서류 작성" activeMenu="document">
-      <div className="flex gap-5" style={{ minHeight: 'calc(100vh - 8rem)' }}>
+      <div className="flex flex-col xl:flex-row gap-5 xl:[min-height:calc(100vh-8rem)]">
 
         {/* ── 왼쪽 사이드 ── */}
-        <aside className="flex w-56 shrink-0 flex-col gap-4">
+        <aside className="flex w-full xl:w-56 shrink-0 flex-col gap-4">
           <button
             onClick={() => navigate('/home')}
             className="flex items-center gap-1.5 text-sm text-on-surface-variant hover:text-primary transition-colors font-medium"
@@ -268,10 +282,10 @@ function DocumentOCR() {
 
         {/* ── 메인: 서식 리스트 / 채팅 작성 / 실시간 미리보기 ── */}
         <div className="flex-1 flex flex-col gap-4 min-w-0">
-          <div className="grid grid-cols-12 gap-4 h-[calc(100vh-11rem)]" style={{ minHeight: 'calc(100vh - 11rem)' }}>
+          <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 xl:h-[calc(100vh-11rem)]">
 
             {/* 왼쪽: 서식 리스트 + 검색 */}
-            <div className="col-span-3 min-h-0 bg-white rounded-2xl border border-outline-variant shadow-sm flex flex-col overflow-hidden">
+            <div className="xl:col-span-3 min-h-[360px] xl:min-h-0 bg-white rounded-2xl border border-outline-variant shadow-sm flex flex-col overflow-hidden">
               <div className="px-4 py-3.5 border-b border-outline-variant shrink-0">
                 <p className="text-sm font-bold text-on-surface mb-2.5">민원 서식 목록</p>
                 <div className="relative">
@@ -301,12 +315,16 @@ function DocumentOCR() {
                     <button
                       key={t.form_template_id}
                       onClick={() => selectTemplate(t.form_template_id)}
-                      className={`w-full text-left px-3 py-3 rounded-xl border transition-colors flex items-start gap-2.5 ${
+                      className={`group w-full text-left px-3 py-2.5 rounded-xl border transition-colors flex items-center gap-3 ${
                         active ? 'border-primary bg-primary/5' : 'border-transparent hover:bg-surface-container-low'
                       }`}
                     >
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${active ? 'bg-primary text-white' : 'bg-surface-container text-on-surface-variant'}`}>
-                        <span className="material-symbols-outlined text-base">{iconForName(t.name)}</span>
+                      <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 shadow-sm border transition-colors ${
+                        active
+                          ? 'bg-gradient-to-br from-primary to-primary/70 text-white border-primary/30'
+                          : 'bg-gradient-to-br from-primary/8 to-primary/15 text-primary border-primary/15 group-hover:border-primary/25'
+                      }`}>
+                        <span className="material-symbols-outlined text-[22px]">{iconForName(t.name)}</span>
                       </div>
                       <div className="min-w-0">
                         <p className={`text-sm font-bold truncate ${active ? 'text-primary' : 'text-on-surface'}`}>{t.name}</p>
@@ -319,7 +337,7 @@ function DocumentOCR() {
             </div>
 
             {/* 가운데: 마음이 AI 채팅 */}
-            <div className="col-span-5 min-h-0 bg-white rounded-2xl border border-outline-variant shadow-sm flex flex-col overflow-hidden">
+            <div className="xl:col-span-5 min-h-[480px] xl:min-h-0 bg-white rounded-2xl border border-outline-variant shadow-sm flex flex-col overflow-hidden">
               <div className="px-5 py-3 border-b border-outline-variant shrink-0 flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center shadow-sm">
                   <span className="material-symbols-outlined text-white text-lg">smart_toy</span>
@@ -404,13 +422,24 @@ function DocumentOCR() {
             </div>
 
             {/* 오른쪽: 실시간 미리보기 (직접 편집 가능) */}
-            <div className="col-span-4 min-h-0 bg-white rounded-2xl border border-outline-variant shadow-sm flex flex-col overflow-hidden">
+            <div className="xl:col-span-4 min-h-[480px] xl:min-h-0 bg-white rounded-2xl border border-outline-variant shadow-sm flex flex-col overflow-hidden">
               <div className="px-5 py-3.5 border-b border-outline-variant shrink-0 flex items-center justify-between">
                 <p className="text-sm font-bold text-on-surface flex items-center gap-1.5">
                   <span className="material-symbols-outlined text-primary text-base">visibility</span>
                   미리보기
                 </p>
-                <span className="text-[11px] text-on-surface-variant bg-surface-container-low px-2 py-0.5 rounded-lg">직접 수정 가능</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={openDebugPreview}
+                    disabled={!selectedTemplateId}
+                    title="필드 좌표 디버그 미리보기 (새 탭)"
+                    className="text-[11px] text-on-surface-variant hover:text-primary flex items-center gap-1 px-2 py-0.5 rounded-lg hover:bg-surface-container transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                    <span className="material-symbols-outlined text-sm">bug_report</span>
+                    좌표 확인
+                  </button>
+                  <span className="text-[11px] text-on-surface-variant bg-surface-container-low px-2 py-0.5 rounded-lg">직접 수정 가능</span>
+                </div>
               </div>
               <div className="flex-1 flex flex-col min-h-0 bg-slate-100">
                 {!selectedTemplateId ? (

@@ -31,6 +31,13 @@ function AdminSettings() {
   const [deptFilter, setDeptFilter]     = useState('');  // 사용자 관리 부서 필터
   const [deptPage, setDeptPage]         = useState(1);   // 조직 및 부서 관리 페이지
   const [userPage, setUserPage]         = useState(1);   // 사용자 관리 페이지
+  const [deptSort, setDeptSort]         = useState({ col: null, dir: 'asc' });
+  const toggleDeptSort = (col) => {
+    setDeptPage(1);
+    setDeptSort((prev) => prev.col === col
+      ? { col, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+      : { col, dir: 'asc' });
+  };
 
   // 카테고리 state
   const [categories, setCategories] = useState([]);
@@ -92,14 +99,30 @@ function AdminSettings() {
   const curUserPage = Math.min(userPage, userTotalPages);
   const pagedActive = active.slice((curUserPage - 1) * PAGE_SIZE, curUserPage * PAGE_SIZE);
 
-  const deptTotalPages = Math.max(1, Math.ceil(departments.length / PAGE_SIZE));
-  const curDeptPage = Math.min(deptPage, deptTotalPages);
-  const pagedDepartments = departments.slice((curDeptPage - 1) * PAGE_SIZE, curDeptPage * PAGE_SIZE);
-
-  // 부서별 실데이터 집계 (부서명으로 매칭) — 담당자 수 / 처리 중 / 처리 완료
-  const deptStaffCount = (name) => users.filter((u) => u.role === 'staff' && u.status === 'active' && u.dept === name).length;
+  const deptStaffCount    = (name) => users.filter((u) => u.role === 'staff' && u.status === 'active' && u.dept === name).length;
   const deptReceivedCount = (name) => complaints.filter((c) => c.dept === name && c.status === '접수').length;
-  const deptDoneCount = (name) => complaints.filter((c) => c.dept === name && c.status === '완료').length;
+  const deptDoneCount     = (name) => complaints.filter((c) => c.dept === name && c.status === '완료').length;
+
+  const sortedDepts = (() => {
+    if (!deptSort.col) return departments;
+    return [...departments].sort((a, b) => {
+      let av, bv;
+      if      (deptSort.col === 'name')     { av = a.name;                   bv = b.name; }
+      else if (deptSort.col === 'staff')    { av = deptStaffCount(a.name);   bv = deptStaffCount(b.name); }
+      else if (deptSort.col === 'received') { av = deptReceivedCount(a.name);bv = deptReceivedCount(b.name); }
+      else if (deptSort.col === 'done')     { av = deptDoneCount(a.name);    bv = deptDoneCount(b.name); }
+      else if (deptSort.col === 'status')   { av = a.status ?? '';           bv = b.status ?? ''; }
+      else return 0;
+      if (av < bv) return deptSort.dir === 'asc' ? -1 : 1;
+      if (av > bv) return deptSort.dir === 'asc' ?  1 : -1;
+      return 0;
+    });
+  })();
+
+  const deptTotalPages = Math.max(1, Math.ceil(sortedDepts.length / PAGE_SIZE));
+  const curDeptPage = Math.min(deptPage, deptTotalPages);
+  const pagedDepartments = sortedDepts.slice((curDeptPage - 1) * PAGE_SIZE, curDeptPage * PAGE_SIZE);
+
   const totalStaffAssigned = departments.reduce((s, d) => s + deptStaffCount(d.name), 0);
   const totalReceived = departments.reduce((s, d) => s + deptReceivedCount(d.name), 0);
 
@@ -187,7 +210,7 @@ function AdminSettings() {
       {/* 카테고리 추가/수정 모달 */}
       {catModal.open && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center" onClick={() => setCatModal((m) => ({ ...m, open: false }))}>
-          <div className="bg-white rounded-2xl shadow-2xl w-[420px] p-6" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[420px] p-6" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-bold text-base mb-5">{catModal.mode === 'add' ? '카테고리 추가' : '카테고리 수정'}</h3>
             <div className="space-y-4">
               <div>
@@ -237,7 +260,7 @@ function AdminSettings() {
       {/* 부서 추가/수정 모달 */}
       {deptModal.open && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center" onClick={() => setDeptModal((m) => ({ ...m, open: false }))}>
-          <div className="bg-white rounded-2xl shadow-2xl w-[420px] p-6" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[420px] p-6" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-bold text-base mb-5">{deptModal.mode === 'add' ? '부서 추가' : '부서 수정'}</h3>
             <div className="space-y-4">
               <div>
@@ -276,7 +299,7 @@ function AdminSettings() {
       {/* 삭제 확인 모달 */}
       {deleteConfirm.open && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center" onClick={() => setDeleteConfirm({ open: false, type: '', idx: null, id: null, label: '' })}>
-          <div className="bg-white rounded-2xl shadow-2xl w-[360px] p-6 text-center" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[360px] p-6 text-center" onClick={(e) => e.stopPropagation()}>
             <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-4">
               <span className="material-symbols-outlined text-error text-2xl">delete</span>
             </div>
@@ -295,7 +318,7 @@ function AdminSettings() {
       {/* 비밀번호 초기화 확인 모달 */}
       {pwResetModal.open && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center" onClick={() => setPwResetModal({ open: false, user: null })}>
-          <div className="bg-white rounded-2xl shadow-2xl w-[360px] p-6 text-center" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[360px] p-6 text-center" onClick={(e) => e.stopPropagation()}>
             <div className="w-12 h-12 rounded-full bg-amber-50 flex items-center justify-center mx-auto mb-4">
               <span className="material-symbols-outlined text-amber-500 text-2xl">lock_reset</span>
             </div>
@@ -318,7 +341,7 @@ function AdminSettings() {
         const userComplaintCnt = complaints.filter((c) => c.citizen === withdrawModal.user?.name).length;
         return (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center" onClick={() => setWithdrawModal({ open: false, user: null })}>
-          <div className="bg-white rounded-2xl shadow-2xl w-[380px] p-6 text-center" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[380px] p-6 text-center" onClick={(e) => e.stopPropagation()}>
             <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-4">
               <span className="material-symbols-outlined text-error text-2xl">person_remove</span>
             </div>
@@ -368,8 +391,8 @@ function AdminSettings() {
 
       {/* 탭 1: 민원 카테고리 설정 */}
       {activeTab === 'category' && (
-        <div className="grid grid-cols-12 gap-6">
-          <section className="col-span-8 bg-white rounded-2xl border border-outline-variant p-8">
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+          <section className="xl:col-span-8 bg-white rounded-2xl border border-outline-variant p-5 xl:p-8">
             <div className="flex justify-between items-center mb-6">
               <h3 className="font-bold text-lg">민원 카테고리 목록</h3>
               <div className="flex items-center gap-3">
@@ -380,7 +403,7 @@ function AdminSettings() {
                 </button>
               </div>
             </div>
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
               {categories.length === 0 && (
                 <div className="col-span-full flex flex-col items-center justify-center py-12 text-on-surface-variant/50 gap-2">
                   <span className="material-symbols-outlined text-4xl">category</span>
@@ -423,7 +446,7 @@ function AdminSettings() {
             </div>
           </section>
 
-          <section className="col-span-4 bg-white rounded-2xl border border-outline-variant p-8">
+          <section className="xl:col-span-4 bg-white rounded-2xl border border-outline-variant p-5 xl:p-8">
             <h3 className="font-bold text-lg mb-6">AI 분석 가중치</h3>
             <div className="space-y-6">
               {[
@@ -449,7 +472,7 @@ function AdminSettings() {
       {/* 탭 2: 조직 및 부서 관리 */}
       {activeTab === 'dept' && (
         <div className="space-y-6">
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
             {[
               { label: '총 부서 수',   value: `${departments.length}개`,          icon: 'corporate_fare' },
               { label: '전체 담당자',  value: `${totalStaffAssigned}명`,          icon: 'group' },
@@ -480,8 +503,28 @@ function AdminSettings() {
             <table className="w-full text-left">
               <thead className="border-b border-outline-variant">
                 <tr>
-                  {['부서명','대표 번호','담당자 수','접수','처리 완료','상태','관리'].map((h) => (
-                    <th key={h} className="px-6 py-3 text-xs font-bold text-on-surface-variant">{h}</th>
+                  {[
+                    { label: '부서명',    key: 'name' },
+                    { label: '대표 번호', key: null },
+                    { label: '담당자 수', key: 'staff' },
+                    { label: '접수',      key: 'received' },
+                    { label: '처리 완료', key: 'done' },
+                    { label: '상태',      key: 'status' },
+                    { label: '관리',      key: null },
+                  ].map((col) => (
+                    <th key={col.label}
+                      onClick={() => col.key && toggleDeptSort(col.key)}
+                      className={`px-6 py-3 text-xs font-bold text-on-surface-variant ${col.key ? 'cursor-pointer hover:text-primary select-none' : ''}`}
+                    >
+                      <span className="inline-flex items-center gap-0.5">
+                        {col.label}
+                        {col.key && (
+                          <span className={`material-symbols-outlined text-sm transition-colors ${deptSort.col === col.key ? 'text-primary' : 'text-on-surface-variant/40'}`}>
+                            {deptSort.col === col.key ? (deptSort.dir === 'asc' ? 'arrow_upward' : 'arrow_downward') : 'unfold_more'}
+                          </span>
+                        )}
+                      </span>
+                    </th>
                   ))}
                 </tr>
               </thead>

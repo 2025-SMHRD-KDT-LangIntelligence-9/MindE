@@ -2,6 +2,14 @@
 .env
 *.env.local
 
+# TLS 인증서 / 개인키 (로컬 https 개발용)
+*.pem
+*.key
+
+# 임시 / 백업 파일
+*.bak
+verify.mjs
+
 # Python
 __pycache__/
 *.pyc

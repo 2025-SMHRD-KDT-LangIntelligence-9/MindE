@@ -1,6 +1,7 @@
 ﻿import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import logo from '../../assets/logo.png';
+import cityBg from '../../assets/city-bg.png';
 import { useApp } from '../../store/AppContext';
 import { loginApi, getMeApi } from '../../api/auth';
 
@@ -132,11 +133,12 @@ function Login() {
         </div>
       </div>
     )}
-    <div className="h-screen flex items-center justify-center bg-white overflow-hidden relative" style={{ minWidth: 1280 }}>
-      <div className="flex items-stretch mx-auto gap-6 px-10 py-4 relative z-10 w-full max-w-[900px]">
+    <div className="h-[100dvh] xl:h-auto xl:min-h-screen flex items-center justify-center overflow-hidden xl:overflow-y-auto relative py-3 xl:py-6">
+      <img src={cityBg} aria-hidden alt="" className="fixed inset-0 w-full h-full object-cover object-bottom pointer-events-none select-none opacity-[0.45]" />
+      <div className="flex items-stretch mx-auto gap-6 px-4 xl:px-10 py-4 relative z-10 w-full max-w-[900px]">
 
-        {/* ── 왼쪽: 브랜드 ── */}
-        <div className="flex w-[400px] shrink-0">
+        {/* ── 왼쪽: 브랜드 (모바일 숨김) ── */}
+        <div className="hidden xl:flex w-[400px] shrink-0">
           <div className="flex flex-col w-full h-full bg-gradient-to-b from-[#2563eb] via-[#60a5fa] to-[#93c5fd] px-8 py-10 relative overflow-hidden rounded-3xl shadow-xl gap-7">
             <div className="absolute top-[-80px] right-[-80px] w-62 h-72 rounded-full bg-white/10 pointer-events-none" />
             <div className="absolute bottom-[-60px] left-[-60px] w-56 h-56 rounded-full bg-white/5 pointer-events-none" />
@@ -192,7 +194,7 @@ function Login() {
         </div>
 
         {/* ── 오른쪽: 폼 ── */}
-        <div className="flex w-[440px] shrink-0">
+        <div className="flex w-full max-w-[440px] xl:w-[440px] mx-auto shrink-0">
           <div className="w-full flex flex-col">
 
             <div className="bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden relative flex flex-col flex-1">
@@ -333,8 +335,8 @@ function Login() {
 
     {/* 비밀번호 찾기 모달 */}
     {showForgot && (
-      <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center" onClick={() => setShowForgot(false)}>
-        <div className="bg-white rounded-2xl shadow-2xl w-[380px] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+      <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center px-4" onClick={() => setShowForgot(false)}>
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[380px] overflow-hidden" onClick={(e) => e.stopPropagation()}>
 
           {/* 모달 헤더 */}
           <div className="px-6 pt-6 pb-4 border-b border-outline-variant/50">

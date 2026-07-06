@@ -1,6 +1,7 @@
 ﻿import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import logo from '../../assets/logo.png';
+import landingBg from '../../assets/hero-bg.png';
 import { useApp } from '../../store/AppContext';
 
 function Landing() {
@@ -17,21 +18,21 @@ function Landing() {
 
 
   return (
-    <div className="h-[100dvh] flex flex-col overflow-hidden bg-gradient-to-br from-blue-50/30 via-transparent to-indigo-50/30" style={{ minWidth: 1280 }}>
+    <div className="h-[100dvh] flex flex-col overflow-hidden bg-gradient-to-br from-blue-50/30 via-transparent to-indigo-50/30">
 
       {/* 네비게이션 */}
-      <nav className="shrink-0 flex items-center justify-between h-16 px-14 border-b border-outline-variant/60 bg-blue-50/80 backdrop-blur-md z-50">
-        <img src={logo} alt="마음이 로고" className="h-16 w-auto" />
-        <div className="flex items-center gap-3">
+      <nav className="shrink-0 flex items-center justify-between h-12 xl:h-16 px-3 xl:px-14 border-b border-outline-variant/60 bg-blue-50/80 backdrop-blur-md z-50">
+        <img src={logo} alt="마음이 로고" className="h-8 xl:h-16 w-auto" />
+        <div className="flex items-center gap-1.5 xl:gap-3">
           <button
             onClick={() => navigate('/login')}
-            className="text-sm font-bold text-on-surface-variant px-5 py-2 rounded-xl hover:bg-surface-container transition-colors"
+            className="text-xs xl:text-sm font-bold text-on-surface-variant px-2.5 py-1 xl:px-5 xl:py-2 rounded-lg xl:rounded-xl hover:bg-surface-container transition-colors"
           >
             로그인
           </button>
           <button
             onClick={() => navigate('/register')}
-            className="bg-primary text-white text-sm font-bold px-6 py-2.5 rounded-xl shadow-sm shadow-primary/20 hover:brightness-105 transition-all"
+            className="bg-primary text-white text-xs xl:text-sm font-bold px-3 py-1.5 xl:px-6 xl:py-2.5 rounded-lg xl:rounded-xl shadow-sm shadow-primary/20 hover:brightness-105 transition-all"
           >
             회원가입
           </button>
@@ -42,24 +43,22 @@ function Landing() {
       <main className="flex-1 flex flex-col overflow-hidden">
 
         {/* 히어로 그리드 */}
-        <div className="flex-1 flex items-center px-14 relative overflow-hidden">
+        <div className="flex-1 flex items-center px-4 py-4 xl:py-0 xl:px-14 relative overflow-hidden">
 
-          {/* 배경 장식 */}
-          <div className="absolute -top-20 -right-20 w-[500px] h-[500px] rounded-full bg-primary/10 blur-3xl pointer-events-none" />
-          <div className="absolute -bottom-10 -left-10 w-[360px] h-[360px] rounded-full bg-blue-400/10 blur-3xl pointer-events-none" />
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[280px] h-[280px] rounded-full bg-indigo-300/8 blur-2xl pointer-events-none" />
-
-          {/* 배경: 로고 워터마크 */}
+          {/* 배경 일러스트 이미지 */}
           <img
-            src={logo}
+            src={landingBg}
             alt=""
-            className="absolute top-[21%] left-[27%] w-[550px] opacity-[0.08] pointer-events-none select-none"
+            aria-hidden="true"
+            className="absolute inset-0 w-full h-full object-cover object-bottom pointer-events-none select-none saturate-115 contrast-102"
           />
+          {/* 콘텐츠 가독성용 오버레이 */}
+          <div className="absolute inset-0 bg-gradient-to-r from-white/32 via-white/10 to-transparent pointer-events-none" />
 
-          <div className="flex flex-row items-center justify-center gap-50 w-full">
+          <div className="relative z-10 flex flex-col xl:flex-row items-center justify-center gap-8 xl:gap-50 w-full">
 
-            {/* ── 모바일: 위쪽 / 데스크탑: 오른쪽 ── */}
-            <div className="order-2 w-auto">
+            {/* ── 챗봇 목업: 데스크탑만 표시(모바일은 한 화면 유지 위해 숨김) ── */}
+            <div className="hidden xl:block order-2 w-auto">
 
               {/* 모바일 미니 챗봇 프리뷰 */}
               <div className="hidden w-full rounded-2xl border border-outline-variant/60 shadow-lg overflow-hidden bg-white/90 backdrop-blur-sm">
@@ -118,8 +117,8 @@ function Landing() {
               </div>
 
               {/* 데스크탑 풀 챗봇 목업 */}
-              <div className="flex justify-end">
-                <div className="w-[400px] bg-white rounded-2xl border border-outline-variant shadow-xl overflow-hidden">
+              <div className="flex justify-center xl:justify-end">
+                <div className="w-full max-w-[400px] bg-white rounded-2xl border border-outline-variant shadow-xl overflow-hidden">
                   <div className="bg-gradient-to-r from-primary to-blue-400 px-5 py-4 flex items-center gap-3">
                     <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center">
                       <span className="material-symbols-outlined text-white text-lg">smart_toy</span>
@@ -186,7 +185,7 @@ function Landing() {
               </div>
 
               {/* 헤드라인 */}
-              <h1 className="text-5xl font-bold text-on-surface leading-tight">
+              <h1 className="text-3xl xl:text-5xl font-bold text-on-surface leading-tight">
                 시민의 목소리를<br />
                 <span className="text-primary">AI</span>가 빠르게<br />
                 전달합니다
@@ -232,21 +231,21 @@ function Landing() {
         </div>
 
         {/* ── 하단 서비스 특징 바 ── */}
-        <div className="shrink-0 border-t border-outline-variant/60 bg-blue-50/80 backdrop-blur-md relative z-10">
-          <div className="max-w-6xl mx-auto grid grid-cols-4 divide-x divide-outline-variant/40">
+        <div className="shrink-0 border-t border-outline-variant/60 bg-gradient-to-r from-emerald-50/80 via-sky-50/80 to-emerald-50/80 backdrop-blur-md relative z-10">
+          <div className="max-w-6xl mx-auto grid grid-cols-2 xl:grid-cols-4 xl:divide-x divide-outline-variant/40">
             {[
-              { icon: 'smart_toy',     label: 'AI 상담',    desc: '24시간 AI 챗봇으로\n민원을 접수하세요' },
-              { icon: 'track_changes', label: '실시간 현황', desc: '민원 처리 현황을\n실시간 확인하세요' },
-              { icon: 'notifications', label: '즉시 알림',  desc: '상태 변경 시 즉시\n알림을 받으세요' },
-              { icon: 'verified_user', label: '안전 보호',  desc: '개인정보를\n철저히 보호합니다' },
+              { icon: 'smart_toy',     label: 'AI 상담',    desc: '24시간 AI 챗봇으로\n민원을 접수하세요',   bg: 'bg-primary/10',  text: 'text-primary' },
+              { icon: 'track_changes', label: '실시간 현황', desc: '민원 처리 현황을\n실시간 확인하세요',    bg: 'bg-emerald-100', text: 'text-emerald-600' },
+              { icon: 'notifications', label: '즉시 알림',  desc: '상태 변경 시 즉시\n알림을 받으세요',     bg: 'bg-amber-100',   text: 'text-amber-500' },
+              { icon: 'verified_user', label: '안전 보호',  desc: '개인정보를\n철저히 보호합니다',         bg: 'bg-cyan-100',    text: 'text-cyan-600' },
             ].map((f) => (
-              <div key={f.label} className="flex flex-row items-start gap-5 px-8 py-10">
-                <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center shrink-0">
-                  <span className="material-symbols-outlined text-primary text-3xl">{f.icon}</span>
+              <div key={f.label} className="flex flex-row items-center xl:items-start gap-2.5 xl:gap-5 px-3 py-2.5 xl:px-8 xl:py-10">
+                <div className={`w-9 h-9 xl:w-16 xl:h-16 rounded-2xl ${f.bg} flex items-center justify-center shrink-0`}>
+                  <span className={`material-symbols-outlined ${f.text} text-xl xl:text-3xl`}>{f.icon}</span>
                 </div>
                 <div className="min-w-0 text-left">
-                  <p className="text-base font-bold text-on-surface">{f.label}</p>
-                  <p className="block text-xs text-on-surface-variant mt-1.5 leading-relaxed whitespace-pre-line">{f.desc}</p>
+                  <p className="text-sm xl:text-base font-bold text-on-surface">{f.label}</p>
+                  <p className="hidden xl:block text-xs text-on-surface-variant xl:mt-1.5 leading-relaxed whitespace-pre-line">{f.desc}</p>
                 </div>
               </div>
             ))}
@@ -258,7 +257,7 @@ function Landing() {
       {/* 회원탈퇴 완료 모달 */}
       {showWithdrawn && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center" onClick={() => setShowWithdrawn(false)}>
-          <div className="flex flex-col items-center gap-4 bg-white border border-outline-variant px-10 py-8 rounded-3xl shadow-2xl w-[360px]" onClick={(e) => e.stopPropagation()}>
+          <div className="flex flex-col items-center gap-4 bg-white border border-outline-variant px-8 xl:px-10 py-8 rounded-3xl shadow-2xl w-full max-w-[360px] mx-4" onClick={(e) => e.stopPropagation()}>
             <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
               <span className="material-symbols-outlined text-4xl text-primary">favorite</span>
             </div>

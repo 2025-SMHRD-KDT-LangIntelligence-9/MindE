@@ -873,25 +873,25 @@ function Chatbot() {
 
   return (
     <CitizenLayout pageTitle="AI 민원 상담" activeMenu="chatbot">
-      <div className="grid grid-cols-12 gap-5" style={{ height: 'calc(100vh - 8rem)' }}>
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-5" style={{ height: 'calc(100vh - 8rem)' }}>
 
         {/* ── 채팅 / 상담 내역 영역 ── */}
-        <section className="col-span-9 flex flex-col rounded-2xl overflow-hidden shadow-sm border border-outline-variant bg-white">
+        <section className="xl:col-span-9 flex flex-col rounded-2xl overflow-hidden shadow-sm border border-outline-variant bg-white min-h-0">
 
           {/* 헤더 */}
-          <div className="shrink-0 bg-gradient-to-r from-primary to-[#3a7fd4] px-6 py-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="relative">
+          <div className="shrink-0 bg-gradient-to-r from-primary to-[#3a7fd4] px-3 xl:px-6 py-4 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="relative shrink-0">
                 <div className="w-11 h-11 rounded-full bg-white/20 backdrop-blur flex items-center justify-center">
                   <span className="material-symbols-outlined text-white text-2xl">smart_toy</span>
                 </div>
                 {view === 'chat' && <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-400 border-2 border-primary rounded-full" />}
               </div>
-              <div>
-                <p className="font-bold text-white text-sm leading-tight">
+              <div className="min-w-0">
+                <p className="font-bold text-white text-sm leading-tight truncate">
                   {viewingHistory ? viewingHistory.title : '마음이 AI 민원 상담'}
                 </p>
-                <p className="text-xs text-white/70 mt-0.5">
+                <p className="text-xs text-white/70 mt-0.5 truncate">
                   {viewingHistory ? `${viewingHistory.date} ${viewingHistory.time}` : '온라인 · 24시간 응답 가능'}
                 </p>
               </div>
@@ -904,7 +904,7 @@ function Chatbot() {
                   className="flex items-center gap-1 text-xs font-bold px-2 py-1.5 px-3.5 py-2 rounded-lg text-white/80 hover:text-white hover:bg-white/10 transition-colors"
                 >
                   <span className="material-symbols-outlined text-base">add_comment</span>
-                  <span className="hidden inline">새 상담 시작</span>
+                  <span className="hidden xl:inline">새 상담 시작</span>
                 </button>
                 <button
                   onClick={returnToLive}
@@ -913,7 +913,7 @@ function Chatbot() {
                   }`}
                 >
                   <span className="material-symbols-outlined text-base">chat</span>
-                  <span className="hidden inline">현재 상담</span>
+                  <span className="hidden xl:inline">현재 상담</span>
                 </button>
                 <button
                   onClick={() => { if (!viewingHistory) snapshotLive(); refreshChatSessions(); setView('history'); setViewingHistory(null); }}
@@ -922,7 +922,7 @@ function Chatbot() {
                   }`}
                 >
                   <span className="material-symbols-outlined text-base">history</span>
-                  <span className="hidden inline">상담 내역</span>
+                  <span className="hidden xl:inline">상담 내역</span>
                   <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${view === 'history' || viewingHistory ? 'bg-primary/10 text-primary' : 'bg-white/20 text-white'}`}>
                     {pastSessions.length}
                   </span>
@@ -1087,7 +1087,7 @@ function Chatbot() {
                           }`}
                         >
                           <span className="material-symbols-outlined text-[18px]">{isListening ? 'mic_off' : 'mic'}</span>
-                          <span className="hidden inline">{isListening ? '녹음 중...' : '음성'}</span>
+                          <span className="hidden xl:inline">{isListening ? '녹음 중...' : '음성'}</span>
                         </button>
                         <button
                           type="button"
@@ -1095,7 +1095,7 @@ function Chatbot() {
                           className="flex items-center gap-1 text-[11px] text-on-surface-variant hover:text-primary px-2.5 py-1.5 rounded-xl hover:bg-primary/8 transition-colors"
                         >
                           <span className="material-symbols-outlined text-[18px]">image</span>
-                          <span className="hidden inline">이미지</span>
+                          <span className="hidden xl:inline">이미지</span>
                         </button>
                         <button
                           type="button"
@@ -1103,7 +1103,7 @@ function Chatbot() {
                           className="flex items-center gap-1 text-[11px] text-on-surface-variant hover:text-primary px-2.5 py-1.5 rounded-xl hover:bg-primary/8 transition-colors"
                         >
                           <span className="material-symbols-outlined text-[18px]">attach_file</span>
-                          <span className="hidden inline">파일</span>
+                          <span className="hidden xl:inline">파일</span>
                         </button>
                       </div>
                       <button
@@ -1199,7 +1199,7 @@ function Chatbot() {
         </section>
 
         {/* ── 오른쪽 사이드 ── */}
-        <aside className="flex col-span-3 flex-col gap-4 min-h-0">
+        <aside className="hidden xl:flex xl:col-span-3 flex-col gap-4 min-h-0">
           <div className="flex-1 min-h-0 flex flex-col bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden">
             <div className="shrink-0 bg-gradient-to-r from-primary/8 to-transparent px-5 py-4 border-b border-outline-variant/60 flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -1309,7 +1309,7 @@ function Chatbot() {
       {/* 민원 접수 모달 (배경 클릭/ESC로는 안 닫힘 — 취소/X/접수로만) */}
       {submitModal.open && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
-          <div className="bg-white rounded-2xl shadow-2xl w-[480px] overflow-hidden">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[480px] overflow-hidden">
             <div className="px-6 pt-6 pb-4 border-b border-outline-variant/50 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
@@ -1413,7 +1413,7 @@ function Chatbot() {
       {/* 민원 접수 완료 팝업 */}
       {submitDone && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center" onClick={() => setSubmitDone(null)}>
-          <div className="flex flex-col items-center gap-4 bg-white border border-outline-variant px-10 py-8 rounded-3xl shadow-2xl w-[360px]" onClick={e => e.stopPropagation()}>
+          <div className="flex flex-col items-center gap-4 bg-white border border-outline-variant px-10 py-8 rounded-3xl shadow-2xl w-full max-w-[360px]" onClick={e => e.stopPropagation()}>
             <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
               <span className="material-symbols-outlined text-4xl text-primary">check_circle</span>
             </div>

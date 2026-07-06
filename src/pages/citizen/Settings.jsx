@@ -252,7 +252,7 @@ function Settings() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-5 items-stretch">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-stretch">
 
         {/* ── 왼쪽: 정보 수정 ── */}
         <form onSubmit={handleSave} className="bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden flex flex-col">

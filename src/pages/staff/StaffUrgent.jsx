@@ -173,7 +173,7 @@ function StaffUrgent() {
         </div>
 
         {/* 상태별 카드 */}
-        <div className="grid grid-cols-7 gap-3">
+        <div className="grid grid-cols-3 sm:grid-cols-4 xl:grid-cols-7 gap-2 xl:gap-3">
           {/* 전체조회 */}
           <button
             onClick={() => setFilterStatus('전체')}
@@ -201,10 +201,10 @@ function StaffUrgent() {
           })}
         </div>
 
-        <div className="flex flex-row gap-5 [height:calc(100vh-16rem)]">
+        <div className="flex flex-col xl:flex-row gap-5 xl:[height:calc(100vh-16rem)]">
 
           {/* 목록 */}
-          <section className="w-[420px] shrink-0 flex flex-col bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden">
+          <section className="w-full xl:w-[420px] shrink-0 flex flex-col bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden max-h-[60vh] xl:max-h-none">
             <div className="p-4 border-b border-outline-variant/60 space-y-3">
               <div className="relative">
                 <input
@@ -262,7 +262,7 @@ function StaffUrgent() {
 
           {/* 상세 패널 */}
           {selectedData ? (
-            <section className="flex-1 flex flex-col bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden">
+            <section className="flex-1 flex flex-col bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden min-h-[400px] xl:min-h-0">
               <div className="shrink-0 px-6 py-4 border-b border-red-200 bg-red-50 flex items-start justify-between">
                 <div>
                   <div className="flex items-center gap-2 mb-1.5">
@@ -515,7 +515,7 @@ function StaffUrgent() {
               </div>
             </section>
           ) : (
-            <section className="flex flex-1 items-center justify-center bg-white rounded-2xl border border-outline-variant shadow-sm">
+            <section className="flex flex-1 items-center justify-center bg-white rounded-2xl border border-outline-variant shadow-sm min-h-[300px] xl:min-h-0">
               <div className="text-center text-on-surface-variant space-y-2">
                 <span className="material-symbols-outlined text-5xl opacity-20">notification_important</span>
                 <p className="text-sm">왼쪽 목록에서 긴급 민원을 선택하세요.</p>

@@ -18,6 +18,10 @@ export const renderFormPdfApi = (templateId, fields) =>
     .post(`/forms/templates/${templateId}/render`, { fields }, { responseType: 'blob' })
     .then((r) => r.data);
 
+// 필드 좌표 디버그 미리보기 PDF (파란 박스=팀 좌표, 빨간 박스=자동 생성)
+export const getFormDebugPreviewApi = (id) =>
+  client.get(`/forms/templates/${id}/debug-preview`, { responseType: 'blob' }).then((r) => r.data);
+
 // AI 필드 값 채우기. 응답: { template_id, fields: { key: value, ... } }
 // 서버가 auto_fill_from(성명/연락처)은 로그인 사용자 값으로 강제 덮어씀.
 export const fillFormApi = ({ templateId, userMessage, chatSessionId, currentFields }) =>

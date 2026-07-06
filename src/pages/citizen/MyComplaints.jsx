@@ -356,11 +356,11 @@ function MyComplaints() {
   /* ── 목록 화면 ── */
   return (
     <CitizenLayout pageTitle="내 민원 내역" activeMenu="complaints">
-      <div className="grid grid-cols-12 gap-5">
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
         {/* 왼쪽 */}
-        <div className="col-span-8 flex flex-col gap-5">
+        <div className="xl:col-span-8 flex flex-col gap-5">
           {/* 통계 카드 */}
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 xl:gap-4">
             {[
               { label: '접수됨',    value: countOf('접수'),     icon: 'inbox',                color: 'text-blue-600',    bg: 'bg-blue-50' },
               { label: '처리중',    value: countOf('처리 중'),  icon: 'pending_actions',      color: 'text-amber-600',   bg: 'bg-amber-50' },
@@ -441,7 +441,7 @@ function MyComplaints() {
         </div>
 
         {/* 오른쪽 사이드 */}
-        <div className="col-span-4 flex flex-col gap-5">
+        <div className="xl:col-span-4 flex flex-col gap-5">
           {/* 실시간 알림 */}
           <div className="bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden">
             <div className="flex items-center justify-between px-5 py-4 border-b border-outline-variant">

@@ -1,6 +1,7 @@
 ﻿import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import logo from '../../assets/logo.png';
+import cityBg from '../../assets/city-bg.png';
 import { useApp, DEPT_OPTIONS } from '../../store/AppContext';
 import { registerApi } from '../../api/auth';
 import { getPublicDepartmentsApi } from '../../api/admin';
@@ -114,11 +115,12 @@ function Register() {
   };
 
   return (
-    <div className="h-[100dvh] min-h-screen flex items-center justify-center bg-white overflow-auto py-4" style={{ minWidth: 1280 }}>
-      <div className="flex items-stretch mx-auto gap-6 px-10 py-4 w-full max-w-[900px] h-auto">
+    <div className="h-[100dvh] xl:h-auto xl:min-h-screen flex items-center justify-center overflow-hidden xl:overflow-y-auto py-2 xl:py-6 relative">
+      <img src={cityBg} aria-hidden alt="" className="fixed inset-0 w-full h-full object-cover object-bottom pointer-events-none select-none opacity-[0.45]" />
+      <div className="flex items-stretch mx-auto gap-6 px-4 xl:px-10 py-4 w-full max-w-[900px] h-auto">
 
-        {/* ── 왼쪽: 브랜드 ── */}
-        <div className="flex w-[400px] shrink-0">
+        {/* ── 왼쪽: 브랜드 (모바일 숨김) ── */}
+        <div className="hidden xl:flex w-[400px] shrink-0">
           <div className="flex flex-col w-full h-full bg-gradient-to-b from-[#2563eb] via-[#60a5fa] to-[#93c5fd] px-8 py-10 relative overflow-hidden rounded-3xl shadow-xl gap-7">
             <div className="absolute top-[-80px] right-[-80px] w-62 h-72 rounded-full bg-white/10 pointer-events-none" />
             <div className="absolute bottom-[-60px] left-[-60px] w-56 h-56 rounded-full bg-white/5 pointer-events-none" />
@@ -174,12 +176,18 @@ function Register() {
         </div>
 
         {/* ── 오른쪽: 폼 ── */}
-        <div className="flex w-[440px] shrink-0 h-auto">
+        <div className="flex w-full max-w-[440px] xl:w-[440px] mx-auto shrink-0 h-auto">
           <div className="w-full flex flex-col h-auto">
-            <div className="bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden flex flex-col flex-1 h-auto">
+            <div className="bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden relative flex flex-col flex-1 h-auto">
+              {/* 마음이 로고 배경 워터마크 (로그인 페이지와 동일) */}
+              <img
+                src={logo}
+                alt=""
+                className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[280px] opacity-[0.06] pointer-events-none select-none"
+              />
 
               {/* 탭 */}
-              <div className="flex border-b border-outline-variant">
+              <div className="relative z-10 flex border-b border-outline-variant">
                 {[
                   { key: 'citizen', label: '일반 회원가입',  icon: 'person' },
                   { key: 'staff',   label: '담당자 회원가입', icon: 'badge' },
@@ -188,7 +196,7 @@ function Register() {
                     key={t.key}
                     type="button"
                     onClick={() => handleModeChange(t.key)}
-                    className={`flex-1 flex items-center justify-center gap-2 py-4 text-sm font-bold transition-all border-b-2 ${
+                    className={`flex-1 flex items-center justify-center gap-2 py-2.5 xl:py-4 text-sm font-bold transition-all border-b-2 ${
                       mode === t.key
                         ? 'text-primary border-primary bg-primary/3'
                         : 'text-on-surface-variant border-transparent hover:text-on-surface hover:bg-surface-container-low'
@@ -200,7 +208,7 @@ function Register() {
                 ))}
               </div>
 
-              <div className="p-6 flex flex-col flex-1 justify-center">
+              <div className="relative z-10 p-4 xl:p-6 flex flex-col flex-1 justify-center">
 
                 {/* 모바일 전용 로고 */}
                 <div className="hidden">
@@ -211,7 +219,7 @@ function Register() {
                 <h2 className="text-base font-bold text-on-surface mb-0.5">
                   {isStaff ? '담당자 회원가입' : '일반 회원가입'}
                 </h2>
-                <p className="text-xs text-on-surface-variant mb-4">
+                <p className="text-xs text-on-surface-variant mb-2 xl:mb-4">
                   {isStaff ? '담당 부서를 선택하고 정보를 입력해주세요.' : '정보를 입력하고 마음이 서비스를 시작하세요.'}
                 </p>
 
@@ -249,21 +257,21 @@ function Register() {
                   </div>
                 ) : (
                   <>
-                    <form onSubmit={handleSubmit} className="space-y-3">
+                    <form onSubmit={handleSubmit} className="space-y-2 xl:space-y-3">
                       {/* 이름 */}
                       <div>
-                        <label className="text-sm font-medium text-on-surface block mb-1.5">이름</label>
+                        <label className="text-sm font-medium text-on-surface block mb-1 xl:mb-1.5">이름</label>
                         <div className="relative">
                           <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[20px]">person</span>
                           <input type="text" placeholder="홍길동" value={name} onChange={(e) => setName(e.target.value)}
-                            className="w-full h-11 pl-10 pr-4 border border-outline-variant rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-on-surface text-sm" />
+                            className="w-full h-10 xl:h-11 pl-10 pr-4 border border-outline-variant rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-on-surface text-sm" />
                         </div>
                       </div>
 
                       {/* 전화번호 */}
                       <div>
-                        <label className="text-sm font-medium text-on-surface block mb-1.5">전화번호</label>
-                        <div className="relative flex items-center gap-2.5 h-11 pl-11 pr-4 border border-outline-variant rounded-xl focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 transition-all">
+                        <label className="text-sm font-medium text-on-surface block mb-1 xl:mb-1.5">전화번호</label>
+                        <div className="relative flex items-center gap-2.5 h-10 xl:h-11 pl-11 pr-4 border border-outline-variant rounded-xl focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 transition-all">
                           <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[20px]">phone</span>
                           <span className="text-sm text-on-surface font-medium shrink-0">010</span>
                           <span className="text-outline shrink-0">-</span>
@@ -292,24 +300,24 @@ function Register() {
 
                       {/* 이메일 */}
                       <div>
-                        <label className="text-sm font-medium text-on-surface block mb-1.5">이메일</label>
+                        <label className="text-sm font-medium text-on-surface block mb-1 xl:mb-1.5">이메일</label>
                         <div className="relative">
                           <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[20px]">mail</span>
                           <input type="email" placeholder="example@email.com" value={email} onChange={(e) => setEmail(e.target.value)}
-                            className="w-full h-11 pl-10 pr-4 border border-outline-variant rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-on-surface text-sm" />
+                            className="w-full h-10 xl:h-11 pl-10 pr-4 border border-outline-variant rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-on-surface text-sm" />
                         </div>
                       </div>
 
                       {/* 담당 부서 (담당자만) */}
                       {isStaff && (
                         <div>
-                          <label className="text-sm font-medium text-on-surface block mb-1.5">담당 부서</label>
+                          <label className="text-sm font-medium text-on-surface block mb-1 xl:mb-1.5">담당 부서</label>
                           <div className="relative" ref={deptBoxRef}>
                             <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[20px] z-10">business</span>
                             <button
                               type="button"
                               onClick={() => setDeptOpen((o) => !o)}
-                              className="w-full h-11 pl-10 pr-9 border border-outline-variant rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-left text-sm bg-white flex items-center text-on-surface"
+                              className="w-full h-10 xl:h-11 pl-10 pr-9 border border-outline-variant rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-left text-sm bg-white flex items-center text-on-surface"
                             >
                               {selectedDept || '담당 부서 선택'}
                             </button>
@@ -355,12 +363,12 @@ function Register() {
 
                       {/* 비밀번호 */}
                       <div>
-                        <label className="text-sm font-medium text-on-surface block mb-1.5">비밀번호</label>
+                        <label className="text-sm font-medium text-on-surface block mb-1 xl:mb-1.5">비밀번호</label>
                         <div className="relative">
                           <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[20px]">lock</span>
                           <input type={showPw ? 'text' : 'password'} placeholder="비밀번호를 입력하세요"
                             value={password} onChange={(e) => setPassword(e.target.value)}
-                            className="w-full h-11 pl-10 pr-10 border border-outline-variant rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-on-surface text-sm" />
+                            className="w-full h-10 xl:h-11 pl-10 pr-10 border border-outline-variant rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-on-surface text-sm" />
                           <button type="button" onClick={() => setShowPw(!showPw)} className="absolute right-3 top-1/2 -translate-y-1/2 text-outline hover:text-on-surface transition-colors">
                             <span className="material-symbols-outlined text-[20px]">{showPw ? 'visibility_off' : 'visibility'}</span>
                           </button>
@@ -370,12 +378,12 @@ function Register() {
 
                       {/* 비밀번호 확인 */}
                       <div>
-                        <label className="text-sm font-medium text-on-surface block mb-1.5">비밀번호 확인</label>
+                        <label className="text-sm font-medium text-on-surface block mb-1 xl:mb-1.5">비밀번호 확인</label>
                         <div className="relative">
                           <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[20px]">lock_reset</span>
                           <input type={showPwConfirm ? 'text' : 'password'} placeholder="비밀번호를 다시 입력하세요"
                             value={passwordConfirm} onChange={(e) => setPasswordConfirm(e.target.value)}
-                            className="w-full h-11 pl-10 pr-10 border border-outline-variant rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-on-surface text-sm" />
+                            className="w-full h-10 xl:h-11 pl-10 pr-10 border border-outline-variant rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-on-surface text-sm" />
                           <button type="button" onClick={() => setShowPwConfirm(!showPwConfirm)} className="absolute right-3 top-1/2 -translate-y-1/2 text-outline hover:text-on-surface transition-colors">
                             <span className="material-symbols-outlined text-[20px]">{showPwConfirm ? 'visibility_off' : 'visibility'}</span>
                           </button>
