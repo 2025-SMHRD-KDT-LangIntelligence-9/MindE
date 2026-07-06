@@ -97,21 +97,21 @@ function AdminMonitoring() {
       )}
 
       {/* 요약 카드 */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-3 md:mb-6">
+      <div className="grid grid-cols-7 gap-3 mb-6">
         {summaryCards.map((c) => (
           <button
             key={c.label}
             onClick={() => c.tab && handleTabClick(c.tab)}
-            className={`bg-white rounded-2xl border p-2 md:p-4 shadow-sm flex flex-col items-center gap-1 md:gap-2 w-full transition-all ${
+            className={`bg-white rounded-2xl border p-4 shadow-sm flex flex-col items-center gap-2 w-full transition-all ${
               c.tab && activeTab === c.tab
                 ? 'border-primary ring-2 ring-primary/20'
                 : 'border-outline-variant'
             } ${c.tab ? 'cursor-pointer hover:shadow-md' : 'cursor-default'}`}
           >
-            <div className={`w-8 h-8 md:w-10 md:h-10 rounded-xl ${c.bg} flex items-center justify-center shrink-0`}>
-              <span className={`material-symbols-outlined text-base md:text-xl ${c.color}`}>{c.icon}</span>
+            <div className={`w-10 h-10 rounded-xl ${c.bg} flex items-center justify-center shrink-0`}>
+              <span className={`material-symbols-outlined text-xl ${c.color}`}>{c.icon}</span>
             </div>
-            <p className={`text-base md:text-xl font-bold ${c.color}`}>{c.value}</p>
+            <p className={`text-xl font-bold ${c.color}`}>{c.value}</p>
             <p className="text-xs text-on-surface-variant">{c.label}</p>
           </button>
         ))}
@@ -119,7 +119,7 @@ function AdminMonitoring() {
 
       {/* 민원 리스트 */}
       <div className="bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden">
-        <div className="flex flex-wrap items-center justify-between gap-2 md:gap-3 px-3 md:px-6 py-3 md:py-4 border-b border-outline-variant">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b border-outline-variant">
           <div className="flex items-center gap-2">
             <h3 className="font-bold text-sm text-on-surface">상세 민원 리스트</h3>
             {activeTab !== 'all' && (
@@ -207,7 +207,7 @@ function AdminMonitoring() {
           </table>
         </div>
 
-        <div className="px-3 md:px-6 py-2 md:py-3.5 border-t border-outline-variant flex flex-wrap gap-2 justify-between items-center bg-surface-container-low/30">
+        <div className="px-6 py-3.5 border-t border-outline-variant flex flex-wrap gap-2 justify-between items-center bg-surface-container-low/30">
           <span className="text-xs text-on-surface-variant">
             전체 {filtered.length}건 (총 {complaints.length}건)
             {filtered.length > 0 && ` · ${(currentPage - 1) * PAGE_SIZE + 1}–${Math.min(currentPage * PAGE_SIZE, filtered.length)} 표시`}

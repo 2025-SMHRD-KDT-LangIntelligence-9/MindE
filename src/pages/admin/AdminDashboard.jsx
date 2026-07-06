@@ -1,14 +1,43 @@
-﻿import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+﻿import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../../layouts/AdminLayout';
 import { useApp, CATEGORY_STYLE, URGENCY_STYLE } from '../../store/AppContext';
 import { STATUS_STYLE } from '../../utils/statusStyle';
 import { Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Label } from 'recharts';
-import WordCloud from 'react-d3-cloud';
 import { DEPARTMENTS } from '../../utils/departments';
-import { getStatsHotClustersApi } from '../../api/stats';
 
-const PIE_COLORS = ['#4472C4', '#FF9F43', '#54A7E0', '#00B4D8', '#7B68EE', '#FF6384', '#36A2EB', '#4BC0C0', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6'];
+const CATEGORY_COLORS = {
+  '교통':     '#3B82F6',
+  '환경':     '#14B8A6',
+  '건축':     '#F59E0B',
+  '상하수도': '#06B6D4',
+  '농축산':   '#10B981',
+  '보건위생': '#A855F7',
+  '행정':     '#F97316',
+  '기타':     '#94A3B8',
+};
+
+const PIE_COLORS = [
+  '#E74C3C', // 빨강
+  '#3498DB', // 파랑
+  '#2ECC71', // 초록
+  '#F39C12', // 주황
+  '#9B59B6', // 보라
+  '#1ABC9C', // 청록
+  '#E67E22', // 진주황
+  '#2980B9', // 진파랑
+  '#27AE60', // 진초록
+  '#8E44AD', // 진보라
+  '#F1C40F', // 노랑
+  '#16A085', // 다크청록
+  '#C0392B', // 다크빨강
+  '#D35400', // 다크주황
+  '#7D3C98', // 인디고보라
+  '#117A65', // 다크초록
+  '#2471A3', // 스틸블루
+  '#CB4335', // 코럴레드
+  '#1F618D', // 네이비
+  '#A93226', // 마룬
+];
 
 const DEPT_COLOR_MAP = Object.fromEntries(
   DEPARTMENTS.map((d, i) => [d.name, PIE_COLORS[i % PIE_COLORS.length]])
@@ -19,22 +48,19 @@ function AdminDashboard() {
   const navigate = useNavigate();
   const { complaints, stats } = useApp();
 
-  const [clusterWords, setClusterWords] = useState([]);
-  useEffect(() => {
-    getStatsHotClustersApi()
-      .then((data) => {
-        const list = Array.isArray(data) ? data : (data?.clusters ?? []);
-        setClusterWords(
-          list
-            .filter((c) => c.representative_content && c.complaint_count > 0)
-            .map((c) => ({ text: c.representative_content, value: c.complaint_count }))
-            .sort((a, b) => b.value - a.value)
-        );
-      })
-      .catch(() => {});
-  }, []);
-
   const urgentRows = complaints.filter((c) => c.urgency === '긴급').slice(0, 5);
+
+  // 카테고리별 민원 건수
+  const categoryCountMap = complaints.reduce((acc, c) => {
+    const cat = c.category ?? '기타';
+    acc[cat] = (acc[cat] || 0) + 1;
+    return acc;
+  }, {});
+  const categoryData = Object.entries(CATEGORY_COLORS)
+    .map(([name, color]) => ({ name, value: categoryCountMap[name] || 0, color }))
+    .filter((d) => d.value > 0)
+    .sort((a, b) => b.value - a.value);
+  const categoryTotal = categoryData.reduce((s, d) => s + d.value, 0);
 
   // 금일 부서별 접수 현황
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -79,41 +105,48 @@ function AdminDashboard() {
     <AdminLayout pageTitle="오늘의 대시보드" activeMenu="dashboard">
 
       {/* 요약 카드 */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-3 md:mb-6">
+      <div className="grid grid-cols-7 gap-3 mb-6">
         {summaryCards.map((c) => (
-          <div key={c.label} className="bg-white rounded-2xl border border-outline-variant p-2 md:p-4 shadow-sm flex flex-col items-center gap-1 md:gap-2">
-            <div className={`w-8 h-8 md:w-10 md:h-10 rounded-xl ${c.bg} flex items-center justify-center shrink-0`}>
-              <span className={`material-symbols-outlined text-base md:text-xl ${c.color}`}>{c.icon}</span>
+          <div key={c.label} className="bg-white rounded-2xl border border-outline-variant p-4 shadow-sm flex flex-col items-center gap-2">
+            <div className={`w-10 h-10 rounded-xl ${c.bg} flex items-center justify-center shrink-0`}>
+              <span className={`material-symbols-outlined text-xl ${c.color}`}>{c.icon}</span>
             </div>
-            <p className={`text-base md:text-xl font-bold ${c.color}`}>{c.value}</p>
+            <p className={`text-xl font-bold ${c.color}`}>{c.value}</p>
             <p className="text-xs text-on-surface-variant">{c.label}</p>
           </div>
         ))}
       </div>
 
       {/* 3개 도넛 차트 */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-5 mb-3 md:mb-6">
+      <div className="grid grid-cols-3 gap-5 mb-6">
 
         {/* 금일 부서별 접수현황 */}
-        <div className="bg-white rounded-2xl border border-outline-variant p-3 md:p-5 shadow-sm">
+        <div className="bg-white rounded-2xl border border-outline-variant p-5 shadow-sm">
           <h3 className="font-bold text-sm text-on-surface mb-0.5">금일 부서별 접수현황</h3>
           <p className="text-xs text-on-surface-variant mb-3">오늘 접수된 민원 {todayTotal}건</p>
-          <div className="flex items-start gap-3">
-            <div style={{ width: 140, height: 140, flexShrink: 0 }}>
+          <div className="flex items-center gap-3">
+            <div style={{ width: 140, height: 140, flexShrink: 0, position: 'relative' }}>
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={todayDeptData.filter(d => d.value > 0)} cx="50%" cy="50%" innerRadius={36} outerRadius={60} dataKey="value" paddingAngle={2}>
+                  <Pie data={todayDeptData.filter(d => d.value > 0)} cx="50%" cy="50%" innerRadius={36} outerRadius={60} dataKey="value" paddingAngle={2}
+                    label={({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
+                      if (percent < 0.05) return null;
+                      const r = innerRadius + (outerRadius - innerRadius) * 0.5;
+                      const x = cx + r * Math.cos(-midAngle * Math.PI / 180);
+                      const y = cy + r * Math.sin(-midAngle * Math.PI / 180);
+                      return <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={9} fontWeight="700">{`${Math.round(percent * 100)}%`}</text>;
+                    }}
+                    labelLine={false}
+                  >
                     {todayDeptData.filter(d => d.value > 0).map((d) => <Cell key={d.name} fill={d.color} />)}
-                    <Label content={({ viewBox: { cx, cy } }) => (
-                      <text textAnchor="middle">
-                        <tspan x={cx} y={cy - 4} fontSize={15} fontWeight="700" fill="#1e3a5f">{todayTotal}</tspan>
-                        <tspan x={cx} y={cy + 11} fontSize={9} fill="#6b7280">건</tspan>
-                      </text>
-                    )} position="center" />
                   </Pie>
                   <Tooltip formatter={(v, name) => [`${v}건`, name]} contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e5e7eb' }} />
                 </PieChart>
               </ResponsiveContainer>
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+                <span style={{ fontSize: 15, fontWeight: 700, color: '#1e3a5f', lineHeight: 1 }}>{todayTotal}</span>
+                <span style={{ fontSize: 9, color: '#6b7280', marginTop: 2 }}>건</span>
+              </div>
             </div>
             <div className="flex-1 min-w-0" style={{ columns: 3, columnGap: '8px' }}>
               {todayDeptData.map((d) => (
@@ -128,25 +161,32 @@ function AdminDashboard() {
         </div>
 
         {/* 이번달 부서별 접수현황 */}
-        <div className="bg-white rounded-2xl border border-outline-variant p-3 md:p-5 shadow-sm">
+        <div className="bg-white rounded-2xl border border-outline-variant p-5 shadow-sm">
           <h3 className="font-bold text-sm text-on-surface mb-0.5">이번달 부서별 접수현황</h3>
           <p className="text-xs text-on-surface-variant mb-3">이번달 접수된 민원 {monthDeptTotal}건</p>
-          <div className="flex items-start gap-3">
-            <div style={{ width: 140, height: 140, flexShrink: 0 }}>
+          <div className="flex items-center gap-3">
+            <div style={{ width: 140, height: 140, flexShrink: 0, position: 'relative' }}>
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={monthDeptData.filter(d => d.value > 0)} cx="50%" cy="50%" innerRadius={36} outerRadius={60} dataKey="value" paddingAngle={2}>
+                  <Pie data={monthDeptData.filter(d => d.value > 0)} cx="50%" cy="50%" innerRadius={36} outerRadius={60} dataKey="value" paddingAngle={2}
+                    label={({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
+                      if (percent < 0.05) return null;
+                      const r = innerRadius + (outerRadius - innerRadius) * 0.5;
+                      const x = cx + r * Math.cos(-midAngle * Math.PI / 180);
+                      const y = cy + r * Math.sin(-midAngle * Math.PI / 180);
+                      return <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={9} fontWeight="700">{`${Math.round(percent * 100)}%`}</text>;
+                    }}
+                    labelLine={false}
+                  >
                     {monthDeptData.filter(d => d.value > 0).map((d) => <Cell key={d.name} fill={d.color} />)}
-                    <Label content={({ viewBox: { cx, cy } }) => (
-                      <text textAnchor="middle">
-                        <tspan x={cx} y={cy - 4} fontSize={15} fontWeight="700" fill="#1e3a5f">{monthDeptTotal}</tspan>
-                        <tspan x={cx} y={cy + 11} fontSize={9} fill="#6b7280">건</tspan>
-                      </text>
-                    )} position="center" />
                   </Pie>
                   <Tooltip formatter={(v, name) => [`${v}건`, name]} contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e5e7eb' }} />
                 </PieChart>
               </ResponsiveContainer>
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+                <span style={{ fontSize: 15, fontWeight: 700, color: '#1e3a5f', lineHeight: 1 }}>{monthDeptTotal}</span>
+                <span style={{ fontSize: 9, color: '#6b7280', marginTop: 2 }}>건</span>
+              </div>
             </div>
             <div className="flex-1 min-w-0" style={{ columns: 3, columnGap: '8px' }}>
               {monthDeptData.map((d) => (
@@ -160,34 +200,51 @@ function AdminDashboard() {
           </div>
         </div>
 
-        {/* 반복민원 키워드 */}
-        <div className="bg-white rounded-2xl border border-outline-variant p-3 md:p-5 shadow-sm">
-          <h3 className="font-bold text-sm text-on-surface mb-0.5">반복민원 키워드</h3>
-          <p className="text-xs text-on-surface-variant mb-3">반복 접수된 민원 클러스터</p>
-          {clusterWords.length === 0 ? (
-            <p className="text-sm text-on-surface-variant text-center py-6">클러스터 데이터가 없습니다.</p>
-          ) : (
-            <div style={{ height: 220 }}>
-              <WordCloud
-                data={clusterWords}
-                width={500}
-                height={220}
-                font="Noto Sans KR, Malgun Gothic, sans-serif"
-                fontWeight="bold"
-                fontSize={(d) => Math.sqrt(d.value) * 12}
-                rotate={(_, i) => (i % 3 === 0 ? 90 : 0)}
-                padding={3}
-                fill={(_, i) => PIE_COLORS[i % PIE_COLORS.length]}
-              />
+        {/* 카테고리별 민원 건수 */}
+        <div className="bg-white rounded-2xl border border-outline-variant p-5 shadow-sm">
+          <h3 className="font-bold text-sm text-on-surface mb-0.5">카테고리별 민원건수</h3>
+          <p className="text-xs text-on-surface-variant mb-3">전체 민원 {categoryTotal}건</p>
+          <div className="flex flex-col items-center gap-3">
+            <div style={{ width: 150, height: 150, flexShrink: 0, position: 'relative' }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={categoryData} cx="50%" cy="50%" innerRadius={40} outerRadius={65} dataKey="value" paddingAngle={2}
+                    label={({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
+                      if (percent < 0.05) return null;
+                      const r = innerRadius + (outerRadius - innerRadius) * 0.5;
+                      const x = cx + r * Math.cos(-midAngle * Math.PI / 180);
+                      const y = cy + r * Math.sin(-midAngle * Math.PI / 180);
+                      return <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={9} fontWeight="700">{`${Math.round(percent * 100)}%`}</text>;
+                    }}
+                    labelLine={false}
+                  >
+                    {categoryData.map((d) => <Cell key={d.name} fill={d.color} />)}
+                  </Pie>
+                  <Tooltip formatter={(v, name) => [`${v}건`, name]} contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e5e7eb' }} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+                <span style={{ fontSize: 16, fontWeight: 700, color: '#1e3a5f', lineHeight: 1 }}>{categoryTotal}</span>
+                <span style={{ fontSize: 9, color: '#6b7280', marginTop: 2 }}>건</span>
+              </div>
             </div>
-          )}
+            <div className="w-full grid grid-cols-2 gap-x-3 gap-y-0.5">
+              {categoryData.map((d) => (
+                <div key={d.name} className="flex items-center gap-1.5 min-w-0">
+                  <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: d.color }} />
+                  <span className="text-[11px] text-on-surface flex-1 truncate">{d.name}</span>
+                  <span className="text-[11px] font-bold tabular-nums" style={{ color: d.color }}>{d.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
 
       </div>
 
       {/* 긴급 민원 테이블 */}
       <div className="bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden">
-        <div className="flex items-center justify-between px-3 md:px-6 py-3 md:py-4 border-b border-outline-variant">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-outline-variant">
           <div>
             <h3 className="font-bold text-sm text-on-surface">최근 접수된 긴급 민원</h3>
             <p className="text-xs text-on-surface-variant mt-0.5">즉각적인 처리가 필요한 민원입니다.</p>

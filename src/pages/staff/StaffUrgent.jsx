@@ -6,7 +6,7 @@ import { STATUS_STYLE as statusStyle } from '../../utils/statusStyle';
 import { uploadAttachmentApi, getComplaintAttachmentsApi, getAttachmentBlobUrlApi } from '../../api/complaints';
 import FilePreviewModal from '../../components/FilePreviewModal';
 
-const STATUS_OPTIONS = ['접수', '처리 중', '보완 요청', '반려', '완료'];
+const STATUS_OPTIONS = ['접수', '배정', '처리 중', '보완 요청', '반려', '완료'];
 
 const URGENCY_REASONS = {
   '도로/교통': '도로 파손 → 차량/보행자 사고 위험. 즉시 현장 점검 필요.',
@@ -37,7 +37,8 @@ function StaffUrgent() {
   const [pendingStatus,  setPendingStatus]  = useState(null);
   const [attachments,    setAttachments]    = useState([]);
   const [changingStatus, setChangingStatus] = useState(false);
-  const fileInputRef = useRef(null);
+  const fileInputRef  = useRef(null);
+  const deepLinkedId  = useRef(null); // 딥링크로 이미 열린 id 추적 — urgentList 재생성마다 openDetail 재호출 방지
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 2500); };
 
@@ -45,10 +46,10 @@ function StaffUrgent() {
 
   useEffect(() => {
     const idParam = searchParams.get('id');
-    if (idParam) {
-      const found = urgentList.find((c) => c.id === idParam);
-      if (found) openDetail(found);
-    }
+    if (!idParam) { deepLinkedId.current = null; return; }
+    if (idParam === deepLinkedId.current) return; // 이미 열린 id면 skip
+    const found = urgentList.find((c) => c.id === idParam);
+    if (found) { openDetail(found); deepLinkedId.current = idParam; }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, urgentList]);
 
@@ -154,10 +155,10 @@ function StaffUrgent() {
         </div>
       )}
 
-      <div className="max-w-7xl mx-auto space-y-3 md:space-y-5">
+      <div className="max-w-7xl mx-auto space-y-5">
 
         {/* 담당 부서 안내 */}
-        <div className="flex items-center gap-3 bg-red-600/8 border border-red-200 rounded-xl px-3 md:px-5 py-2 md:py-3">
+        <div className="flex items-center gap-3 bg-red-600/8 border border-red-200 rounded-xl px-5 py-3">
           <span className="material-symbols-outlined text-red-600 text-lg">business</span>
           <div>
             <span className="text-sm font-bold text-red-700">{currentUser.dept}</span>
@@ -172,16 +173,16 @@ function StaffUrgent() {
         </div>
 
         {/* 상태별 카드 */}
-        <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
+        <div className="grid grid-cols-7 gap-3">
           {/* 전체조회 */}
           <button
             onClick={() => setFilterStatus('전체')}
-            className={`rounded-2xl border p-2 md:p-4 text-center transition-all hover:shadow-md ${
+            className={`rounded-2xl border p-4 text-center transition-all hover:shadow-md ${
               filterStatus === '전체' ? 'border-red-500 bg-red-50' : 'bg-white border-outline-variant'
             }`}
           >
-            <p className="text-lg md:text-2xl font-bold text-on-surface">{urgentList.length}</p>
-            <p className="text-xs text-on-surface-variant mt-0.5 md:mt-1 font-medium">전체</p>
+            <p className="text-2xl font-bold text-on-surface">{urgentList.length}</p>
+            <p className="text-xs text-on-surface-variant mt-1 font-medium">전체</p>
           </button>
           {STATUS_OPTIONS.map((s) => {
             const st = statusStyle[s];
@@ -189,21 +190,21 @@ function StaffUrgent() {
               <button
                 key={s}
                 onClick={() => setFilterStatus(filterStatus === s ? '전체' : s)}
-                className={`rounded-2xl border p-2 md:p-4 text-center transition-all hover:shadow-md ${
+                className={`rounded-2xl border p-4 text-center transition-all hover:shadow-md ${
                   filterStatus === s ? 'border-red-500 bg-red-50' : 'bg-white border-outline-variant'
                 }`}
               >
-                <p className={`text-lg md:text-2xl font-bold ${st.text}`}>{counts[s] ?? 0}</p>
-                <p className="text-xs text-on-surface-variant mt-0.5 md:mt-1 font-medium">{s}</p>
+                <p className={`text-2xl font-bold ${st.text}`}>{counts[s] ?? 0}</p>
+                <p className="text-xs text-on-surface-variant mt-1 font-medium">{s}</p>
               </button>
             );
           })}
         </div>
 
-        <div className="flex flex-col md:flex-row gap-3 md:gap-5 md:[height:calc(100vh-16rem)]">
+        <div className="flex flex-row gap-5 [height:calc(100vh-16rem)]">
 
           {/* 목록 */}
-          <section className="w-full md:w-[420px] md:shrink-0 flex flex-col bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden">
+          <section className="w-[420px] shrink-0 flex flex-col bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden">
             <div className="p-4 border-b border-outline-variant/60 space-y-3">
               <div className="relative">
                 <input
@@ -223,7 +224,7 @@ function StaffUrgent() {
               </div>
             </div>
 
-            <div className="min-h-[200px] md:min-h-0 flex-1 overflow-y-auto divide-y divide-outline-variant/40">
+            <div className="min-h-[200px] min-h-0 flex-1 overflow-y-auto divide-y divide-outline-variant/40">
               {filtered.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full gap-2 text-on-surface-variant">
                   <span className="material-symbols-outlined text-4xl opacity-30">check_circle</span>
@@ -262,7 +263,7 @@ function StaffUrgent() {
           {/* 상세 패널 */}
           {selectedData ? (
             <section className="flex-1 flex flex-col bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden">
-              <div className="shrink-0 px-3 md:px-6 py-2 md:py-4 border-b border-red-200 bg-red-50 flex items-start justify-between">
+              <div className="shrink-0 px-6 py-4 border-b border-red-200 bg-red-50 flex items-start justify-between">
                 <div>
                   <div className="flex items-center gap-2 mb-1.5">
                     <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-red-100 text-red-600">긴급</span>
@@ -278,7 +279,7 @@ function StaffUrgent() {
                 <StatusBadge status={selectedData.status} />
               </div>
 
-              <div className="flex-1 overflow-y-auto p-3 md:p-6 space-y-3 md:space-y-5">
+              <div className="flex-1 overflow-y-auto p-6 space-y-5">
 
                 {/* 민원 내용 */}
                 <div className="bg-surface-container-low/50 rounded-xl p-4">
@@ -502,7 +503,7 @@ function StaffUrgent() {
               </div>
 
               {/* 민원처리 버튼 */}
-              <div className="shrink-0 px-3 md:px-6 py-2 md:py-4 border-t border-outline-variant/60">
+              <div className="shrink-0 px-6 py-4 border-t border-outline-variant/60">
                 <button
                   onClick={handleProcess}
                   disabled={changingStatus || !isDirty}
@@ -514,7 +515,7 @@ function StaffUrgent() {
               </div>
             </section>
           ) : (
-            <section className="hidden md:flex flex-1 items-center justify-center bg-white rounded-2xl border border-outline-variant shadow-sm">
+            <section className="flex flex-1 items-center justify-center bg-white rounded-2xl border border-outline-variant shadow-sm">
               <div className="text-center text-on-surface-variant space-y-2">
                 <span className="material-symbols-outlined text-5xl opacity-20">notification_important</span>
                 <p className="text-sm">왼쪽 목록에서 긴급 민원을 선택하세요.</p>

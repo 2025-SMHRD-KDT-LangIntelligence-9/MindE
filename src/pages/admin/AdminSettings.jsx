@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AdminLayout from '../../layouts/AdminLayout';
 import Pagination from '../../components/Pagination';
@@ -35,18 +35,6 @@ function AdminSettings() {
   // 카테고리 state
   const [categories, setCategories] = useState([]);
   const [catModal, setCatModal] = useState({ open: false, mode: 'add', idx: null, category_id: null, name: '', desc: '', icon: 'corporate_fare', department_id: '' });
-
-  // 카테고리-부서 매핑 (백엔드 미지원 → localStorage 임시 저장)
-  const [catDeptMap, setCatDeptMap] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('minde_catDeptMap') || '{}'); } catch { return {}; }
-  });
-  const updateCatDeptMap = (catId, deptId) => {
-    const next = deptId
-      ? { ...catDeptMap, [String(catId)]: String(deptId) }
-      : Object.fromEntries(Object.entries(catDeptMap).filter(([k]) => k !== String(catId)));
-    setCatDeptMap(next);
-    localStorage.setItem('minde_catDeptMap', JSON.stringify(next));
-  };
 
   // 부서 state
   const [departments, setDepartments] = useState([]);
@@ -123,22 +111,20 @@ function AdminSettings() {
 
   /* ── 카테고리 핸들러 ── */
   const openCatAdd  = () => setCatModal({ open: true, mode: 'add', idx: null, category_id: null, name: '', desc: '', icon: 'corporate_fare', department_id: '' });
-  const openCatEdit = (c, i) => setCatModal({ open: true, mode: 'edit', idx: i, category_id: c.category_id, name: c.name, desc: c.desc, icon: c.icon, department_id: catDeptMap[String(c.category_id)] || c.department_id || '' });
+  const openCatEdit = (c, i) => setCatModal({ open: true, mode: 'edit', idx: i, category_id: c.category_id, name: c.name, desc: c.desc, icon: c.icon, department_id: c.department_id || '' });
   const saveCat = async () => {
     if (!catModal.name.trim()) return;
     const dept = departments.find((d) => String(d.department_id) === String(catModal.department_id));
-    const deptId = catModal.department_id ? Number(catModal.department_id) : null;  // 백엔드에 department_id 저장
+    const deptId = catModal.department_id ? Number(catModal.department_id) : null;
     try {
       if (catModal.mode === 'add') {
         const res = await createCategoryApi(catModal.name.trim(), deptId);
         const entry = { category_id: res.category_id, name: res.name, desc: catModal.desc.trim(), icon: catModal.icon, department_id: res.department_id ?? catModal.department_id, department_name: res.department_name ?? dept?.name ?? '' };
         setCategories((prev) => [...prev, entry]);
-        updateCatDeptMap(res.category_id, catModal.department_id);
       } else {
         const res = await updateCategoryApi(catModal.category_id, catModal.name.trim(), deptId);
         const entry = { category_id: catModal.category_id, name: catModal.name.trim(), desc: catModal.desc.trim(), icon: catModal.icon, department_id: res?.department_id ?? catModal.department_id, department_name: res?.department_name ?? dept?.name ?? '' };
         setCategories((prev) => prev.map((c, i) => i === catModal.idx ? entry : c));
-        updateCatDeptMap(catModal.category_id, catModal.department_id);
       }
       showToast(catModal.mode === 'add' ? '카테고리가 추가되었습니다.' : '카테고리가 수정되었습니다.');
       setCatModal((m) => ({ ...m, open: false }));
@@ -175,16 +161,15 @@ function AdminSettings() {
       if (deleteConfirm.type === 'category') {
         await deleteCategoryApi(deleteConfirm.id);
         setCategories((prev) => prev.filter((_, i) => i !== deleteConfirm.idx));
-        updateCatDeptMap(deleteConfirm.id, '');
+        showToast(`'${deleteConfirm.label}'이(가) 삭제되었습니다.`);
       }
       if (deleteConfirm.type === 'dept') {
         await deleteDepartmentApi(deleteConfirm.id);
         setDepartments((prev) => prev.filter((_, i) => i !== deleteConfirm.idx));
+        showToast(`'${deleteConfirm.label}'이(가) 삭제되었습니다.`);
       }
-      showToast(`'${deleteConfirm.label}'이(가) 삭제되었습니다.`);
     } catch (err) {
-      const msg = err?.response?.data?.detail ?? '삭제 중 오류가 발생했습니다.';
-      showToast(msg);
+      showToast(err?.response?.data?.detail ?? '삭제 중 오류가 발생했습니다.');
     }
     setDeleteConfirm({ open: false, type: '', idx: null, id: null, label: '' });
   };
@@ -329,7 +314,9 @@ function AdminSettings() {
       )}
 
       {/* 회원탈퇴 확인 모달 */}
-      {withdrawModal.open && (
+      {withdrawModal.open && (() => {
+        const userComplaintCnt = complaints.filter((c) => c.citizen === withdrawModal.user?.name).length;
+        return (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center" onClick={() => setWithdrawModal({ open: false, user: null })}>
           <div className="bg-white rounded-2xl shadow-2xl w-[380px] p-6 text-center" onClick={(e) => e.stopPropagation()}>
             <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-4">
@@ -339,6 +326,12 @@ function AdminSettings() {
             <p className="text-sm text-on-surface-variant mb-1">
               <span className="font-bold text-on-surface">{withdrawModal.user?.name}</span>님의 계정이 즉시 삭제됩니다.
             </p>
+            {userComplaintCnt > 0 && (
+              <div className="flex items-start gap-2 text-left bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 my-3">
+                <span className="material-symbols-outlined text-amber-500 text-base mt-0.5 shrink-0">warning</span>
+                <p className="text-xs text-amber-700">이 회원은 민원 <span className="font-bold">{userComplaintCnt}건</span>이 연결되어 있습니다. 백엔드에서 연결 데이터가 함께 처리되어야 삭제됩니다.</p>
+              </div>
+            )}
             <p className="text-xs text-error mb-6">이 작업은 되돌릴 수 없습니다.</p>
             <div className="flex gap-2">
               <button onClick={() => setWithdrawModal({ open: false, user: null })}
@@ -348,8 +341,8 @@ function AdminSettings() {
                   await deleteUser(withdrawModal.user.id);
                   showToast(`${withdrawModal.user.name}님의 계정이 탈퇴 처리되었습니다.`);
                   setSelectedUser(null);
-                } catch {
-                  showToast('탈퇴 처리 중 오류가 발생했습니다. 백엔드 팀에 문의하세요.');
+                } catch (err) {
+                  showToast(err?.response?.data?.detail ?? '탈퇴 처리 중 오류가 발생했습니다.');
                 }
                 setWithdrawModal({ open: false, user: null });
               }}
@@ -357,13 +350,14 @@ function AdminSettings() {
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* 탭 */}
-      <div className="mb-3 md:mb-6 border-b border-outline-variant flex gap-4 md:gap-8">
+      <div className="mb-6 border-b border-outline-variant flex gap-8">
         {tabs.map((tab) => (
           <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-            className={`pb-2 md:pb-4 px-1 md:px-2 text-xs md:text-sm font-bold whitespace-nowrap transition-colors border-b-2 -mb-px flex items-center gap-2 ${
+            className={`pb-4 px-2 text-sm font-bold whitespace-nowrap transition-colors border-b-2 -mb-px flex items-center gap-2 ${
               activeTab === tab.key ? 'text-primary border-primary' : 'text-on-surface-variant border-transparent hover:text-on-surface'
             }`}>
             {tab.label}
@@ -374,10 +368,10 @@ function AdminSettings() {
 
       {/* 탭 1: 민원 카테고리 설정 */}
       {activeTab === 'category' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 md:gap-6">
-          <section className="col-span-1 lg:col-span-8 bg-white rounded-2xl border border-outline-variant p-4 md:p-8">
-            <div className="flex justify-between items-center mb-3 md:mb-6">
-              <h3 className="font-bold text-base md:text-lg">민원 카테고리 목록</h3>
+        <div className="grid grid-cols-12 gap-6">
+          <section className="col-span-8 bg-white rounded-2xl border border-outline-variant p-8">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="font-bold text-lg">민원 카테고리 목록</h3>
               <div className="flex items-center gap-3">
                 <span className="bg-primary/5 text-primary px-3 py-1.5 rounded-lg text-xs font-bold">총 {categories.length}개 항목</span>
                 <button onClick={openCatAdd}
@@ -386,16 +380,15 @@ function AdminSettings() {
                 </button>
               </div>
             </div>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-4 gap-3">
               {categories.length === 0 && (
-                <div className="col-span-full flex flex-col items-center justify-center py-6 md:py-12 text-on-surface-variant/50 gap-2">
+                <div className="col-span-full flex flex-col items-center justify-center py-12 text-on-surface-variant/50 gap-2">
                   <span className="material-symbols-outlined text-4xl">category</span>
                   <p className="text-sm">등록된 카테고리가 없습니다. 추가해 주세요.</p>
                 </div>
               )}
               {categories.map((c, i) => {
-                const deptId = catDeptMap[String(c.category_id)] || String(c.department_id || '');
-                const dept = departments.find((d) => String(d.department_id) === deptId);
+                const dept = departments.find((d) => String(d.department_id) === String(c.department_id || ''));
                 const deptName = dept?.name || c.department_name;
                 return (
                 <div key={i} className="border border-outline-variant rounded-2xl p-4 flex flex-col gap-3 hover:border-primary/40 transition-colors">
@@ -430,9 +423,9 @@ function AdminSettings() {
             </div>
           </section>
 
-          <section className="col-span-1 lg:col-span-4 bg-white rounded-2xl border border-outline-variant p-4 md:p-8">
-            <h3 className="font-bold text-base md:text-lg mb-3 md:mb-6">AI 분석 가중치</h3>
-            <div className="space-y-3 md:space-y-6">
+          <section className="col-span-4 bg-white rounded-2xl border border-outline-variant p-8">
+            <h3 className="font-bold text-lg mb-6">AI 분석 가중치</h3>
+            <div className="space-y-6">
               {[
                 { label: '감정 분석 민감도',   value: 85 },
                 { label: '긴급 키워드 탐지율', value: 92 },
@@ -455,16 +448,16 @@ function AdminSettings() {
 
       {/* 탭 2: 조직 및 부서 관리 */}
       {activeTab === 'dept' && (
-        <div className="space-y-3 md:space-y-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+        <div className="space-y-6">
+          <div className="grid grid-cols-4 gap-4">
             {[
               { label: '총 부서 수',   value: `${departments.length}개`,          icon: 'corporate_fare' },
               { label: '전체 담당자',  value: `${totalStaffAssigned}명`,          icon: 'group' },
               { label: '접수 민원',    value: `${totalReceived}건`,               icon: 'inbox' },
               { label: '정상 운영',    value: `${departments.filter((d) => d.status === '정상').length}개`, icon: 'check_circle' },
             ].map((c) => (
-              <div key={c.label} className="bg-white p-3 md:p-5 rounded-xl border border-outline-variant flex items-center gap-2 md:gap-4">
-                <div className="w-8 h-8 md:w-11 md:h-11 bg-primary/10 rounded-xl flex items-center justify-center text-primary shrink-0">
+              <div key={c.label} className="bg-white p-5 rounded-xl border border-outline-variant flex items-center gap-4">
+                <div className="w-11 h-11 bg-primary/10 rounded-xl flex items-center justify-center text-primary shrink-0">
                   <span className="material-symbols-outlined">{c.icon}</span>
                 </div>
                 <div>
@@ -476,7 +469,7 @@ function AdminSettings() {
           </div>
 
           <div className="bg-white rounded-2xl border border-outline-variant overflow-hidden">
-            <div className="flex justify-between items-center px-3 md:px-6 py-3 md:py-4 border-b border-outline-variant">
+            <div className="flex justify-between items-center px-6 py-4 border-b border-outline-variant">
               <h3 className="font-bold">부서 목록</h3>
               <button onClick={openDeptAdd}
                 className="flex items-center gap-1 bg-primary text-white px-4 py-2 rounded-lg text-sm font-bold hover:brightness-105 transition-all">
@@ -500,19 +493,19 @@ function AdminSettings() {
                   const i = (curDeptPage - 1) * PAGE_SIZE + localI;  // 전역 인덱스(수정/삭제 핸들러용)
                   return (
                   <tr key={i} className="hover:bg-surface-container-low/50 transition-colors">
-                    <td className="px-3 md:px-6 py-2 md:py-4 font-bold text-sm text-on-surface">{d.name}</td>
-                    <td className="px-3 md:px-6 py-2 md:py-4 text-sm text-on-surface-variant tabular-nums">
+                    <td className="px-6 py-4 font-bold text-sm text-on-surface">{d.name}</td>
+                    <td className="px-6 py-4 text-sm text-on-surface-variant tabular-nums">
                       {d.phone ? <a href={`tel:${d.phone}`} className="hover:text-primary">{d.phone}</a> : <span className="text-on-surface-variant/40">-</span>}
                     </td>
-                    <td className="px-3 md:px-6 py-2 md:py-4 text-sm text-on-surface-variant">{deptStaffCount(d.name)}명</td>
-                    <td className="px-3 md:px-6 py-2 md:py-4 text-sm font-bold text-primary">{deptReceivedCount(d.name)}건</td>
-                    <td className="px-3 md:px-6 py-2 md:py-4 text-sm font-bold text-emerald-600">{deptDoneCount(d.name)}건</td>
-                    <td className="px-3 md:px-6 py-2 md:py-4">
+                    <td className="px-6 py-4 text-sm text-on-surface-variant">{deptStaffCount(d.name)}명</td>
+                    <td className="px-6 py-4 text-sm font-bold text-primary">{deptReceivedCount(d.name)}건</td>
+                    <td className="px-6 py-4 text-sm font-bold text-emerald-600">{deptDoneCount(d.name)}건</td>
+                    <td className="px-6 py-4">
                       <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold ${
                         d.status === '정상' ? 'bg-emerald-50 text-emerald-600' : 'bg-error-container text-error'
                       }`}>{d.status}</span>
                     </td>
-                    <td className="px-3 md:px-6 py-2 md:py-4">
+                    <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
                         <button onClick={() => openDeptEdit(d, i)}
                           className="p-1.5 hover:bg-surface-container rounded-lg text-on-surface-variant transition-colors">
@@ -537,8 +530,8 @@ function AdminSettings() {
 
       {/* 탭 3: 사용자 관리 */}
       {activeTab === 'users' && (
-        <div className="flex gap-3 md:gap-6 items-start">
-          <div className="flex-1 min-w-0 space-y-3 md:space-y-5">
+        <div className="flex gap-6 items-start">
+          <div className="flex-1 min-w-0 space-y-5">
 
             {/* 승인 대기 */}
             {pending.length > 0 && (
@@ -550,7 +543,7 @@ function AdminSettings() {
                 <div className="space-y-2">
                   {pending.map((user) => (
                     <div key={user.id} onClick={() => setSelectedUser(user)}
-                      className={`bg-amber-50 border rounded-2xl px-3 md:px-5 py-2 md:py-4 flex items-center gap-2 md:gap-4 cursor-pointer transition-all ${
+                      className={`bg-amber-50 border rounded-2xl px-5 py-4 flex items-center gap-4 cursor-pointer transition-all ${
                         selectedUser?.id === user.id ? 'border-amber-400 ring-2 ring-amber-200' : 'border-amber-200 hover:border-amber-300'
                       }`}>
                       <div className="w-9 h-9 rounded-full bg-amber-200 flex items-center justify-center shrink-0">
@@ -635,12 +628,12 @@ function AdminSettings() {
                         return (
                           <tr key={user.id} onClick={() => setSelectedUser(isSelected ? null : user)}
                             className={`cursor-pointer transition-colors ${isSelected ? 'bg-primary/5 border-l-4 border-l-primary' : 'hover:bg-slate-50'}`}>
-                            <td className="px-2 md:px-4 py-2 md:py-3.5 align-middle text-center font-bold text-on-surface truncate">{user.name}</td>
-                            <td className="px-2 md:px-4 py-2 md:py-3.5 align-middle text-center text-on-surface-variant text-xs truncate">{user.phone || '-'}</td>
-                            <td className="px-2 md:px-4 py-2 md:py-3.5 align-middle text-center text-on-surface-variant text-xs truncate">{user.email || '-'}</td>
-                            <td className="px-2 md:px-4 py-2 md:py-3.5 align-middle text-center text-on-surface-variant text-xs truncate">{user.dept || '-'}</td>
-                            <td className="px-2 md:px-4 py-2 md:py-3.5 align-middle text-center text-on-surface-variant text-xs truncate">{user.joinedAt || '-'}</td>
-                            <td className="px-2 md:px-4 py-2 md:py-3.5 align-middle text-center" onClick={(e) => e.stopPropagation()}>
+                            <td className="px-4 py-3.5 align-middle text-center font-bold text-on-surface truncate">{user.name}</td>
+                            <td className="px-4 py-3.5 align-middle text-center text-on-surface-variant text-xs truncate">{user.phone || '-'}</td>
+                            <td className="px-4 py-3.5 align-middle text-center text-on-surface-variant text-xs truncate">{user.email || '-'}</td>
+                            <td className="px-4 py-3.5 align-middle text-center text-on-surface-variant text-xs truncate">{user.dept || '-'}</td>
+                            <td className="px-4 py-3.5 align-middle text-center text-on-surface-variant text-xs truncate">{user.joinedAt || '-'}</td>
+                            <td className="px-4 py-3.5 align-middle text-center" onClick={(e) => e.stopPropagation()}>
                               <select value={user.dept || ''}
                                 onChange={(e) => {
                                   const dept = departments.find((d) => d.name === e.target.value);
@@ -660,16 +653,16 @@ function AdminSettings() {
                       return (
                         <tr key={user.id} onClick={() => setSelectedUser(isSelected ? null : user)}
                           className={`cursor-pointer transition-colors ${isSelected ? 'bg-primary/5 border-l-4 border-l-primary' : 'hover:bg-slate-50'}`}>
-                          <td className="px-2 md:px-4 py-2 md:py-3.5 align-middle text-center font-bold text-on-surface truncate">{user.name}</td>
-                          <td className="px-2 md:px-4 py-2 md:py-3.5 align-middle text-center text-on-surface-variant text-xs truncate">{user.phone || '-'}</td>
-                          <td className="px-2 md:px-4 py-2 md:py-3.5 align-middle text-center text-on-surface-variant text-xs truncate">{user.email || '-'}</td>
-                          <td className="px-2 md:px-4 py-2 md:py-3.5 align-middle text-center">
+                          <td className="px-4 py-3.5 align-middle text-center font-bold text-on-surface truncate">{user.name}</td>
+                          <td className="px-4 py-3.5 align-middle text-center text-on-surface-variant text-xs truncate">{user.phone || '-'}</td>
+                          <td className="px-4 py-3.5 align-middle text-center text-on-surface-variant text-xs truncate">{user.email || '-'}</td>
+                          <td className="px-4 py-3.5 align-middle text-center">
                             <span className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full ${r.bg} ${r.text}`}>
                               <span className="material-symbols-outlined text-xs">{r.icon}</span>{r.label}
                             </span>
                           </td>
-                          <td className="px-2 md:px-4 py-2 md:py-3.5 align-middle text-center text-on-surface-variant text-xs truncate">{user.dept || '-'}</td>
-                          <td className="px-2 md:px-4 py-2 md:py-3.5 align-middle text-center text-on-surface-variant text-xs truncate">{user.joinedAt || '-'}</td>
+                          <td className="px-4 py-3.5 align-middle text-center text-on-surface-variant text-xs truncate">{user.dept || '-'}</td>
+                          <td className="px-4 py-3.5 align-middle text-center text-on-surface-variant text-xs truncate">{user.joinedAt || '-'}</td>
                         </tr>
                       );
                     })}
@@ -682,7 +675,7 @@ function AdminSettings() {
           </div>
 
           {/* 오른쪽: 상세 카드 */}
-          <div className="hidden md:block w-72 shrink-0">
+          <div className="block w-72 shrink-0">
             {selectedUser ? (() => {
               const u = selectedUser;
               const r = roleStyle[u.role] ?? roleStyle.citizen;

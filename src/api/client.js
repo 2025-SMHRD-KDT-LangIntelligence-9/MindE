@@ -15,12 +15,19 @@ client.interceptors.request.use((config) => {
 client.interceptors.response.use(
   (res) => res,
   (err) => {
+    const status = err.response?.status;
     const url = err.config?.url ?? '';
     const isAuthExcluded = url.includes('/users/login') || url.includes('/users/me');
-    if (err.response?.status === 401 && localStorage.getItem('token') && !isAuthExcluded) {
+
+    if (status === 401 && localStorage.getItem('token') && !isAuthExcluded) {
       localStorage.removeItem('token');
-      window.location.href = '/login';
+      window.location.href = '/error/401';
+    } else if (status === 403) {
+      window.location.href = '/error/403';
+    } else if (status === 500) {
+      window.location.href = '/error/500';
     }
+
     return Promise.reject(err);
   }
 );

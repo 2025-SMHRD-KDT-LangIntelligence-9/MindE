@@ -196,7 +196,7 @@ function ChatAttachment({ file }) {
 
   if (file.isImage) {
     return url ? (
-      <img src={url} alt={file.name} className="max-w-[120px] md:max-w-[160px] max-h-[100px] md:max-h-[120px] rounded-xl object-cover border border-white/30" />
+      <img src={url} alt={file.name} className="max-w-[120px] max-w-[160px] max-h-[100px] max-h-[120px] rounded-xl object-cover border border-white/30" />
     ) : (
       <div className="w-24 h-20 rounded-xl bg-white/20 flex items-center justify-center">
         <span className="material-symbols-outlined text-base animate-pulse">image</span>
@@ -255,17 +255,17 @@ function MessageBubble({ msg, isSpeaking, onSpeak }) {
   const isAI = msg.role === 'ai';
   const lines = (msg.text || '').split('\n');
   return (
-    <div className={`flex gap-2 md:gap-3 ${isAI ? '' : 'flex-row-reverse'}`}>
-      <div className={`w-6 h-6 md:w-8 md:h-8 rounded-full flex items-center justify-center shrink-0 mt-1 shadow-sm ${isAI ? 'bg-primary' : 'bg-primary/15'}`}>
-        <span className={`material-symbols-outlined text-sm md:text-base ${isAI ? 'text-white' : 'text-primary'}`}>{isAI ? 'smart_toy' : 'person'}</span>
+    <div className={`flex gap-3 ${isAI ? '' : 'flex-row-reverse'}`}>
+      <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-1 shadow-sm ${isAI ? 'bg-primary' : 'bg-primary/15'}`}>
+        <span className={`material-symbols-outlined text-base ${isAI ? 'text-white' : 'text-primary'}`}>{isAI ? 'smart_toy' : 'person'}</span>
       </div>
-      <div className="max-w-[80%] md:max-w-[72%]">
-        <p className={`text-[10px] md:text-[11px] text-on-surface-variant mb-1 ${isAI ? 'ml-1' : 'mr-1 text-right'}`}>
+      <div className="max-w-[80%] max-w-[72%]">
+        <p className={`text-[10px] text-[11px] text-on-surface-variant mb-1 ${isAI ? 'ml-1' : 'mr-1 text-right'}`}>
           {isAI
             ? `마음이 · ${msg.time}${msg.duration != null ? ` · ${msg.duration.toFixed(1)}s` : ''}`
             : msg.time}
         </p>
-        <div className={`px-3 py-2.5 md:px-4 md:py-3.5 rounded-2xl shadow-sm text-xs md:text-sm leading-relaxed ${
+        <div className={`px-3 py-2.5 px-4 py-3.5 rounded-2xl shadow-sm text-sm leading-relaxed ${
           isAI
             ? 'bg-white border border-outline-variant/40 rounded-tl-sm text-on-surface'
             : 'bg-primary text-white rounded-tr-sm'
@@ -274,7 +274,7 @@ function MessageBubble({ msg, isSpeaking, onSpeak }) {
             <div className="flex flex-wrap gap-2 mb-2">
               {msg.files.map((f, i) =>
                 f.isImage && f.url ? (
-                  <img key={i} src={f.url} alt={f.name} className="max-w-[120px] md:max-w-[160px] max-h-[100px] md:max-h-[120px] rounded-xl object-cover border border-white/30" />
+                  <img key={i} src={f.url} alt={f.name} className="max-w-[120px] max-w-[160px] max-h-[100px] max-h-[120px] rounded-xl object-cover border border-white/30" />
                 ) : f.filename ? (
                   <ChatAttachment key={i} file={f} />
                 ) : (
@@ -298,9 +298,9 @@ function MessageBubble({ msg, isSpeaking, onSpeak }) {
           {isAI && (
             <button
               onClick={() => onSpeak(msg.text.replace(/\*\*/g, '').replace(/\n/g, ' '))}
-              className="mt-1.5 flex items-center gap-1 text-[10px] md:text-[11px] text-on-surface-variant hover:text-primary transition-colors"
+              className="mt-1.5 flex items-center gap-1 text-[10px] text-[11px] text-on-surface-variant hover:text-primary transition-colors"
             >
-              <span className="material-symbols-outlined text-xs md:text-sm">{isSpeaking ? 'volume_off' : 'volume_up'}</span>
+              <span className="material-symbols-outlined text-sm">{isSpeaking ? 'volume_off' : 'volume_up'}</span>
               {isSpeaking ? '음성 중지' : '음성으로 듣기'}
             </button>
           )}
@@ -873,56 +873,56 @@ function Chatbot() {
 
   return (
     <CitizenLayout pageTitle="AI 민원 상담" activeMenu="chatbot">
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-5" style={{ height: 'calc(100vh - 8rem)' }}>
+      <div className="grid grid-cols-12 gap-5" style={{ height: 'calc(100vh - 8rem)' }}>
 
         {/* ── 채팅 / 상담 내역 영역 ── */}
-        <section className="col-span-1 md:col-span-9 flex flex-col rounded-2xl overflow-hidden shadow-sm border border-outline-variant bg-white">
+        <section className="col-span-9 flex flex-col rounded-2xl overflow-hidden shadow-sm border border-outline-variant bg-white">
 
           {/* 헤더 */}
-          <div className="shrink-0 bg-gradient-to-r from-primary to-[#3a7fd4] px-2 py-2 md:px-6 md:py-4 flex items-center justify-between">
-            <div className="flex items-center gap-2 md:gap-3">
+          <div className="shrink-0 bg-gradient-to-r from-primary to-[#3a7fd4] px-6 py-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
               <div className="relative">
-                <div className="w-7 h-7 md:w-11 md:h-11 rounded-full bg-white/20 backdrop-blur flex items-center justify-center">
-                  <span className="material-symbols-outlined text-white text-base md:text-2xl">smart_toy</span>
+                <div className="w-11 h-11 rounded-full bg-white/20 backdrop-blur flex items-center justify-center">
+                  <span className="material-symbols-outlined text-white text-2xl">smart_toy</span>
                 </div>
-                {view === 'chat' && <span className="absolute bottom-0 right-0 w-2 h-2 md:w-3 md:h-3 bg-emerald-400 border-2 border-primary rounded-full" />}
+                {view === 'chat' && <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-400 border-2 border-primary rounded-full" />}
               </div>
               <div>
-                <p className="font-bold text-white text-xs md:text-sm leading-tight">
+                <p className="font-bold text-white text-sm leading-tight">
                   {viewingHistory ? viewingHistory.title : '마음이 AI 민원 상담'}
                 </p>
-                <p className="text-[10px] md:text-xs text-white/70 mt-0.5 hidden md:block">
+                <p className="text-xs text-white/70 mt-0.5">
                   {viewingHistory ? `${viewingHistory.date} ${viewingHistory.time}` : '온라인 · 24시간 응답 가능'}
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-1 md:gap-2">
-              <div className="flex bg-white/15 rounded-xl p-0.5 md:p-1 gap-0.5 md:gap-1">
+            <div className="flex items-center gap-2">
+              <div className="flex bg-white/15 rounded-xl p-1 gap-1">
                 <button
                   onClick={startNewChat}
-                  className="flex items-center gap-1 text-xs font-bold px-2 py-1.5 md:px-3.5 md:py-2 rounded-lg text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+                  className="flex items-center gap-1 text-xs font-bold px-2 py-1.5 px-3.5 py-2 rounded-lg text-white/80 hover:text-white hover:bg-white/10 transition-colors"
                 >
-                  <span className="material-symbols-outlined text-sm md:text-base">add_comment</span>
-                  <span className="hidden sm:inline">새 상담 시작</span>
+                  <span className="material-symbols-outlined text-base">add_comment</span>
+                  <span className="hidden inline">새 상담 시작</span>
                 </button>
                 <button
                   onClick={returnToLive}
-                  className={`flex items-center gap-1 text-xs font-bold px-2 py-1.5 md:px-3.5 md:py-2 rounded-lg transition-colors ${
+                  className={`flex items-center gap-1 text-xs font-bold px-2 py-1.5 px-3.5 py-2 rounded-lg transition-colors ${
                     view === 'chat' && !viewingHistory ? 'bg-white text-primary shadow-sm' : 'text-white/80 hover:text-white hover:bg-white/10'
                   }`}
                 >
-                  <span className="material-symbols-outlined text-sm md:text-base">chat</span>
-                  <span className="hidden sm:inline">현재 상담</span>
+                  <span className="material-symbols-outlined text-base">chat</span>
+                  <span className="hidden inline">현재 상담</span>
                 </button>
                 <button
                   onClick={() => { if (!viewingHistory) snapshotLive(); refreshChatSessions(); setView('history'); setViewingHistory(null); }}
-                  className={`flex items-center gap-1 text-xs font-bold px-2 py-1.5 md:px-3.5 md:py-2 rounded-lg transition-colors ${
+                  className={`flex items-center gap-1 text-xs font-bold px-2 py-1.5 px-3.5 py-2 rounded-lg transition-colors ${
                     view === 'history' || viewingHistory ? 'bg-white text-primary shadow-sm' : 'text-white/80 hover:text-white hover:bg-white/10'
                   }`}
                 >
-                  <span className="material-symbols-outlined text-sm md:text-base">history</span>
-                  <span className="hidden sm:inline">상담 내역</span>
+                  <span className="material-symbols-outlined text-base">history</span>
+                  <span className="hidden inline">상담 내역</span>
                   <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${view === 'history' || viewingHistory ? 'bg-primary/10 text-primary' : 'bg-white/20 text-white'}`}>
                     {pastSessions.length}
                   </span>
@@ -950,7 +950,7 @@ function Chatbot() {
               )}
 
               {/* 날짜 구분선 */}
-              <div className="flex items-center gap-3 px-3 py-1.5 md:px-6 md:py-3 bg-surface-container-low/40 shrink-0">
+              <div className="flex items-center gap-3 px-3 py-1.5 px-6 py-3 bg-surface-container-low/40 shrink-0">
                 <div className="flex-1 h-px bg-outline-variant/50" />
                 <span className="text-[11px] text-on-surface-variant font-medium">
                   {viewingHistory ? viewingHistory.date : '오늘'}
@@ -959,25 +959,25 @@ function Chatbot() {
               </div>
 
               {/* 메시지 목록 */}
-              <div className="flex-1 overflow-y-auto px-3 py-3 md:px-6 md:py-4 space-y-3 md:space-y-6" style={{ background: 'linear-gradient(180deg,#f8faff 0%,#ffffff 100%)' }}>
+              <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6" style={{ background: 'linear-gradient(180deg,#f8faff 0%,#ffffff 100%)' }}>
                 {messages.map((msg, i) => (
                   <MessageBubble key={i} msg={msg} isSpeaking={isSpeaking} onSpeak={speak} />
                 ))}
 
                 {/* AI 타이핑 인디케이터 */}
                 {isTyping && (
-                  <div className="flex gap-2 md:gap-3">
-                    <div className="w-6 h-6 md:w-8 md:h-8 rounded-full bg-primary flex items-center justify-center shrink-0 mt-1 shadow-sm">
-                      <span className="material-symbols-outlined text-white text-sm md:text-base">smart_toy</span>
+                  <div className="flex gap-3">
+                    <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0 mt-1 shadow-sm">
+                      <span className="material-symbols-outlined text-white text-base">smart_toy</span>
                     </div>
                     <div className="flex flex-col items-start gap-1">
-                      <div className="bg-white border border-outline-variant/40 rounded-2xl rounded-tl-sm px-3 py-2.5 md:px-4 md:py-3.5 shadow-sm flex items-center gap-1.5 w-fit">
+                      <div className="bg-white border border-outline-variant/40 rounded-2xl rounded-tl-sm px-3 py-2.5 px-4 py-3.5 shadow-sm flex items-center gap-1.5 w-fit">
                         {[0, 1, 2].map(i => (
                           <span key={i} className="w-2 h-2 rounded-full bg-primary/40 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
                         ))}
                       </div>
                       {typingStatus && (
-                        <span className="text-[11px] md:text-xs text-primary/70 font-medium ml-1 flex items-center gap-1.5">
+                        <span className="text-[11px] text-xs text-primary/70 font-medium ml-1 flex items-center gap-1.5">
                           <span className="animate-pulse">{typingStatus}…</span>
                           <TypingElapsed />
                         </span>
@@ -988,7 +988,7 @@ function Chatbot() {
 
                 {/* 빠른 답변 버튼 (새 채팅 + 마지막 메시지가 AI일 때) */}
                 {!viewingHistory && messages.length >= 1 && messages[messages.length - 1]?.role === 'ai' && !isTyping && (
-                  <div className="flex flex-wrap gap-1.5 md:gap-2 pl-8 md:pl-11">
+                  <div className="flex flex-wrap gap-2 pl-11">
                     {quickReplies.map((r) => (
                       <button
                         key={r.label}
@@ -1011,7 +1011,7 @@ function Chatbot() {
 
               {/* 모바일 전용 민원 접수 버튼 */}
               {!viewingHistory && (
-                <div className="md:hidden shrink-0 px-4 pt-2 bg-white">
+                <div className="hidden shrink-0 px-4 pt-2 bg-white">
                   <button
                     onClick={openSubmitModal}
                     disabled={messages.filter(m => m.role === 'user').length === 0}
@@ -1024,7 +1024,7 @@ function Chatbot() {
               )}
 
               {/* 입력 영역 */}
-              <div className="shrink-0 p-2 md:p-4 border-t border-outline-variant/60 bg-white">
+              <div className="shrink-0 p-4 border-t border-outline-variant/60 bg-white">
                 {viewingHistory ? (
                   <div className="flex items-center justify-center gap-3 py-2">
                     <span className="material-symbols-outlined text-on-surface-variant text-base">lock</span>
@@ -1075,7 +1075,7 @@ function Chatbot() {
                       onKeyDown={handleKeyDown}
                       placeholder="불편하신 내용을 입력해주세요..."
                       rows={1}
-                      className="w-full px-3 pt-2.5 pb-1.5 md:px-4 md:pt-3.5 md:pb-2 bg-transparent outline-none resize-none text-sm text-on-surface placeholder:text-on-surface-variant/50"
+                      className="w-full px-3 pt-2.5 pb-1.5 px-4 pt-3.5 pb-2 bg-transparent outline-none resize-none text-sm text-on-surface placeholder:text-on-surface-variant/50"
                     />
                     <div className="flex items-center justify-between px-3 pb-2.5 pt-1">
                       <div className="flex gap-0.5">
@@ -1087,7 +1087,7 @@ function Chatbot() {
                           }`}
                         >
                           <span className="material-symbols-outlined text-[18px]">{isListening ? 'mic_off' : 'mic'}</span>
-                          <span className="hidden sm:inline">{isListening ? '녹음 중...' : '음성'}</span>
+                          <span className="hidden inline">{isListening ? '녹음 중...' : '음성'}</span>
                         </button>
                         <button
                           type="button"
@@ -1095,7 +1095,7 @@ function Chatbot() {
                           className="flex items-center gap-1 text-[11px] text-on-surface-variant hover:text-primary px-2.5 py-1.5 rounded-xl hover:bg-primary/8 transition-colors"
                         >
                           <span className="material-symbols-outlined text-[18px]">image</span>
-                          <span className="hidden sm:inline">이미지</span>
+                          <span className="hidden inline">이미지</span>
                         </button>
                         <button
                           type="button"
@@ -1103,7 +1103,7 @@ function Chatbot() {
                           className="flex items-center gap-1 text-[11px] text-on-surface-variant hover:text-primary px-2.5 py-1.5 rounded-xl hover:bg-primary/8 transition-colors"
                         >
                           <span className="material-symbols-outlined text-[18px]">attach_file</span>
-                          <span className="hidden sm:inline">파일</span>
+                          <span className="hidden inline">파일</span>
                         </button>
                       </div>
                       <button
@@ -1116,7 +1116,7 @@ function Chatbot() {
                       </button>
                     </div>
                   </div>
-                  <p className="hidden md:block text-[10px] text-on-surface-variant/40 text-center px-4 pb-2 leading-relaxed">
+                  <p className="block text-[10px] text-on-surface-variant/40 text-center px-4 pb-2 leading-relaxed">
                     마음이 AI는 참고용 정보만 제공하며, 법적 효력이 없습니다. 중요한 사항은 담당 기관에 직접 확인하세요.
                   </p>
                   </>
@@ -1199,7 +1199,7 @@ function Chatbot() {
         </section>
 
         {/* ── 오른쪽 사이드 ── */}
-        <aside className="hidden md:flex md:col-span-3 flex-col gap-4 min-h-0">
+        <aside className="flex col-span-3 flex-col gap-4 min-h-0">
           <div className="flex-1 min-h-0 flex flex-col bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden">
             <div className="shrink-0 bg-gradient-to-r from-primary/8 to-transparent px-5 py-4 border-b border-outline-variant/60 flex items-center justify-between">
               <div className="flex items-center gap-2">

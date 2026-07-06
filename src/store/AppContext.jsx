@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { getMeApi } from '../api/auth';
 import { getComplaintsApi, getAllComplaintsApi, addComplaintApi, updateComplaintStatusApi, saveMemoApi, saveResponseApi, updateComplaintDeptApi } from '../api/complaints';
-import { getNotificationsApi, markAllReadApi } from '../api/notifications';
+import { getNotificationsApi, markAllReadApi, markOneReadApi } from '../api/notifications';
 import { getUsersApi, approveStaffApi, rejectStaffApi, updateUserDeptApi, deleteUserApi } from '../api/admin';
 import { saveChatSessionApi, getChatSessionsApi, deleteChatSessionApi } from '../api/chat';
 import { getPublicStatsApi } from '../api/stats';
@@ -13,15 +13,16 @@ export const URGENCY_STYLE = {
   '낮음': { bg: 'bg-emerald-50', text: 'text-emerald-600', icon: 'arrow_downward' },
 };
 
-/* 카테고리 공통 색상 */
+/* 카테고리 공통 색상 (백엔드 실제 값 기준) */
 export const CATEGORY_STYLE = {
-  '도로/교통': { bg: 'bg-blue-50',    text: 'text-blue-600' },
-  '시설/안전': { bg: 'bg-amber-50',   text: 'text-amber-600' },
-  '환경/위생': { bg: 'bg-teal-50',    text: 'text-teal-600' },
-  '시설/환경': { bg: 'bg-emerald-50', text: 'text-emerald-600' },
-  '교통/주차': { bg: 'bg-purple-50',  text: 'text-purple-600' },
-  '교통/안전': { bg: 'bg-orange-50',  text: 'text-orange-600' },
-  '기타':      { bg: 'bg-slate-100',  text: 'text-slate-500' },
+  '교통':     { bg: 'bg-blue-50',    text: 'text-blue-600' },
+  '환경':     { bg: 'bg-teal-50',    text: 'text-teal-600' },
+  '건축':     { bg: 'bg-amber-50',   text: 'text-amber-600' },
+  '상하수도': { bg: 'bg-cyan-50',    text: 'text-cyan-600' },
+  '농축산':   { bg: 'bg-emerald-50', text: 'text-emerald-600' },
+  '보건위생': { bg: 'bg-purple-50',  text: 'text-purple-600' },
+  '행정':     { bg: 'bg-orange-50',  text: 'text-orange-600' },
+  '기타':     { bg: 'bg-slate-100',  text: 'text-slate-500' },
 };
 
 /* 부서 목록 (AdminUsers에서 권한 부여 시 사용) */
@@ -129,7 +130,12 @@ export function AppProvider({ children }) {
 
   const logout = () => {
     localStorage.removeItem('token');
+    sessionStorage.removeItem('minde_live_chat'); // 이전 사용자 채팅 캐시 제거
     setCurrentUser({ role: 'guest', name: '', dept: '', deptGroup: [] });
+    setComplaints([]);
+    setNotifications([]);
+    setChatSessions([]);
+    setUsers([]);
   };
 
   const updateCurrentUser = (updates) => {
@@ -196,7 +202,6 @@ export function AppProvider({ children }) {
     );
   };
 
-  // 담당자 공식 답변 등록 (상태 변경 없음 - 상태는 민원처리 버튼으로 별도 변경)
   const saveReply = async (id, reply) => {
     try {
       await saveResponseApi(id, reply);
@@ -304,10 +309,12 @@ export function AppProvider({ children }) {
     setUsers((prev) => prev.filter((u) => u.id !== userId));
   };
 
-  // 관리자가 회원 강제 탈퇴
+  // 관리자가 회원 강제 탈퇴 (백엔드에서 관련 데이터 cascade 삭제 필요)
   const deleteUser = async (userId) => {
     await deleteUserApi(userId);
     setUsers((prev) => prev.filter((u) => u.id !== userId));
+    // 해당 유저의 민원도 로컬 상태에서 제거
+    setComplaints((prev) => prev.filter((c) => String(c.userId) !== String(userId)));
   };
 
   // 담당자 부서 변경
@@ -360,9 +367,11 @@ export function AppProvider({ children }) {
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
   };
 
-  // 개별 알림 읽음 (백엔드에 단건 API가 없어 로컬 상태만 갱신 → 배지 즉시 반영)
-  const markOneRead = (id) =>
+  // 개별 알림 읽음 — API 호출 후 로컬 상태 갱신 (새로고침해도 유지)
+  const markOneRead = async (id) => {
+    try { await markOneReadApi(id); } catch {}
     setNotifications((prev) => prev.map((n) => (String(n.id) === String(id) ? { ...n, read: true } : n)));
+  };
 
   // 담당자 본인 부서 민원 (deptGroup 기반 필터)
   // deptGroup이 빈 배열이면 백엔드가 부서 정보를 아직 안 내려준 것이므로 전체 표시

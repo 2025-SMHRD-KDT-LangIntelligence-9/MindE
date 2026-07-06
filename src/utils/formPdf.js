@@ -2,13 +2,10 @@ import * as pdfjsLib from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import jsPDF from 'jspdf';
 import { getFormPdfBlobApi } from '../api/forms';
-import { normalizePerPage, fieldName, fieldPos, fieldSize, isSignatureField, sigId } from './formMappings';
+import { normalizePerPage, fieldName, fieldPos, fieldSize, isSignatureField, sigId, sigBoxMM } from './formMappings';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 const MM_TO_PT = 72 / 25.4;
-// 서명 표시 크기(mm) — 백엔드 서명란이 너무 작아(예: 3mm) 안 보이므로 보이는 크기로 그림
-const SIG_DRAW_H_MM = 9;
-const SIG_DRAW_MAXW_MM = 45;
 
 const loadImage = (src) => new Promise((resolve, reject) => {
   const img = new Image();
@@ -46,10 +43,26 @@ export async function renderFilledPages(templateId, fieldMappings, fields, signa
         const val = fields[name];
         if (val == null || String(val).trim() === '') return;
         const [xmm, ymm] = fieldPos(f);
-        const [vx, vy] = vp.convertToViewportPoint(xmm * MM_TO_PT, ymm * MM_TO_PT);
-        const fs = fieldSize(f) * RENDER_SCALE;
-        ctx.font = `${fs}px "Malgun Gothic","Noto Sans KR","Apple SD Gothic Neo",sans-serif`;
+
+        // 체크박스 V: -2mm 왼쪽, +0.5mm 위 오프셋 (xmm이 체크박스 우측을 가리킴)
+        const isCheckbox = /\[\s*\]|□/.test(name);
+        const offXmm = isCheckbox ? -1 : 0;
+        const offYmm = isCheckbox ? -0.5 : 0;
+
+        const [vx, vy] = vp.convertToViewportPoint(
+          (xmm + offXmm) * MM_TO_PT,
+          (ymm + offYmm) * MM_TO_PT,
+        );
+
+        // field.size (pt) 그대로 사용. 체크박스 V는 최소 12pt.
+        const rawPt = fieldSize(f); // pt 단위
+        const fsPt = isCheckbox ? Math.max(rawPt, 12) : rawPt;
+        const fsPx = fsPt * RENDER_SCALE;
+
+        ctx.font = `${fsPx}px "Malgun Gothic","Noto Sans KR","Apple SD Gothic Neo",sans-serif`;
+        ctx.textAlign = f?.align || 'left';
         ctx.fillText(String(val), vx, vy);
+        ctx.textAlign = 'left'; // 기본값 복원
       });
 
       // 서명 이미지 그리기 (위치는 백엔드 좌표, 크기는 보이게 표시)
@@ -64,14 +77,13 @@ export async function renderFilledPages(templateId, fieldMappings, fields, signa
         const [vx, vy] = vp.convertToViewportPoint(xmm * MM_TO_PT, ymm * MM_TO_PT);
         try {
           const im = await loadImage(sig);
-          const dh = SIG_DRAW_H_MM * MM_TO_PT * RENDER_SCALE;          // 표시 높이
-          let dw = dh * (im.width / im.height);                        // 비율 유지
-          const maxW = SIG_DRAW_MAXW_MM * MM_TO_PT * RENDER_SCALE;
+          const [swmm, shmm] = sigBoxMM(f);
+          const dh   = Math.max(shmm, 7)  * MM_TO_PT * RENDER_SCALE;  // 최소 7mm
+          const maxW = Math.max(swmm, 30) * MM_TO_PT * RENDER_SCALE;  // 최소 30mm
+          let dw = dh * (im.width / im.height);        // 비율 유지
           if (dw > maxW) dw = maxW;
-          let left = vx - dw / 2;                                      // 앵커 중심 정렬
-          left = Math.max(0, Math.min(left, vp.width - dw));           // 페이지 안으로 클램프
-          let top = vy - dh;
-          top = Math.max(0, Math.min(top, vp.height - dh));
+          const left = Math.max(0, Math.min(vx - dw / 3, vp.width - dw));
+          const top  = Math.max(0, Math.min(vy - dh * 0.58, vp.height - dh));
           ctx.drawImage(im, left, top, dw, dh);
         } catch { /* 이미지 로드 실패 무시 */ }
       }

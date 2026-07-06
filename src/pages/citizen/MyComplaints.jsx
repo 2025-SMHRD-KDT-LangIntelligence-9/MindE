@@ -9,9 +9,9 @@ import { getComplaintAttachmentsApi, getAttachmentBlobUrlApi } from '../../api/c
 
 const steps = ['접수', '검토', '처리', '완료'];
 
-const statusToStep = { '접수': 1, '처리 중': 2, '보완 요청': 2, '완료': 4, '반려': 4 };
+const statusToStep = { '접수': 1, '배정': 2, '처리 중': 2, '보완 요청': 2, '답변완료': 3, '완료': 4, '반려': 4 };
 
-const categoryFilterOptions = ['전체 유형', '도로/교통', '환경/위생', '시설/안전', '시설/환경', '교통/주차'];
+const categoryFilterOptions = ['전체 유형', '교통', '환경', '건축', '상하수도', '농축산', '보건위생', '행정', '기타'];
 const statusFilterOptions   = ['전체 상태', '접수', '처리 중', '보완 요청', '완료', '반려'];
 
 function MyComplaints() {
@@ -356,11 +356,11 @@ function MyComplaints() {
   /* ── 목록 화면 ── */
   return (
     <CitizenLayout pageTitle="내 민원 내역" activeMenu="complaints">
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
+      <div className="grid grid-cols-12 gap-5">
         {/* 왼쪽 */}
-        <div className="col-span-1 md:col-span-8 flex flex-col gap-5">
+        <div className="col-span-8 flex flex-col gap-5">
           {/* 통계 카드 */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-4 gap-4">
             {[
               { label: '접수됨',    value: countOf('접수'),     icon: 'inbox',                color: 'text-blue-600',    bg: 'bg-blue-50' },
               { label: '처리중',    value: countOf('처리 중'),  icon: 'pending_actions',      color: 'text-amber-600',   bg: 'bg-amber-50' },
@@ -379,7 +379,7 @@ function MyComplaints() {
 
           {/* 목록 테이블 */}
           <div className="bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between px-3 py-3 md:px-6 md:py-4 border-b border-outline-variant">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-outline-variant">
               <h2 className="text-sm font-bold text-on-surface">제출한 민원 목록</h2>
             </div>
             <div className="flex flex-wrap items-center gap-2 px-6 py-3 border-b border-outline-variant bg-surface-container-low/30">
@@ -441,7 +441,7 @@ function MyComplaints() {
         </div>
 
         {/* 오른쪽 사이드 */}
-        <div className="col-span-1 md:col-span-4 flex flex-col gap-5">
+        <div className="col-span-4 flex flex-col gap-5">
           {/* 실시간 알림 */}
           <div className="bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden">
             <div className="flex items-center justify-between px-5 py-4 border-b border-outline-variant">

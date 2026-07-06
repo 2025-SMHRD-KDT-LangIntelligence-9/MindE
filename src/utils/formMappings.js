@@ -26,6 +26,9 @@ export const fieldSize = (f) => Number(f?.size ?? f?.font_size ?? 11) || 11;
 // 서명/이미지 필드 여부
 export const isSignatureField = (f) => f?.type === 'image' || f?.type === 'signature';
 
+// 체크박스 필드 여부 - type이 checkbox이거나 이름에 [] / □ 포함 (백엔드는 type:"text"로 내려오고 이름으로 구분)
+export const isCheckboxField = (f) => f?.type === 'checkbox' || /\[\s*\]|□/.test(fieldName(f));
+
 // 서명 필드 고유 키 (같은 이름이 여러 곳이어도 위치로 구분 → 누른 곳에만 서명)
 export const sigId = (pageIndex, f) => { const [x, y] = fieldPos(f); return `${pageIndex}:${x}:${y}`; };
 

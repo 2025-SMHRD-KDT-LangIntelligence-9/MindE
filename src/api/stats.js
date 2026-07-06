@@ -19,8 +19,9 @@ export const getStatsByDepartmentApi = () =>
 export const getStatsByStatusApi = () =>
   client.get('/admin/stats/by-status').then((r) => r.data);
 
-export const getStatsTimelineApi = () =>
-  client.get('/admin/stats/timeline').then((r) => r.data);
+export const getStatsTimelineApi = (days = 7) =>
+  client.get('/admin/stats/timeline', { params: { days } }).then((r) => r.data);
+
 
 export const getStatsUrgencyApi = () =>
   client.get('/admin/stats/urgency').then((r) => r.data);

@@ -1,9 +1,10 @@
-import { useState, useRef, useEffect } from 'react';
+﻿import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import CitizenLayout from '../../layouts/CitizenLayout';
 import { useApp } from '../../store/AppContext';
 import { getFormTemplatesApi, getFormTemplateApi, fillFormApi } from '../../api/forms';
 import FormPdfOverlay from '../../components/FormPdfOverlay';
+import ZoomableImage from '../../components/ZoomableImage';
 import { flattenMappings, fieldName } from '../../utils/formMappings';
 
 // 서식 이름 → 아이콘 (서버 응답엔 아이콘이 없어 프론트에서 매핑)
@@ -79,12 +80,9 @@ function DocumentOCR() {
       });
       const nextFields = res?.fields ?? {};
       setFields(nextFields);
-      const anyFilled = Object.values(nextFields).some((v) => (v ?? '').toString().trim());
       setFormChat((c) => [...c, {
         role: 'assistant',
-        text: anyFilled
-          ? '서식을 작성했습니다. 오른쪽 미리보기에서 확인하고, 수정할 내용이 있으면 이어서 말씀해 주세요.'
-          : '입력하신 내용을 반영했어요. 항목별로 수정하거나 추가할 내용이 있으면 이어서 말씀해 주세요.',
+        text: res?.message ?? '반영했어요. 추가로 수정할 내용이 있으면 이어서 말씀해 주세요.',
       }]);
     } catch (e) {
       const msg = e?.response?.status === 400
@@ -213,7 +211,7 @@ function DocumentOCR() {
       <div className="flex gap-5" style={{ minHeight: 'calc(100vh - 8rem)' }}>
 
         {/* ── 왼쪽 사이드 ── */}
-        <aside className="hidden md:flex w-56 shrink-0 flex-col gap-4">
+        <aside className="flex w-56 shrink-0 flex-col gap-4">
           <button
             onClick={() => navigate('/home')}
             className="flex items-center gap-1.5 text-sm text-on-surface-variant hover:text-primary transition-colors font-medium"
@@ -254,10 +252,10 @@ function DocumentOCR() {
 
         {/* ── 메인: 서식 리스트 / 채팅 작성 / 실시간 미리보기 ── */}
         <div className="flex-1 flex flex-col gap-4 min-w-0">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:h-[calc(100vh-11rem)]" style={{ minHeight: 'calc(100vh - 11rem)' }}>
+          <div className="grid grid-cols-12 gap-4 h-[calc(100vh-11rem)]" style={{ minHeight: 'calc(100vh - 11rem)' }}>
 
             {/* 왼쪽: 서식 리스트 + 검색 */}
-            <div className="lg:col-span-3 lg:min-h-0 bg-white rounded-2xl border border-outline-variant shadow-sm flex flex-col overflow-hidden">
+            <div className="col-span-3 min-h-0 bg-white rounded-2xl border border-outline-variant shadow-sm flex flex-col overflow-hidden">
               <div className="px-4 py-3.5 border-b border-outline-variant shrink-0">
                 <p className="text-sm font-bold text-on-surface mb-2.5">민원 서식 목록</p>
                 <div className="relative">
@@ -305,7 +303,7 @@ function DocumentOCR() {
             </div>
 
             {/* 가운데: 마음이 AI 채팅 */}
-            <div className="lg:col-span-5 lg:min-h-0 bg-white rounded-2xl border border-outline-variant shadow-sm flex flex-col overflow-hidden">
+            <div className="col-span-5 min-h-0 bg-white rounded-2xl border border-outline-variant shadow-sm flex flex-col overflow-hidden">
               <div className="px-5 py-3 border-b border-outline-variant shrink-0 flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center shadow-sm">
                   <span className="material-symbols-outlined text-white text-lg">smart_toy</span>
@@ -330,15 +328,15 @@ function DocumentOCR() {
                     {formChat.map((m, i) => {
                       const isAI = m.role !== 'user';
                       return (
-                        <div key={i} className={`flex gap-2 md:gap-3 ${isAI ? '' : 'flex-row-reverse'}`}>
-                          <div className={`w-7 h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center shrink-0 mt-1 shadow-sm ${isAI ? 'bg-primary' : 'bg-primary/15'}`}>
-                            <span className={`material-symbols-outlined text-sm md:text-base ${isAI ? 'text-white' : 'text-primary'}`}>{isAI ? 'smart_toy' : 'person'}</span>
+                        <div key={i} className={`flex gap-3 ${isAI ? '' : 'flex-row-reverse'}`}>
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-1 shadow-sm ${isAI ? 'bg-primary' : 'bg-primary/15'}`}>
+                            <span className={`material-symbols-outlined text-base ${isAI ? 'text-white' : 'text-primary'}`}>{isAI ? 'smart_toy' : 'person'}</span>
                           </div>
                           <div className="max-w-[80%]">
-                            <p className={`text-[10px] md:text-[11px] text-on-surface-variant mb-1 ${isAI ? 'ml-1' : 'mr-1 text-right'}`}>
+                            <p className={`text-[10px] text-[11px] text-on-surface-variant mb-1 ${isAI ? 'ml-1' : 'mr-1 text-right'}`}>
                               {isAI ? '마음이' : '나'}
                             </p>
-                            <div className={`px-3 py-2.5 md:px-4 md:py-3 rounded-2xl shadow-sm text-xs md:text-sm leading-relaxed whitespace-pre-wrap break-words ${
+                            <div className={`px-3 py-2.5 px-4 py-3 rounded-2xl shadow-sm text-sm leading-relaxed whitespace-pre-wrap break-words ${
                               isAI
                                 ? 'bg-white border border-outline-variant/40 rounded-tl-sm text-on-surface'
                                 : 'bg-primary text-white rounded-tr-sm'
@@ -350,12 +348,12 @@ function DocumentOCR() {
                       );
                     })}
                     {formChatLoading && (
-                      <div className="flex gap-2 md:gap-3">
-                        <div className="w-7 h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center shrink-0 mt-1 shadow-sm bg-primary">
-                          <span className="material-symbols-outlined text-sm md:text-base text-white">smart_toy</span>
+                      <div className="flex gap-3">
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-1 shadow-sm bg-primary">
+                          <span className="material-symbols-outlined text-base text-white">smart_toy</span>
                         </div>
                         <div className="max-w-[80%]">
-                          <p className="text-[10px] md:text-[11px] text-on-surface-variant mb-1 ml-1">마음이</p>
+                          <p className="text-[10px] text-[11px] text-on-surface-variant mb-1 ml-1">마음이</p>
                           <div className="px-4 py-3 rounded-2xl rounded-tl-sm bg-white border border-outline-variant/40 shadow-sm flex items-center gap-2">
                             <span className="material-symbols-outlined text-primary text-base animate-spin">progress_activity</span>
                             <span className="text-xs text-on-surface-variant">작성 중입니다...</span>
@@ -390,7 +388,7 @@ function DocumentOCR() {
             </div>
 
             {/* 오른쪽: 실시간 미리보기 (직접 편집 가능) */}
-            <div className="lg:col-span-4 lg:min-h-0 bg-white rounded-2xl border border-outline-variant shadow-sm flex flex-col overflow-hidden">
+            <div className="col-span-4 min-h-0 bg-white rounded-2xl border border-outline-variant shadow-sm flex flex-col overflow-hidden">
               <div className="px-5 py-3.5 border-b border-outline-variant shrink-0 flex items-center justify-between">
                 <p className="text-sm font-bold text-on-surface flex items-center gap-1.5">
                   <span className="material-symbols-outlined text-primary text-base">visibility</span>
@@ -448,7 +446,7 @@ function DocumentOCR() {
 
       {/* 다운로드 확인 모달 — 실제 출력물 미리보기 후 다운로드 */}
       {downloadPages && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex flex-col p-3 md:p-6" onClick={() => setDownloadPages(null)}>
+        <div className="fixed inset-0 z-50 bg-black/70 flex flex-col p-6" onClick={() => setDownloadPages(null)}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-auto flex flex-col overflow-hidden max-h-full" onClick={(e) => e.stopPropagation()}>
             <div className="px-5 py-3.5 border-b border-outline-variant flex items-center justify-between shrink-0">
               <p className="text-sm font-bold text-on-surface truncate">다운로드 미리보기 · {selectedTemplate?.name}</p>
@@ -456,8 +454,12 @@ function DocumentOCR() {
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
-            <div className="flex-1 overflow-auto bg-slate-100 p-4 flex items-start justify-center min-h-0">
-              <img src={downloadPages[dlPage]?.img} alt={`${dlPage + 1}페이지`} className="max-w-full shadow-lg border border-slate-200" />
+            <div className="flex-1 min-h-0 relative">
+              <ZoomableImage
+                key={dlPage}
+                src={downloadPages[dlPage]?.img}
+                alt={`${dlPage + 1}페이지`}
+              />
             </div>
             {downloadPages.length > 1 && (
               <div className="flex items-center justify-center gap-3 py-2 border-t border-outline-variant/60 shrink-0">

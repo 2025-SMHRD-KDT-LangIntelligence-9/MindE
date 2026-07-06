@@ -1,4 +1,6 @@
 import { Routes, Route } from 'react-router-dom';
+import NotFound from './pages/NotFound';
+import ErrorPage from './pages/ErrorPage';
 
 // 시민용 화면들
 import Login from './pages/citizen/Login';
@@ -53,6 +55,8 @@ function App() {
       <Route path="/admin/stats" element={<AdminStats />} />
       <Route path="/admin/users" element={<AdminUsers />} />
       <Route path="/preview" element={<DesignPreview />} />
+      <Route path="/error/:code" element={<ErrorPage />} />
+      <Route path="*" element={<NotFound />} />
     </Routes>
   );
 }

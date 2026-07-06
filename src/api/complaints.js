@@ -19,12 +19,13 @@ const transform = (c) => ({
   urgency:     toKoreanUrgency(c.urgency_score ?? 0.4),
   receivedAt:  c.created_at ? new Date(c.created_at).toLocaleString('ko-KR') : '',
   createdDate: c.created_at ? c.created_at.slice(0, 10) : '',
-  updatedAt:   c.updated_at ? new Date(c.updated_at).toLocaleString('ko-KR') : '',
+  updatedAt:    c.updated_at ? new Date(c.updated_at).toLocaleString('ko-KR') : '',
+  updatedAtRaw: c.updated_at ?? '',
   memo:        c.memo        ?? '',
   reply:       c.reply       ?? null,
   replyDate:   c.reply_date  ?? null,
   citizenFiles: c.attachments ?? [],
-  chatSessionId: c.chat_session_id ?? null,  // 원본 챗봇 대화 세션(있으면 담당자가 조회 가능)
+  chatSessionId: c.chat_session_id ?? null,
 });
 
 export const getComplaintsApi = () =>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import logo from '../../assets/logo.png';
 import { useApp } from '../../store/AppContext';
@@ -17,21 +17,21 @@ function Landing() {
 
 
   return (
-    <div className="h-[100dvh] flex flex-col overflow-hidden bg-gradient-to-br from-blue-50/30 via-transparent to-indigo-50/30">
+    <div className="h-[100dvh] flex flex-col overflow-hidden bg-gradient-to-br from-blue-50/30 via-transparent to-indigo-50/30" style={{ minWidth: 1280 }}>
 
       {/* 네비게이션 */}
-      <nav className="shrink-0 flex items-center justify-between h-10 md:h-16 px-3 md:px-14 border-b border-outline-variant/60 bg-blue-50/80 backdrop-blur-md z-50">
-        <img src={logo} alt="마음이 로고" className="h-10 md:h-16 w-auto" />
-        <div className="flex items-center gap-1.5 md:gap-3">
+      <nav className="shrink-0 flex items-center justify-between h-16 px-14 border-b border-outline-variant/60 bg-blue-50/80 backdrop-blur-md z-50">
+        <img src={logo} alt="마음이 로고" className="h-16 w-auto" />
+        <div className="flex items-center gap-3">
           <button
             onClick={() => navigate('/login')}
-            className="text-xs md:text-sm font-bold text-on-surface-variant px-3 py-1.5 md:px-5 md:py-2 rounded-xl hover:bg-surface-container transition-colors"
+            className="text-sm font-bold text-on-surface-variant px-5 py-2 rounded-xl hover:bg-surface-container transition-colors"
           >
             로그인
           </button>
           <button
             onClick={() => navigate('/register')}
-            className="bg-primary text-white text-xs md:text-sm font-bold px-3 py-1.5 md:px-6 md:py-2.5 rounded-xl shadow-sm shadow-primary/20 hover:brightness-105 transition-all"
+            className="bg-primary text-white text-sm font-bold px-6 py-2.5 rounded-xl shadow-sm shadow-primary/20 hover:brightness-105 transition-all"
           >
             회원가입
           </button>
@@ -42,7 +42,7 @@ function Landing() {
       <main className="flex-1 flex flex-col overflow-hidden">
 
         {/* 히어로 그리드 */}
-        <div className="flex-1 flex items-start pt-3 md:items-center md:pt-0 px-5 md:px-14 relative overflow-hidden">
+        <div className="flex-1 flex items-center px-14 relative overflow-hidden">
 
           {/* 배경 장식 */}
           <div className="absolute -top-20 -right-20 w-[500px] h-[500px] rounded-full bg-primary/10 blur-3xl pointer-events-none" />
@@ -53,16 +53,16 @@ function Landing() {
           <img
             src={logo}
             alt=""
-            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 md:top-[21%] md:left-[27%] md:translate-x-0 md:translate-y-0 w-[380px] md:w-[550px] opacity-[0.08] pointer-events-none select-none"
+            className="absolute top-[21%] left-[27%] w-[550px] opacity-[0.08] pointer-events-none select-none"
           />
 
-          <div className="flex flex-col md:flex-row items-center justify-center gap-3 md:gap-50 w-full">
+          <div className="flex flex-row items-center justify-center gap-50 w-full">
 
             {/* ── 모바일: 위쪽 / 데스크탑: 오른쪽 ── */}
-            <div className="order-1 md:order-2 w-full md:w-auto">
+            <div className="order-2 w-auto">
 
               {/* 모바일 미니 챗봇 프리뷰 */}
-              <div className="md:hidden w-full rounded-2xl border border-outline-variant/60 shadow-lg overflow-hidden bg-white/90 backdrop-blur-sm">
+              <div className="hidden w-full rounded-2xl border border-outline-variant/60 shadow-lg overflow-hidden bg-white/90 backdrop-blur-sm">
                 <div className="bg-gradient-to-r from-primary to-blue-400 px-3 py-2 flex items-center gap-2">
                   <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center shrink-0">
                     <span className="material-symbols-outlined text-white text-xs">smart_toy</span>
@@ -118,7 +118,7 @@ function Landing() {
               </div>
 
               {/* 데스크탑 풀 챗봇 목업 */}
-              <div className="hidden md:flex justify-end">
+              <div className="flex justify-end">
                 <div className="w-[400px] bg-white rounded-2xl border border-outline-variant shadow-xl overflow-hidden">
                   <div className="bg-gradient-to-r from-primary to-blue-400 px-5 py-4 flex items-center gap-3">
                     <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center">
@@ -177,46 +177,46 @@ function Landing() {
             </div>
 
             {/* ── 모바일: 아래쪽 / 데스크탑: 왼쪽 ── */}
-            <div className="order-2 md:order-1 flex flex-col gap-2 md:gap-6">
+            <div className="order-1 flex flex-col gap-6">
 
               {/* 배지 */}
-              <div className="inline-flex items-center gap-1.5 md:gap-2 bg-primary/10 text-primary px-3 py-1 md:px-4 md:py-1.5 rounded-full text-xs font-bold w-fit">
-                <span className="material-symbols-outlined text-sm md:text-base">verified_user</span>
+              <div className="inline-flex items-center gap-2 bg-primary/10 text-primary px-4 py-1.5 rounded-full text-xs font-bold w-fit">
+                <span className="material-symbols-outlined text-base">verified_user</span>
                 AI 기반 공공 민원 서비스
               </div>
 
               {/* 헤드라인 */}
-              <h1 className="text-2xl md:text-5xl font-bold text-on-surface leading-tight">
+              <h1 className="text-5xl font-bold text-on-surface leading-tight">
                 시민의 목소리를<br />
                 <span className="text-primary">AI</span>가 빠르게<br />
                 전달합니다
               </h1>
 
               {/* 설명 */}
-              <p className="hidden md:block text-on-surface-variant text-sm md:text-base leading-relaxed max-w-md">
+              <p className="block text-on-surface-variant text-base leading-relaxed max-w-md">
                 복잡한 민원 절차, 마음이에게 맡기세요.<br />
                 24시간 AI 상담부터 실시간 처리 현황까지 한 번에.
               </p>
 
               {/* 통계 */}
-              <div className="flex items-center gap-4 md:gap-6">
+              <div className="flex items-center gap-6">
                 {[
                   { value: `${publicStats?.resolved ?? stats.done}건`, label: '누적 처리' },
                   { value: `${publicStats?.total ?? stats.total}건`, label: '총 접수' },
                   { value: '24시간',  label: '접수 가능' },
                 ].map((s, i) => (
-                  <div key={s.label} className="flex items-center gap-4 md:gap-6">
+                  <div key={s.label} className="flex items-center gap-6">
                     <div>
-                      <p className="text-base md:text-xl font-bold text-primary">{s.value}</p>
+                      <p className="text-xl font-bold text-primary">{s.value}</p>
                       <p className="text-xs text-on-surface-variant mt-0.5">{s.label}</p>
                     </div>
-                    {i < 2 && <div className="w-px h-6 md:h-8 bg-outline-variant" />}
+                    {i < 2 && <div className="w-px h-8 bg-outline-variant" />}
                   </div>
                 ))}
               </div>
 
               {/* CTA (데스크탑만) */}
-              <div className="hidden md:flex items-center gap-3">
+              <div className="flex items-center gap-3">
                 <button
                   onClick={() => navigate('/register')}
                   className="flex items-center gap-2 bg-primary text-white font-bold px-8 py-3.5 rounded-xl shadow-lg shadow-primary/25 hover:brightness-105 transition-all text-sm"
@@ -233,20 +233,20 @@ function Landing() {
 
         {/* ── 하단 서비스 특징 바 ── */}
         <div className="shrink-0 border-t border-outline-variant/60 bg-blue-50/80 backdrop-blur-md relative z-10">
-          <div className="max-w-6xl mx-auto grid grid-cols-4 md:divide-x divide-outline-variant/40">
+          <div className="max-w-6xl mx-auto grid grid-cols-4 divide-x divide-outline-variant/40">
             {[
               { icon: 'smart_toy',     label: 'AI 상담',    desc: '24시간 AI 챗봇으로\n민원을 접수하세요' },
               { icon: 'track_changes', label: '실시간 현황', desc: '민원 처리 현황을\n실시간 확인하세요' },
               { icon: 'notifications', label: '즉시 알림',  desc: '상태 변경 시 즉시\n알림을 받으세요' },
               { icon: 'verified_user', label: '안전 보호',  desc: '개인정보를\n철저히 보호합니다' },
             ].map((f) => (
-              <div key={f.label} className="flex flex-col items-center gap-1.5 py-3 px-2 md:flex-row md:items-start md:gap-5 md:px-8 md:py-10">
-                <div className="w-8 h-8 md:w-16 md:h-16 rounded-xl md:rounded-2xl bg-primary/10 flex items-center justify-center shrink-0">
-                  <span className="material-symbols-outlined text-primary text-lg md:text-3xl">{f.icon}</span>
+              <div key={f.label} className="flex flex-row items-start gap-5 px-8 py-10">
+                <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center shrink-0">
+                  <span className="material-symbols-outlined text-primary text-3xl">{f.icon}</span>
                 </div>
-                <div className="min-w-0 text-center md:text-left">
-                  <p className="text-xs md:text-base font-bold text-on-surface">{f.label}</p>
-                  <p className="hidden md:block text-xs text-on-surface-variant mt-1.5 leading-relaxed whitespace-pre-line">{f.desc}</p>
+                <div className="min-w-0 text-left">
+                  <p className="text-base font-bold text-on-surface">{f.label}</p>
+                  <p className="block text-xs text-on-surface-variant mt-1.5 leading-relaxed whitespace-pre-line">{f.desc}</p>
                 </div>
               </div>
             ))}
