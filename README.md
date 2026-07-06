@@ -38,10 +38,15 @@ npm run preview
 
 ### 환경 변수
 
-프로젝트 루트에 `.env` 파일 생성:
+`.env.example`을 복사해서 `.env` 파일을 생성합니다:
+
+```bash
+cp .env.example .env
+```
 
 ```env
-VITE_API_URL=http://minde.ai.kr:8000
+# 백엔드 API 서버 주소
+VITE_API_URL=http://your-backend-url:8000
 ```
 
 > 로컬 백엔드 사용 시: `VITE_API_URL=http://localhost:8000`  
