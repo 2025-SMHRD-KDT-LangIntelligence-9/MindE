@@ -7,7 +7,7 @@ const client = axios.create({
 });
 
 client.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
+  const token = sessionStorage.getItem('token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
@@ -19,8 +19,8 @@ client.interceptors.response.use(
     const url = err.config?.url ?? '';
     const isAuthExcluded = url.includes('/users/login') || url.includes('/users/me');
 
-    if (status === 401 && localStorage.getItem('token') && !isAuthExcluded) {
-      localStorage.removeItem('token');
+    if (status === 401 && sessionStorage.getItem('token') && !isAuthExcluded) {
+      sessionStorage.removeItem('token');
       window.location.href = '/error/401';
     } else if (status === 403) {
       window.location.href = '/error/403';

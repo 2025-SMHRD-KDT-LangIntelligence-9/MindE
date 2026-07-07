@@ -22,7 +22,7 @@ function Login() {
   // 로그인 후 뒤로가기 등으로 이 페이지가 새로 마운트되면(기존 토큰 존재) 세션을 끊어
   // 재로그인해야 접속되도록 한다. (최초 로그인 시도 때는 마운트 시점에 토큰이 없어 안전)
   useEffect(() => {
-    if (localStorage.getItem('token') || currentUser.role !== 'guest') {
+    if (sessionStorage.getItem('token') || currentUser.role !== 'guest') {
       logout();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -166,7 +166,7 @@ function Login() {
     setToastType('');
     try {
       const data = await loginApi(email, password);
-      localStorage.setItem('token', data.access_token);
+      sessionStorage.setItem('token', data.access_token);
       if (rememberMe) localStorage.setItem('savedEmail', email);
       else localStorage.removeItem('savedEmail');
       const me = await getMeApi();
@@ -186,7 +186,7 @@ function Login() {
       if (err.response?.status === 401) {
         setError('이메일 또는 비밀번호가 올바르지 않습니다.');
       } else if (err.response?.status === 403) {
-        localStorage.removeItem('token');
+        sessionStorage.removeItem('token');
         setError('pending');
       } else if (err.code === 'ERR_NETWORK') {
         setError('서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.');

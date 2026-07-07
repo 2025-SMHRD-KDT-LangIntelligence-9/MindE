@@ -11,7 +11,7 @@ function CitizenLayout({ pageTitle, activeMenu, children }) {
   const handleLogout = () => { logout(); navigate('/login'); };
 
   useEffect(() => {
-    if (!localStorage.getItem('token')) navigate('/login', { replace: true });
+    if (!sessionStorage.getItem('token')) navigate('/login', { replace: true });
   }, [navigate]);
 
   const menuItems = [

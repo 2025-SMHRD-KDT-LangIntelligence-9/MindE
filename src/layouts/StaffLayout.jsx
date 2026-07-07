@@ -12,7 +12,7 @@ function StaffLayout({ pageTitle, activeMenu, children }) {
   const [readIds, setReadIds] = useState(new Set());
 
   useEffect(() => {
-    if (!localStorage.getItem('token')) navigate('/login', { replace: true });
+    if (!sessionStorage.getItem('token')) navigate('/login', { replace: true });
   }, [navigate]);
 
   const menuItems = [

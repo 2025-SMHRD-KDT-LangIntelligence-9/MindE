@@ -69,7 +69,7 @@ export function AppProvider({ children }) {
 
   // 앱 시작 시 토큰 있으면 세션 복원
   useEffect(() => {
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token');
     if (!token) return;
     getMeApi()
       .then((me) => {
@@ -82,7 +82,7 @@ export function AppProvider({ children }) {
           setCurrentUser({ role: 'staff', name: me.name, dept: me.department_name ?? '', deptGroup: me.department_name ? [me.department_name] : [] });
         }
       })
-      .catch(() => localStorage.removeItem('token'));
+      .catch(() => sessionStorage.removeItem('token'));
   }, []);
 
   // 로그인 후 민원·알림 API에서 로드 (staff/admin은 전체 목록, citizen은 본인 목록)
@@ -129,7 +129,7 @@ export function AppProvider({ children }) {
   };
 
   const logout = () => {
-    localStorage.removeItem('token');
+    sessionStorage.removeItem('token');
     sessionStorage.removeItem('minde_live_chat'); // 이전 사용자 채팅 캐시 제거
     setCurrentUser({ role: 'guest', name: '', dept: '', deptGroup: [] });
     setComplaints([]);
