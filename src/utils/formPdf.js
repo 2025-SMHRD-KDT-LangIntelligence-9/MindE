@@ -1,6 +1,5 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-import jsPDF from 'jspdf';
 import { getFormPdfBlobApi } from '../api/forms';
 import { normalizePerPage, fieldName, fieldPos, fieldSize, isSignatureField, sigId, sigBoxMM } from './formMappings';
 
@@ -98,22 +97,4 @@ export async function renderFilledPages(templateId, fieldMappings, fields, signa
     doc.destroy();
   }
   return pages;
-}
-
-// 렌더된 페이지 이미지들을 PDF 로 조립해 저장(다운로드)
-export function savePagesAsPdf(pages, fileName = '민원서식.pdf') {
-  let out = null;
-  for (const pg of pages) {
-    const orientation = pg.wPt > pg.hPt ? 'landscape' : 'portrait';
-    if (!out) out = new jsPDF({ unit: 'pt', format: [pg.wPt, pg.hPt], orientation });
-    else out.addPage([pg.wPt, pg.hPt], orientation);
-    out.addImage(pg.img, 'JPEG', 0, 0, pg.wPt, pg.hPt);
-  }
-  if (out) out.save(fileName.endsWith('.pdf') ? fileName : `${fileName}.pdf`);
-}
-
-// 렌더 후 바로 저장 (기존 호환)
-export async function downloadFilledPdf(templateId, fieldMappings, fields, fileName = '민원서식.pdf', signatures = {}) {
-  const pages = await renderFilledPages(templateId, fieldMappings, fields, signatures);
-  savePagesAsPdf(pages, fileName);
 }

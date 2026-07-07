@@ -16,7 +16,6 @@
 | Axios | 1.6 | HTTP 클라이언트 (API 통신) |
 | Recharts | 3 | 관리자 통계 차트 (파이·도넛·라인 차트) |
 | pdfjs-dist | 4 | PDF 파일을 이미지로 렌더링 (서류 미리보기) |
-| jsPDF | 4 | 서식 PDF 클라이언트 생성 (백엔드 렌더 실패 시 폴백 다운로드) |
 | Material Symbols | (CDN) | 아이콘 폰트 (Google Fonts) |
 | Public Sans / Noto Sans KR | (CDN) | 본문 폰트 (Google Fonts) |
 

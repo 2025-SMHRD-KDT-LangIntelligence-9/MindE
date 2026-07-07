@@ -85,8 +85,17 @@ function DocumentOCR() {
         text: res?.message ?? '반영했어요. 추가로 수정할 내용이 있으면 이어서 말씀해 주세요.',
       }]);
     } catch (e) {
+      // 실패 시에는 자동으로 미리 채운 이름/연락처를 남기지 않고 비운다
+      const autoKeys = Object.keys(seedBasics(flattenMappings(template?.field_mappings)));
+      if (autoKeys.length) {
+        setFields((prev) => {
+          const next = { ...prev };
+          autoKeys.forEach((k) => { next[k] = ''; });
+          return next;
+        });
+      }
       const msg = e?.response?.status === 400
-        ? '상담 세션 정보가 유효하지 않아 대화 내용 없이 진행합니다. 상황을 입력해 주세요.'
+        ? '상담 세션 정보가 유효하지 않습니다. 상황을 직접 입력해 주세요.'
         : '작성 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.';
       setFormChat((c) => [...c, { role: 'assistant', text: msg }]);
     } finally {
@@ -171,9 +180,7 @@ function DocumentOCR() {
       a.remove();
       URL.revokeObjectURL(url);
     } catch {
-      // 백엔드 렌더 실패 시 프론트 렌더로 폴백
-      const { savePagesAsPdf } = await import('../../utils/formPdf');
-      savePagesAsPdf(downloadPages, `${selectedTemplate?.name || '민원서식'}.pdf`);
+      alert('PDF 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.');
     } finally {
       setDownloading(false);
       setDownloadPages(null);
