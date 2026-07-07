@@ -156,7 +156,10 @@ function StaffComplaints() {
     setPreview({ name: file.name, type: isImage ? 'image' : file.name.split('.').pop().toLowerCase(), url: file.url ?? null });
   };
 
-  const closePreview = () => setPreview(null);
+  const closePreview = () => {
+    if (preview?.url?.startsWith('blob:')) URL.revokeObjectURL(preview.url);
+    setPreview(null);
+  };
 
   const filtered = complaints.filter((c) => {
     const matchStatus  = filterStatus  === '전체' || c.status === filterStatus;

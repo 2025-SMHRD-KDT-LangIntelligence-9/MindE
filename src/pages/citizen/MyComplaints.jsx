@@ -12,7 +12,7 @@ const steps = ['접수', '검토', '처리', '완료'];
 const statusToStep = { '접수': 1, '배정': 2, '처리 중': 2, '보완 요청': 2, '답변완료': 3, '완료': 4, '반려': 4 };
 
 const categoryFilterOptions = ['전체 유형', '교통', '환경', '건축', '상하수도', '농축산', '보건위생', '행정', '기타'];
-const statusFilterOptions   = ['전체 상태', '접수', '처리 중', '보완 요청', '완료', '반려'];
+const statusFilterOptions   = ['전체 상태', '접수', '처리 중', '보완 요청', '답변완료', '완료', '반려'];
 
 function MyComplaints() {
   const navigate = useNavigate();

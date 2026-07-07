@@ -25,7 +25,9 @@ client.interceptors.response.use(
     } else if (status === 403) {
       window.location.href = '/error/403';
     } else if (status === 500) {
-      window.location.href = '/error/500';
+      // 챗봇·폼·첨부파일 API는 개별 오류 처리에 맡김 (전역 리다이렉트 제외)
+      const is500Excluded = url.includes('/chat') || url.includes('/forms') || url.includes('/attachments');
+      if (!is500Excluded) window.location.href = '/error/500';
     }
 
     return Promise.reject(err);

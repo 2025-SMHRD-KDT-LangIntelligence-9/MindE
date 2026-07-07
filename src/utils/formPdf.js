@@ -69,8 +69,6 @@ export async function renderFilledPages(templateId, fieldMappings, fields, signa
         if (!isSignatureField(f)) continue;
         const id = sigId(p - 1, f);
         const sig = signatures?.[id];
-        // eslint-disable-next-line no-console
-        console.log('[renderFilledPages] sig field', id, 'found:', !!sig, 'dictKeys:', Object.keys(signatures || {}));
         if (!sig) continue;
         const [xmm, ymm] = fieldPos(f);
         const [vx, vy] = vp.convertToViewportPoint(xmm * MM_TO_PT, ymm * MM_TO_PT);

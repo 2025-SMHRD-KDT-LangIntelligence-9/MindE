@@ -24,7 +24,6 @@ function Register() {
   const [deptIdByName, setDeptIdByName] = useState({});
   const [deptOpen, setDeptOpen] = useState(false);
   const [deptSearch, setDeptSearch] = useState('');
-  const [done, setDone] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const phoneMidRef = useRef(null);
@@ -58,7 +57,7 @@ function Register() {
 
   const handleModeChange = (next) => {
     setMode(next);
-    setName(''); setPhoneMid(''); setPhoneLast(''); setEmail(''); setPassword(''); setPasswordConfirm(''); setError(''); setDone(false);
+    setName(''); setPhoneMid(''); setPhoneLast(''); setEmail(''); setPassword(''); setPasswordConfirm(''); setError('');
   };
 
   const handleSubmit = async (e) => {
@@ -223,41 +222,7 @@ function Register() {
                   {isStaff ? '담당 부서를 선택하고 정보를 입력해주세요.' : '정보를 입력하고 마음이 서비스를 시작하세요.'}
                 </p>
 
-                {/* 가입 완료 화면 */}
-                {done ? (
-                  <div className="flex flex-col items-center justify-center py-8 text-center gap-4">
-                    {isStaff ? (
-                      <>
-                        <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center">
-                          <span className="material-symbols-outlined text-amber-500 text-3xl">schedule</span>
-                        </div>
-                        <div>
-                          <p className="font-bold text-on-surface text-base">가입 신청 완료</p>
-                          <p className="text-sm text-on-surface-variant mt-1">관리자 승인 후 로그인할 수 있습니다.</p>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center">
-                          <span className="material-symbols-outlined text-emerald-500 text-3xl">check_circle</span>
-                        </div>
-                        <div>
-                          <p className="font-bold text-on-surface text-base">회원가입 완료!</p>
-                          <p className="text-sm text-on-surface-variant mt-1">마음이 서비스에 오신 것을 환영합니다.</p>
-                        </div>
-                      </>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => navigate('/login')}
-                      className="mt-2 px-6 py-2.5 rounded-xl bg-primary text-white text-sm font-bold hover:brightness-105 shadow-md shadow-primary/30"
-                    >
-                      로그인 페이지로
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <form onSubmit={handleSubmit} className="space-y-2 xl:space-y-3">
+                <form onSubmit={handleSubmit} className="space-y-2 xl:space-y-3">
                       {/* 이름 */}
                       <div>
                         <label className="text-sm font-medium text-on-surface block mb-1 xl:mb-1.5">이름</label>
@@ -412,14 +377,12 @@ function Register() {
                       </button>
                     </form>
 
-                    <p className="text-center text-xs text-on-surface-variant mt-4">
-                      이미 계정이 있으신가요?{' '}
-                      <button type="button" onClick={() => navigate('/login')} className="text-primary font-bold hover:underline">
-                        로그인
-                      </button>
-                    </p>
-                  </>
-                )}
+                <p className="text-center text-xs text-on-surface-variant mt-4">
+                  이미 계정이 있으신가요?{' '}
+                  <button type="button" onClick={() => navigate('/login')} className="text-primary font-bold hover:underline">
+                    로그인
+                  </button>
+                </p>
               </div>
             </div>
           </div>

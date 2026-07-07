@@ -119,7 +119,7 @@ function Notifications() {
           </div>
         ) : (
           <div className="space-y-5">
-            {Object.entries(grouped).map(([group, items]) => (
+            {GROUP_ORDER.filter((g) => grouped[g]).map((group) => { const items = grouped[group]; return (
               <div key={group}>
                 {/* 날짜 구분선 */}
                 <div className="flex items-center gap-3 mb-3 px-1">
@@ -172,7 +172,7 @@ function Notifications() {
                   })}
                 </div>
               </div>
-            ))}
+            ); })}
           </div>
         )}
 

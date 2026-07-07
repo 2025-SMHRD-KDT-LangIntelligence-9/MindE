@@ -64,7 +64,7 @@ export function AppProvider({ children }) {
 
   // 공개 통계 (비로그인 랜딩/로그인/가입 페이지의 누적처리·총접수 표시용)
   useEffect(() => {
-    getPublicStatsApi().then((d) => { if (d) setPublicStats(d); });
+    getPublicStatsApi().then((d) => { if (d) setPublicStats(d); }).catch(() => {});
   }, []);
 
   // 앱 시작 시 토큰 있으면 세션 복원
@@ -203,6 +203,7 @@ export function AppProvider({ children }) {
   };
 
   const saveReply = async (id, reply) => {
+    const target = complaints.find((c) => c.id === id);
     try {
       await saveResponseApi(id, reply);
     } catch {}
@@ -218,7 +219,6 @@ export function AppProvider({ children }) {
           : c
       )
     );
-    const target = complaints.find((c) => c.id === id);
     if (target) {
       setNotifications((prev) => [
         {
@@ -311,7 +311,9 @@ export function AppProvider({ children }) {
 
   // 관리자가 회원 강제 탈퇴 (백엔드에서 관련 데이터 cascade 삭제 필요)
   const deleteUser = async (userId) => {
-    await deleteUserApi(userId);
+    try {
+      await deleteUserApi(userId);
+    } catch {}
     setUsers((prev) => prev.filter((u) => u.id !== userId));
     // 해당 유저의 민원도 로컬 상태에서 제거
     setComplaints((prev) => prev.filter((c) => String(c.userId) !== String(userId)));

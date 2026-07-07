@@ -1,6 +1,10 @@
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import NotFound from './pages/NotFound';
 import ErrorPage from './pages/ErrorPage';
+
+function RequireAuth({ children }) {
+  return sessionStorage.getItem('token') ? children : <Navigate to="/login" replace />;
+}
 
 // 시민용 화면들
 import Login from './pages/citizen/Login';
@@ -35,25 +39,25 @@ function App() {
       <Route path="/" element={<Landing />} />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
-      <Route path="/home" element={<Home />} />
-      <Route path="/my-complaints" element={<MyComplaints />} />
-      <Route path="/notifications" element={<Notifications />} />
-      <Route path="/settings" element={<Settings />} />
+      <Route path="/home" element={<RequireAuth><Home /></RequireAuth>} />
+      <Route path="/my-complaints" element={<RequireAuth><MyComplaints /></RequireAuth>} />
+      <Route path="/notifications" element={<RequireAuth><Notifications /></RequireAuth>} />
+      <Route path="/settings" element={<RequireAuth><Settings /></RequireAuth>} />
       <Route path="/faq" element={<Faq />} />
-      <Route path="/chatbot" element={<Chatbot />} />
-      <Route path="/document" element={<DocumentOCR />} />
+      <Route path="/chatbot" element={<RequireAuth><Chatbot /></RequireAuth>} />
+      <Route path="/document" element={<RequireAuth><DocumentOCR /></RequireAuth>} />
 
       {/* 담당자용 경로 */}
-      <Route path="/staff" element={<StaffComplaints />} />
-      <Route path="/staff/urgent" element={<StaffUrgent />} />
-      <Route path="/staff/stats" element={<StaffStats />} />
+      <Route path="/staff" element={<RequireAuth><StaffComplaints /></RequireAuth>} />
+      <Route path="/staff/urgent" element={<RequireAuth><StaffUrgent /></RequireAuth>} />
+      <Route path="/staff/stats" element={<RequireAuth><StaffStats /></RequireAuth>} />
 
       {/* 관리자용 경로 */}
-      <Route path="/admin" element={<AdminDashboard />} />
-      <Route path="/admin/settings" element={<AdminSettings />} />
-      <Route path="/admin/monitoring" element={<AdminMonitoring />} />
-      <Route path="/admin/stats" element={<AdminStats />} />
-      <Route path="/admin/users" element={<AdminUsers />} />
+      <Route path="/admin" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
+      <Route path="/admin/settings" element={<RequireAuth><AdminSettings /></RequireAuth>} />
+      <Route path="/admin/monitoring" element={<RequireAuth><AdminMonitoring /></RequireAuth>} />
+      <Route path="/admin/stats" element={<RequireAuth><AdminStats /></RequireAuth>} />
+      <Route path="/admin/users" element={<RequireAuth><AdminUsers /></RequireAuth>} />
       <Route path="/preview" element={<DesignPreview />} />
       <Route path="/error/:code" element={<ErrorPage />} />
       <Route path="*" element={<NotFound />} />

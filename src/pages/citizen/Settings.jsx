@@ -94,8 +94,7 @@ function Settings() {
       if (err.response?.status === 401) {
         setPwError('비밀번호가 올바르지 않습니다.');
       } else {
-        // 서버 연결 불가 시 개발 단계에서는 통과
-        setVerified(true);
+        setPwError('서버 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.');
       }
     } finally {
       setVerifying(false);

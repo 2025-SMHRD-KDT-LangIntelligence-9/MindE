@@ -351,6 +351,9 @@ function MessageBubble({ msg, isSpeaking, onSpeak }) {
                             </span>
                           </div>
                         )}
+                        {c.content && c.content !== c.title && (
+                          <p className="text-[11px] text-on-surface-variant mt-1 leading-relaxed line-clamp-2">{c.content}</p>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -436,7 +439,7 @@ function Chatbot() {
 
   const [view, setView]                   = useState('chat');
   const [messages, setMessages]           = useState(() => restored?.messages ?? [makeGreeting()]);
-  const [summary, setSummary]             = useState(restored?.summary ?? { category: null, dept: null, urgency: null });
+  const [summary, setSummary]             = useState(restored?.summary ?? { category: null, dept: null, deptPhone: null, urgency: null });
   const [procedures, setProcedures]       = useState(restored?.procedures ?? null);
   const [cases, setCases]                 = useState(restored?.cases ?? []);
   const [groupedCases, setGroupedCases]   = useState(restored?.groupedCases ?? []);
@@ -701,7 +704,7 @@ function Chatbot() {
 
   const removeFile = (idx) => {
     setAttachedFiles(prev => {
-      URL.revokeObjectURL(prev[idx].url);
+      if (prev[idx]?.url) URL.revokeObjectURL(prev[idx].url);
       return prev.filter((_, i) => i !== idx);
     });
   };
@@ -782,10 +785,11 @@ function Chatbot() {
       const md = result.metadata;
       if (md?.tool_used) {
         setSummary({
-          category: md.classification?.category ?? md.classification?.category_id ?? null,
-          dept:     md.departments?.[0]?.name ?? md.departments?.[0]?.department_id ?? null,
-          urgency:  md.urgency?.probability_urgent >= 0.7 ? '긴급'
-                  : md.urgency?.probability_urgent >= 0.4 ? '보통' : '낮음',
+          category:  md.classification?.category ?? md.classification?.category_id ?? null,
+          dept:      md.departments?.[0]?.name ?? md.departments?.[0]?.department_id ?? null,
+          deptPhone: md.departments?.[0]?.phone ?? null,
+          urgency:   md.urgency?.probability_urgent >= 0.7 ? '긴급'
+                   : md.urgency?.probability_urgent >= 0.4 ? '보통' : '낮음',
         });
       }
       // 정부24 절차 안내: 유사도 0.5 미만(백엔드 신뢰 기준)은 잡음이라 제외
@@ -982,7 +986,7 @@ function Chatbot() {
     h => !(currentSessionId && String(h.session_id) === String(currentSessionId))
   );
   const filteredHistory = pastSessions.filter(h => {
-    const matchSearch = h.title.includes(historySearch) || h.preview.includes(historySearch);
+    const matchSearch = (h.title ?? '').includes(historySearch) || (h.preview ?? '').includes(historySearch);
     const matchStatus = filterStatus === '전체' || h.status === filterStatus;
     return matchSearch && matchStatus;
   });
@@ -1347,7 +1351,12 @@ function Chatbot() {
               <div className="bg-surface-container-low/60 rounded-xl p-3">
                 <p className="text-[11px] text-on-surface-variant mb-1">담당 부서</p>
                 {summary.dept ? (
-                  <p className="text-xs font-bold text-on-surface">{summary.dept}</p>
+                  <>
+                    <p className="text-xs font-bold text-on-surface">{summary.dept}</p>
+                    {summary.deptPhone && (
+                      <p className="text-[11px] text-primary mt-0.5">☎ {summary.deptPhone}</p>
+                    )}
+                  </>
                 ) : (
                   <p className="text-xs text-on-surface-variant/50">상담 내용 분석 후 표시됩니다.</p>
                 )}
@@ -1500,6 +1509,7 @@ function Chatbot() {
                       <span className="ml-auto text-[11px] text-on-surface-variant">
                         {draft.category?.name && <span className="text-primary font-bold">{draft.category.name}</span>}
                         {draft.department?.name && <span> · {draft.department.name}</span>}
+                        {draft.department?.phone && <span className="text-primary"> ☎ {draft.department.phone}</span>}
                       </span>
                     )}
                   </div>

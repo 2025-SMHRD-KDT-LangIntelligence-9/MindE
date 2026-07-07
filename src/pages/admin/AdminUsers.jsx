@@ -30,11 +30,15 @@ function AdminUsers() {
   const findDept = (name) => departments.find((d) => d.name === name);
 
   const handleApprove = async (user) => {
-    await approveUser(user.id);
-    const deptName = pendingDepts[user.id] ?? '';
-    const dept = findDept(deptName);
-    if (dept) await updateUserDept(user.id, dept.department_id, dept.name);
-    showToast(`${user.name}님의 담당자 가입을 승인했습니다.`);
+    try {
+      await approveUser(user.id);
+      const deptName = pendingDepts[user.id] ?? '';
+      const dept = findDept(deptName);
+      if (dept) await updateUserDept(user.id, dept.department_id, dept.name);
+      showToast(`${user.name}님의 담당자 가입을 승인했습니다.`);
+    } catch {
+      showToast('승인 중 오류가 발생했습니다. 다시 시도해 주세요.');
+    }
   };
 
   const handleReject = (user) => {
