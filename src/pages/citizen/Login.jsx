@@ -399,14 +399,14 @@ function Login() {
                   </button>
 
                   <p className="text-center text-sm text-on-surface-variant">
-                    아직 계정이 없으신가요?{' '}
-                    <button type="button" onClick={() => navigate('/register')} className="text-primary font-bold hover:underline">
+                    아직 계정이 없으신가요?
+                    <button type="button" onClick={() => navigate('/register')} className="text-primary font-bold hover:underline ml-2.5">
                       회원가입
                     </button>
                   </p>
 
                   {/* 계정 찾기 */}
-                  <div className="flex items-center justify-center gap-2.5 text-xs text-on-surface-variant">
+                  <div className="flex items-center justify-center gap-2.5 -mt-4 text-[13px] text-on-surface-variant">
                     <span>계정을 잊어버리셨나요?</span>
                     <button type="button" onClick={() => { closeFindId(); setShowFindId(true); }} className="font-bold text-on-surface hover:text-primary hover:underline">
                       아이디 찾기
