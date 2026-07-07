@@ -1,7 +1,7 @@
 """
 알림 관련 엔드포인트.
 """
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -42,3 +42,20 @@ async def mark_all_read(
     )
     await db.commit()
     return {"updated": result.rowcount}
+
+
+@router.patch("/{notification_id}/read", response_model=schemas.NotificationOut)
+async def mark_one_read(
+    notification_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """단건 알림 읽음 처리. 남의 알림은 404 (존재 자체 노출 안 함)."""
+    notif = await db.get(models.Notification, notification_id)
+    if not notif or notif.user_id != current_user.user_id:
+        raise HTTPException(status_code=404, detail="알림을 찾을 수 없습니다.")
+    if not notif.is_read:
+        notif.is_read = True
+        await db.commit()
+        await db.refresh(notif)
+    return notif

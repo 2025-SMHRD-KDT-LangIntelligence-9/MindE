@@ -56,6 +56,7 @@ async def build_complaint_out(db: AsyncSession, c: models.Complaint) -> dict:
         "memo": c.memo,
         "reply": reply.content if reply else None,
         "reply_date": reply.created_at if reply else None,
+        "chat_session_id": c.chat_session_id,
     }
 
 
@@ -76,6 +77,12 @@ async def create_complaint(
             status_code=400,
             detail="민원 내용을 좀 더 자세히 작성해주세요. (본문 10자 이상)",
         )
+
+    # 챗봇 대화에서 이어 접수하는 경우: 본인 소유 세션인지 확인
+    if payload.chat_session_id is not None:
+        session = await db.get(models.ChatSession, payload.chat_session_id)
+        if not session or session.user_id != current_user.user_id:
+            raise HTTPException(status_code=400, detail="유효하지 않은 채팅 세션입니다.")
 
     text_for_ai = f"{title}\n{content}"
     # 챗봇 분석은 하되 클러스터는 안 만듦 — 클러스터는 아래에서 title만으로 별도 처리.
@@ -109,6 +116,7 @@ async def create_complaint(
         cluster_id=cluster_id,
         urgency_score=urgency_score,
         status="received",
+        chat_session_id=payload.chat_session_id,
     )
     db.add(complaint)
     await db.flush()
@@ -296,6 +304,32 @@ async def create_official_response(
     await db.commit()
     await db.refresh(complaint)
     return await build_complaint_out(db, complaint)
+
+
+@router.get("/{complaint_id}/chat-transcript", response_model=schemas.ChatSessionDetailOut)
+async def get_complaint_chat_transcript(
+    complaint_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """민원의 원본 챗봇 대화 조회. 담당자가 접수 맥락을 확인할 때 사용."""
+    complaint = await db.get(models.Complaint, complaint_id)
+    if not complaint:
+        raise HTTPException(status_code=404, detail="민원을 찾을 수 없습니다.")
+    is_owner = complaint.user_id == current_user.user_id
+    is_staff = current_user.user_type in ("staff", "admin")
+    if not (is_owner or is_staff):
+        raise HTTPException(status_code=403, detail="조회 권한이 없습니다.")
+    if complaint.chat_session_id is None:
+        raise HTTPException(
+            status_code=404,
+            detail="이 민원은 챗봇 대화 없이 접수되었습니다.",
+        )
+    session = await db.get(models.ChatSession, complaint.chat_session_id)
+    if not session:
+        # ON DELETE SET NULL 로 남았어야 하지만 방어적 처리
+        raise HTTPException(status_code=404, detail="원본 채팅 세션을 찾을 수 없습니다.")
+    return session
 
 
 @router.patch("/{complaint_id}/department", response_model=schemas.ComplaintOut)

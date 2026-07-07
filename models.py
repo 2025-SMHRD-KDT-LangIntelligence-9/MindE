@@ -33,6 +33,9 @@ class Category(Base):
 
     category_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     name: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
+    department_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("departments.department_id")
+    )
 
 
 class Department(Base):
@@ -98,6 +101,9 @@ class Complaint(Base):
     )
     memo: Mapped[str | None] = mapped_column(Text)
     updated_at: Mapped[datetime | None] = mapped_column(TIMESTAMP)
+    chat_session_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("chat_sessions.session_id")
+    )
 
 
 class CategoryDepartmentMapping(Base):
@@ -216,3 +222,19 @@ class ComplaintAttachment(Base):
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP, nullable=False, server_default=func.now()
     )
+
+
+class FormTemplate(Base):
+    __tablename__ = "form_templates"
+
+    form_template_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    pdf_url: Mapped[str] = mapped_column(Text, nullable=False)
+    field_mappings: Mapped[list | dict] = mapped_column(JSONB, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP, nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime | None] = mapped_column(TIMESTAMP)
+    summary: Mapped[str | None] = mapped_column(Text)   # 서식 사전 요약 (LLM 자동 생성)

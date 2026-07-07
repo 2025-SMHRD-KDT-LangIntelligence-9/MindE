@@ -1398,6 +1398,1093 @@ async def decompose_query(text: str, history: Optional[list[dict]] = None) -> li
         return [text]
 
 
+# ============================================================
+# 서식 자동 작성 — PDF 근접 텍스트 캐시
+# ============================================================
+_pdf_layout_cache: dict[str, list[dict]] = {}
+
+
+def _load_pdf_layout(pdf_path: str) -> list[dict]:
+    """PDF 파싱해서 페이지별 words + tables 반환 + 캐싱.
+
+    각 페이지: {width, height, words: [{text, cx, cy}], tables: [{bbox, rows: [[{bbox, text}]]}]}
+    좌표는 pt, 좌상단 원점.
+    실패 시 [] 반환 (호출 측이 안전하게 빈 결과로 fallback).
+    """
+    if pdf_path in _pdf_layout_cache:
+        return _pdf_layout_cache[pdf_path]
+    try:
+        import pdfplumber
+    except ImportError:
+        _pdf_layout_cache[pdf_path] = []
+        return []
+    pages = []
+    try:
+        with pdfplumber.open(pdf_path) as pdf:
+            for p in pdf.pages:
+                words = p.extract_words()
+                # 표 감지 + 셀 격자 추출
+                tables = []
+                try:
+                    for t in p.find_tables():
+                        grid = t.extract() or []
+                        row_data = []
+                        for i, row in enumerate(t.rows):
+                            row_cells = []
+                            # row.cells는 각 셀의 bbox (튜플) or None (merged)
+                            cell_bboxes = getattr(row, "cells", None) or []
+                            for j, cell_bbox in enumerate(cell_bboxes):
+                                text = ""
+                                if i < len(grid) and j < len(grid[i]):
+                                    raw = grid[i][j]
+                                    if raw:
+                                        text = str(raw).replace("\n", " ").strip()
+                                row_cells.append({"bbox": cell_bbox, "text": text})
+                            row_data.append(row_cells)
+                        tables.append({"bbox": t.bbox, "rows": row_data})
+                except Exception:
+                    tables = []
+                # 페이지 전체 텍스트 (라인 단위, 상단부터)
+                try:
+                    full_text = p.extract_text() or ""
+                except Exception:
+                    full_text = ""
+                pages.append({
+                    "width": p.width,
+                    "height": p.height,
+                    "words": [
+                        {
+                            "text": w["text"],
+                            "cx": (w["x0"] + w["x1"]) / 2,
+                            "cy": (w["top"] + w["bottom"]) / 2,
+                        }
+                        for w in words
+                    ],
+                    "tables": tables,
+                    "full_text": full_text,
+                })
+    except Exception:
+        pages = []
+    _pdf_layout_cache[pdf_path] = pages
+    return pages
+
+
+def _field_table_context(layout: list[dict], page_idx: int, x_mm: float, y_mm: float) -> dict | None:
+    """(x_mm, y_mm)가 어느 표의 어느 셀에 있는지 → {row_header, col_header}.
+
+    행 헤더 = 같은 행 최좌측 텍스트 셀, 열 헤더 = 같은 열 최상단 텍스트 셀.
+    표 밖이면 None.
+    """
+    if not layout or page_idx >= len(layout):
+        return None
+    page = layout[page_idx]
+    x_pt = x_mm * _MM_TO_PT
+    y_pt_top = page["height"] - y_mm * _MM_TO_PT
+    for table in page.get("tables", []):
+        tb = table["bbox"]
+        if not (tb[0] <= x_pt <= tb[2] and tb[1] <= y_pt_top <= tb[3]):
+            continue
+        rows = table["rows"]
+        for i, row in enumerate(rows):
+            for j, cell in enumerate(row):
+                bbox = cell.get("bbox")
+                if not bbox:
+                    continue
+                cx0, ctop, cx1, cbottom = bbox
+                if not (cx0 <= x_pt <= cx1 and ctop <= y_pt_top <= cbottom):
+                    continue
+                # 행 헤더: 같은 행 왼쪽에서 첫 번째 텍스트 셀
+                row_header = ""
+                for c in row:
+                    t = (c.get("text") or "").strip()
+                    if t:
+                        row_header = t
+                        break
+                # 열 헤더: 같은 열 위쪽에서 첫 번째 텍스트 셀
+                col_header = ""
+                for other_row in rows:
+                    if j < len(other_row):
+                        t = (other_row[j].get("text") or "").strip()
+                        if t:
+                            col_header = t
+                            break
+                # 자기 자신이 헤더로 잡히면 (헤더 셀 자체를 채우는 필드) 무시
+                cell_text = (cell.get("text") or "").strip()
+                if row_header == cell_text:
+                    row_header = ""
+                if col_header == cell_text:
+                    col_header = ""
+                if row_header or col_header:
+                    return {"row_header": row_header, "col_header": col_header}
+                return None
+    return None
+
+
+_MM_TO_PT = 72.0 / 25.4   # 팀 메타데이터 좌표는 mm, pdfplumber는 pt
+
+
+def _nearby_texts(layout: list[dict], page_idx: int, x_mm: float, y_mm: float,
+                  radius_pt: float = 25.0, top_k: int = 5) -> list[str]:
+    """(x_mm, y_mm) 좌표 근처 단어 top_k (근접순).
+
+    메타데이터 좌표는 mm + Y 하단원점 → pdfplumber pt + Y 상단원점으로 변환.
+    """
+    if not layout or page_idx >= len(layout):
+        return []
+    page = layout[page_idx]
+    x_pt = x_mm * _MM_TO_PT
+    y_pt_top = page["height"] - y_mm * _MM_TO_PT
+    hits: list[tuple[float, str]] = []
+    for w in page["words"]:
+        dx = w["cx"] - x_pt
+        dy = w["cy"] - y_pt_top
+        dist = (dx * dx + dy * dy) ** 0.5
+        if dist <= radius_pt:
+            hits.append((dist, w["text"]))
+    hits.sort(key=lambda t: t[0])
+    # 완전 중복 텍스트 제거
+    seen = set()
+    result = []
+    for _, t in hits:
+        if t in seen:
+            continue
+        seen.add(t)
+        result.append(t)
+        if len(result) >= top_k:
+            break
+    return result
+
+
+def _flatten_field_mappings(field_mappings) -> list[dict]:
+    """팀 표준 메타데이터(페이지 배열)를 flat 리스트로 정규화.
+
+    입력 형식 두 가지 지원:
+    A) 팀 표준: [[{name, type, position:[x,y], font?, size?, align?}, ...], [], ...]
+    B) 예전 형식: [{key, x, y, label?, multiline?, ...}, ...]  (하위 호환)
+
+    반환: [{key, x, y, page, type, font?, size?, align?, ...}]
+    중복 name은 _2, _3 접미로 dedupe (렌더링용 좌표는 각각 다르니 데이터로선 별개).
+    """
+    flat = []
+    seen = {}   # name → count
+
+    def push(entry: dict, page_idx: int):
+        raw_name = entry.get("name") or entry.get("key")
+        if not raw_name:
+            return
+        # dedupe
+        seen[raw_name] = seen.get(raw_name, 0) + 1
+        key = raw_name if seen[raw_name] == 1 else f"{raw_name}_{seen[raw_name]}"
+
+        pos = entry.get("position")
+        x = entry.get("x")
+        y = entry.get("y")
+        if isinstance(pos, (list, tuple)) and len(pos) >= 2:
+            x, y = pos[0], pos[1]
+
+        out = {
+            "key": key,
+            "page": page_idx,
+            "x": x,
+            "y": y,
+            "type": entry.get("type", "text"),
+        }
+        for k in ("label", "font", "size", "align", "width", "height",
+                  "multiline", "auto_fill_from", "auto_generated"):
+            if entry.get(k) is not None:
+                out[k] = entry[k]
+        flat.append(out)
+
+    if not field_mappings:
+        return flat
+
+    # 형식 A: 첫 원소가 list이면 페이지 배열
+    if isinstance(field_mappings, list) and field_mappings and isinstance(field_mappings[0], list):
+        for pi, page in enumerate(field_mappings):
+            for item in (page or []):
+                if isinstance(item, dict):
+                    push(item, pi)
+    # 형식 B: flat 리스트
+    elif isinstance(field_mappings, list):
+        for item in field_mappings:
+            if isinstance(item, dict):
+                push(item, 0)
+    return flat
+
+
+async def generate_form_summary(pdf_path: str, template_name: str = "",
+                                 template_desc: str = "") -> str:
+    """PDF 전문을 LLM에 통독시켜 서식 사전 요약을 생성 (한 서식당 1회 호출).
+
+    반환 요약은 form_templates.summary에 저장해 두면
+    이후 매 fill_form_fields 요청 시 프롬프트에 짧게 붙일 수 있음.
+    """
+    layout = _load_pdf_layout(pdf_path)
+    if not layout:
+        return ""
+    # 페이지별 전문을 이어붙임 (페이지당 최대 3000자)
+    parts = []
+    for pi, page in enumerate(layout):
+        ft = (page.get("full_text") or "").strip()
+        if not ft:
+            continue
+        parts.append(f"[페이지 {pi}]\n{ft[:3000]}")
+    if not parts:
+        return ""
+    all_text = "\n\n".join(parts)
+
+    system = (
+        "너는 공공 민원 서식 요약 도우미다. "
+        "주어진 서식 전문을 읽고, AI가 나중에 이 서식의 필드를 자동 채울 때 참고할 "
+        "'서식 이해 요약'을 만든다. 형식은 자유롭지만 다음을 포함하라:\n"
+        "1) 서식의 목적 (누가 언제 왜 쓰는지)\n"
+        "2) 주요 섹션 구성 (섹션 이름과 순서)\n"
+        "3) 체크박스 그룹들의 의미와 배타/독립 여부\n"
+        "4) 판단 기준 (예: 특수관계인·조정대상지역 정의, 관계 분류 등)\n"
+        "5) 데이터 필드가 요구하는 정보의 성격 (짧은 텍스트/금액/날짜/서명 등)\n"
+        "800자 이내로 간결하게. 이후 LLM 프롬프트에 붙일 것이므로 "
+        "명확하고 규칙 위주로."
+    )
+    user = f"서식 이름: {template_name}\n서식 설명: {template_desc}\n\n서식 전문:\n{all_text}"
+
+    client = _get_openai()
+    try:
+        resp = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            temperature=0.2,
+            max_tokens=1200,
+        )
+        return (resp.choices[0].message.content or "").strip()
+    except Exception:
+        return ""
+
+
+# mm ↔ pt 변환 상수 (PDF는 pt, 팀 메타데이터는 mm)
+_PT_PER_MM = 72.0 / 25.4
+_MM_PER_PT = 25.4 / 72.0
+
+
+def _expand_table_rows_from_anchors(field_mappings, pdf_path: str) -> list:
+    """팀 좌표를 앵커로 삼아 PyMuPDF로 그 행의 모든 셀 자동 확장.
+
+    핵심 아이디어:
+    - 팀이 표 안의 셀(예: '취득세' 행 라벨) 하나만 찍어도
+    - PyMuPDF가 그 위치를 포함한 표를 찾아 그 행의 모든 셀 좌표를 자동 뽑음
+    - 이름: {team_field_name}_{col_header}
+    - 결과: 팀 metadata + 자동 확장 셀들 병합
+
+    - pdfplumber(_generate_table_cell_fields)와 상호 보완:
+      * 이 함수는 팀 앵커 기반 확장 → 팀이 안 찍은 표는 자동 확장 X
+      * pdfplumber 버전은 표 전체를 탐지 → 좌표 정확도 살짝 낮을 수 있음
+    - 둘 다 auto_generated=True 플래그로 라벨 정리 로직 공유
+    """
+    if not field_mappings or not pdf_path:
+        return field_mappings
+    try:
+        import fitz
+    except ImportError:
+        return field_mappings
+    if not os.path.exists(pdf_path):
+        return field_mappings
+
+    MM_PT = 72.0 / 25.4
+    PT_MM = 25.4 / 72.0
+
+    is_page_structured = (
+        isinstance(field_mappings, list) and field_mappings
+        and isinstance(field_mappings[0], list)
+    )
+    pages = field_mappings if is_page_structured else [field_mappings]
+
+    doc = fitz.open(pdf_path)
+    try:
+        result_pages = []
+        for pi, page_fields in enumerate(pages):
+            merged = list(page_fields)
+            if pi >= len(doc):
+                result_pages.append(merged)
+                continue
+            page = doc[pi]
+            h_pt = page.rect.height
+            try:
+                tables = list(page.find_tables())
+            except Exception:
+                tables = []
+
+            # 이미 추가된 자동 셀 위치 (중복 방지)
+            existing_positions = []
+            for f in page_fields:
+                pos = f.get("position") or []
+                if isinstance(pos, list) and len(pos) >= 2:
+                    existing_positions.append((float(pos[0]), float(pos[1])))
+
+            processed_row_ids = set()  # (table_index, row_index) 중복 처리 방지
+
+            for tf in page_fields:
+                name = tf.get("name") or tf.get("key") or ""
+                pos = tf.get("position") or []
+                if len(pos) < 2:
+                    continue
+                team_x_pt = float(pos[0]) * MM_PT
+                team_y_pt = h_pt - float(pos[1]) * MM_PT
+
+                # 이 앵커를 포함하는 표 찾기
+                containing_ti = None
+                containing = None
+                for ti, t in enumerate(tables):
+                    b = t.bbox
+                    if b[0] <= team_x_pt <= b[2] and b[1] <= team_y_pt <= b[3]:
+                        containing_ti = ti
+                        containing = t
+                        break
+                if not containing:
+                    continue
+
+                # 이 앵커의 행 인덱스 찾기
+                row_idx = None
+                for ri, row in enumerate(containing.rows):
+                    for cell_bbox in (row.cells or []):
+                        if not cell_bbox:
+                            continue
+                        if (cell_bbox[0] <= team_x_pt <= cell_bbox[2]
+                                and cell_bbox[1] <= team_y_pt <= cell_bbox[3]):
+                            row_idx = ri
+                            break
+                    if row_idx is not None:
+                        break
+                if row_idx is None:
+                    continue
+
+                # 같은 (표, 행) 중복 처리 방지
+                if (containing_ti, row_idx) in processed_row_ids:
+                    continue
+                processed_row_ids.add((containing_ti, row_idx))
+
+                # 첫 행을 헤더로 (텍스트 정규화: 자간 공백 붙임)
+                grid = containing.extract() or []
+                col_headers = []
+                if grid:
+                    for c in grid[0]:
+                        s = str(c or "").replace("\n", " ").strip()
+                        parts = s.split()
+                        if parts and all(len(p) == 1 for p in parts):
+                            s = "".join(parts)
+                        col_headers.append(s)
+
+                # 이 행의 모든 셀 좌표 자동 추출
+                row = containing.rows[row_idx]
+                for ci, cell_bbox in enumerate(row.cells or []):
+                    if not cell_bbox:
+                        continue
+                    # PDF에 이미 텍스트가 있는 셀 (헤더/라벨) 스킵
+                    cell_text = ""
+                    if row_idx < len(grid) and ci < len(grid[row_idx]):
+                        cell_text = str(grid[row_idx][ci] or "").strip()
+                    if cell_text:
+                        continue
+
+                    cx_pt = (cell_bbox[0] + cell_bbox[2]) / 2
+                    cy_pt = (cell_bbox[1] + cell_bbox[3]) / 2
+                    cx_mm = cx_pt * PT_MM
+                    cy_mm = (h_pt - cy_pt) * PT_MM
+
+                    # 기존 팀 좌표와 겹치는지 확인 (±3mm)
+                    dup = False
+                    for ex, ey in existing_positions:
+                        if abs(ex - cx_mm) < 3 and abs(ey - cy_mm) < 3:
+                            dup = True
+                            break
+                    if dup:
+                        continue
+
+                    col_h = col_headers[ci] if ci < len(col_headers) else f"col{ci}"
+                    if not col_h:
+                        col_h = f"col{ci}"
+                    new_name = f"{name}_{col_h}"
+
+                    merged.append({
+                        "name": new_name,
+                        "type": "text",
+                        "position": [round(cx_mm, 2), round(cy_mm, 2)],
+                        "size": 9.0,
+                        "font": "DEFAULT_LIGHT",
+                        "align": "left",
+                        "auto_generated": True,
+                    })
+                    existing_positions.append((cx_mm, cy_mm))
+
+            result_pages.append(merged)
+    finally:
+        doc.close()
+
+    return result_pages if is_page_structured else result_pages[0]
+
+
+def _generate_table_cell_fields(field_mappings, pdf_path: str | None) -> list:
+    """PDF의 감지된 표 셀 중 팀이 아직 좌표를 안 찍은 셀에 대해 자동 좌표·명명 생성.
+
+    이제 두 접근을 순차 적용:
+    1) 팀 앵커 기반 행 확장 (PyMuPDF) — 정확도 높음, 앵커 있는 행만
+    2) pdfplumber 표 전체 감지 — 앵커 없는 표도 커버, 정확도 살짝 낮음
+
+    반환: 기존 field_mappings + 자동 생성 셀 병합된 페이지 배열.
+    이름 규칙: {row_label}_{col_header} (헤더 없으면 표 인덱스·행열 번호로 fallback)
+
+    중복 방지:
+    - PDF에 이미 값이 인쇄된 셀 (표 헤더·라벨 등) → 스킵
+    - 기존 팀 좌표가 셀 안(±3mm)에 있으면 → 스킵
+    - LLM이 auto_generated 플래그로 자동 생성 필드 구분 가능
+    """
+    # 1단계: PyMuPDF 앵커 기반 확장 (팀이 안 찍은 세부 셀들)
+    field_mappings = _expand_table_rows_from_anchors(field_mappings, pdf_path)
+
+    if not field_mappings or not pdf_path:
+        return field_mappings
+    layout = _load_pdf_layout(pdf_path)
+    if not layout:
+        return field_mappings
+
+    # 페이지 배열 구조로 정규화
+    is_page_structured = (
+        isinstance(field_mappings, list) and field_mappings
+        and isinstance(field_mappings[0], list)
+    )
+    pages = field_mappings if is_page_structured else [field_mappings]
+
+    result_pages = []
+    for pi, page in enumerate(pages):
+        merged = list(page)
+        if pi >= len(layout):
+            result_pages.append(merged)
+            continue
+        page_layout = layout[pi]
+        h_pt = page_layout.get("height", 842)
+        tables = page_layout.get("tables") or []
+
+        # 기존 필드 위치를 mm(bottom-origin)로 수집
+        existing_positions = []
+        for f in page:
+            pos = f.get("position") or []
+            if isinstance(pos, list) and len(pos) >= 2:
+                existing_positions.append((float(pos[0]), float(pos[1])))
+
+        for ti, table in enumerate(tables):
+            rows = table.get("rows") or []
+            if len(rows) < 2:
+                continue  # 헤더 + 데이터 최소 2행 필요
+
+            # 열 헤더 (첫 행의 텍스트)
+            col_headers = []
+            for cell in rows[0]:
+                text = (cell.get("text") or "").strip()
+                col_headers.append(text)
+
+            for ri, row in enumerate(rows):
+                if ri == 0:
+                    continue  # 헤더 행 스킵
+
+                # 행 라벨 (같은 행 최좌측 텍스트 셀)
+                row_label = ""
+                for cell in row:
+                    t = (cell.get("text") or "").strip()
+                    if t:
+                        row_label = t
+                        break
+
+                for ci, cell in enumerate(row):
+                    bbox = cell.get("bbox")
+                    if not bbox:
+                        continue
+                    cx0, ctop, cx1, cbottom = bbox
+                    cell_text = (cell.get("text") or "").strip()
+                    if cell_text:
+                        continue  # PDF에 이미 텍스트가 있는 셀 (헤더·라벨·기본값) 스킵
+
+                    # 셀 중앙 좌표 → mm (bottom-origin)
+                    cx_pt = (cx0 + cx1) / 2
+                    cy_pt = (ctop + cbottom) / 2
+                    cx_mm = cx_pt * _MM_PER_PT
+                    cy_mm = (h_pt - cy_pt) * _MM_PER_PT
+
+                    # 기존 팀 좌표가 셀 안(±3mm)에 있으면 스킵 (중복 방지)
+                    dup = False
+                    for ex, ey in existing_positions:
+                        if abs(ex - cx_mm) < 3 and abs(ey - cy_mm) < 3:
+                            dup = True
+                            break
+                    if dup:
+                        continue
+
+                    # 이름 생성
+                    col_header = col_headers[ci].strip() if ci < len(col_headers) else ""
+
+                    def _clean_label(s: str) -> str:
+                        """개행·자간 공백 정리. 한글 단문자 열거는 붙여씀 (예: '세 액 감 면' → '세액감면')."""
+                        parts = s.split()
+                        if not parts:
+                            return ""
+                        # 모두 1글자 조각이면 붙여씀 (PDF 자간 공백 케이스)
+                        if all(len(p) == 1 for p in parts):
+                            return "".join(parts)
+                        return " ".join(parts)
+
+                    row_label_clean = _clean_label(row_label)
+                    col_header_clean = _clean_label(col_header)
+                    if row_label_clean and col_header_clean:
+                        name = f"{row_label_clean}_{col_header_clean}"
+                    elif row_label_clean:
+                        name = f"{row_label_clean}_col{ci}"
+                    elif col_header_clean:
+                        name = f"r{ri}_{col_header_clean}"
+                    else:
+                        name = f"표{ti}_r{ri}_c{ci}"
+
+                    # 자동 생성 필드 추가
+                    merged.append({
+                        "name": name,
+                        "type": "text",
+                        "position": [round(cx_mm, 2), round(cy_mm, 2)],
+                        "size": 9.0,
+                        "font": "DEFAULT_LIGHT",
+                        "align": "left",
+                        "auto_generated": True,
+                    })
+                    existing_positions.append((cx_mm, cy_mm))
+        result_pages.append(merged)
+
+    return result_pages if is_page_structured else result_pages[0]
+
+
+def _is_checkbox_field(name: str) -> bool:
+    """필드명이 체크박스 형태인지 판정.
+
+    한 필드 안에 이미 옵션이 2개 이상 포함된 경우(예: `□ 포함 □ 제외`)는
+    체크박스가 아닌 텍스트 값 필드로 취급 (배타 그룹 감지에서 제외).
+    - `[]`, `[ ]`, `[  ]` 등 대괄호 안 공백 개수 무관하게 인식.
+    """
+    if not name:
+        return False
+    import re as _re
+    # □ 또는 [<공백>*] 패턴을 체크박스 마커로 간주
+    marker_count = name.count("□") + len(_re.findall(r"\[\s*\]", name))
+    if marker_count >= 2:
+        return False
+    if marker_count == 1:
+        return True
+    return False
+
+
+def _detect_exclusive_groups(fields: list[dict]) -> list[list[str]]:
+    """필드들 중 배타 그룹(하나만 V) 자동 감지.
+
+    감지 기준:
+    1) 같은 페이지 + y ±3pt (같은 행) 내 체크박스 여러 개 → 배타 후보
+    2) 이름 패턴 유사 (`GROUP □ VALUE_A`, `GROUP □ VALUE_B`) → 배타
+    3) 알려진 배타 쌍 (`여`/`부`, `포함`/`제외`, `해당`/`해당 없음`)
+    """
+    groups: list[list[str]] = []
+    seen_keys: set[str] = set()
+
+    # 1) 같은 y ±3pt 클러스터 내 체크박스
+    # 페이지별로 정렬
+    by_page: dict[int, list[dict]] = {}
+    for f in fields:
+        if f.get("type") == "image":
+            continue
+        name = f.get("key", "")
+        if not _is_checkbox_field(name):
+            continue
+        page = f.get("page", 0)
+        by_page.setdefault(page, []).append(f)
+
+    def _shared_prefix(name: str) -> str:
+        """이름에서 접두어(`GROUP □ ...` 형태의 GROUP) 추출. 없으면 빈 문자열."""
+        if " □ " in name:
+            return name.split(" □ ", 1)[0].strip()
+        return ""
+
+    for page, page_fields in by_page.items():
+        # y 기준 정렬
+        page_fields.sort(key=lambda f: f.get("y", 0))
+        used = set()
+        for i, f in enumerate(page_fields):
+            if f["key"] in used:
+                continue
+            cluster = [f]
+            f_prefix = _shared_prefix(f["key"])
+            for g in page_fields[i + 1:]:
+                if g["key"] in used:
+                    continue
+                if abs(g.get("y", 0) - f.get("y", 0)) > 3.0:
+                    continue
+                g_prefix = _shared_prefix(g["key"])
+                # 둘 다 GROUP □ VALUE 패턴이면 접두어가 같아야 배타 그룹
+                if f_prefix and g_prefix and f_prefix != g_prefix:
+                    continue
+                cluster.append(g)
+            if len(cluster) >= 2:
+                key_list = [c["key"] for c in cluster]
+                # 이미 다른 그룹에 포함된 키가 하나라도 있으면 스킵
+                if not any(k in seen_keys for k in key_list):
+                    groups.append(key_list)
+                    seen_keys.update(key_list)
+                    for c in cluster:
+                        used.add(c["key"])
+
+    # 2) 접두어 공유 (조정대상지역 □ 여 / 조정대상지역 □ 부)
+    def _prefix(name: str) -> str | None:
+        # `PREFIX □ VALUE` 패턴
+        if " □ " in name:
+            return name.split(" □ ")[0]
+        return None
+
+    by_prefix: dict[str, list[str]] = {}
+    for f in fields:
+        if f.get("type") == "image":
+            continue
+        name = f.get("key", "")
+        p = _prefix(name)
+        if p and name not in seen_keys:
+            by_prefix.setdefault(p, []).append(name)
+    for p, keys in by_prefix.items():
+        if len(keys) >= 2:
+            groups.append(keys)
+            seen_keys.update(keys)
+
+    # 3) 특수 알려진 쌍 (여/부, 포함/제외, 해당/해당 없음)
+    KNOWN_PAIRS = [
+        (["□ 포함", "□ 제외"], None),
+        (["□ 해당 없음", "□ 해당"], None),
+    ]
+    for pair_keys, _ in KNOWN_PAIRS:
+        # 같은 y (±3) 내 있으면 그룹으로
+        # 이미 clustering으로 잡혔을 확률 높음. skip.
+        pass
+
+    return groups
+
+
+# 프론트가 폼 초기값으로 넣는 플레이스홀더/테스트 문자열 목록
+# 이런 값은 사용자가 실제로 입력한 것이 아니므로 current_fields에서 제거해 LLM 오염 방지
+_PLACEHOLDER_VALUES = {"태스터", "테스트", "test", "TEST", "샘플", "sample", "placeholder"}
+
+
+def _sanitize_current_fields(current_fields: dict | None) -> dict:
+    """current_fields에서 명백한 플레이스홀더 값을 제외."""
+    if not current_fields:
+        return {}
+    clean = {}
+    for k, v in current_fields.items():
+        if isinstance(v, str) and v.strip() in _PLACEHOLDER_VALUES:
+            continue
+        clean[k] = v
+    return clean
+
+
+async def fill_form_fields(
+    template: dict,
+    user_message: str | None = None,
+    session_messages: Optional[list[dict]] = None,
+    current_fields: Optional[dict] = None,
+    user_context: Optional[dict] = None,
+    pdf_path: str | None = None,
+) -> tuple[dict, str]:
+    """서식 필드 AI 자동 채우기.
+
+    Args:
+        template: {name, description, field_mappings} — field_mappings는 좌표 힌트로만 사용
+        user_message: 이 서식 화면에서 사용자가 새로 입력한 텍스트 (없을 수 있음)
+        session_messages: 챗봇 상담 세션에서 넘어온 대화 이력 (없을 수 있음)
+        current_fields: 이전에 채워진 값 or 사용자가 직접 수정한 값 (반복 갱신용)
+        user_context: 사용자 정보 {'name': '...', 'phone': '...'} — LLM이 프롬프트에서 활용,
+            그리고 auto_fill_from 지정 필드는 서버가 강제 덮어씀.
+        pdf_path: 실제 PDF 파일 경로. 주면 각 필드 좌표 근처 텍스트를 뽑아 LLM 힌트에 포함
+            → 라벨 없는 □ 체크박스, 중복 필드명 애매성 해결. 없어도 동작.
+
+    Returns:
+        (fields, message):
+          - fields: {field_key: value} — LLM이 채운 값. type='image' 필드는 제외.
+          - message: 자연어 응답 (뭘 채웠는지 or 뭐가 더 필요한지). 프론트가 대화창에 그대로 표시.
+
+    실패 시 (current_fields, 오류 안내 문구) 반환 (안전).
+    """
+    import json as _json
+    field_mappings = template.get("field_mappings") or []
+    fields = _flatten_field_mappings(field_mappings)
+    # 프론트가 실수로 넣은 플레이스홀더 값 제거
+    current_fields = _sanitize_current_fields(current_fields)
+    if not fields:
+        return (current_fields or {}, "이 서식은 채울 필드가 없습니다.")
+
+    # PDF 근접 텍스트 로딩 (있으면). 캐싱되어 있어서 재호출 부담 X.
+    pdf_layout = _load_pdf_layout(pdf_path) if pdf_path else []
+
+    # 사용자 계정 이름이 플레이스홀더 성격이면 (테스트 계정) auto-fill 방지
+    # → 발표·데모 시 "태스터" 같은 계정명이 신청인 필드에 자동 채워지는 것 방지
+    if user_context and isinstance(user_context.get("name"), str):
+        _name = user_context["name"].strip()
+        if _name in _PLACEHOLDER_VALUES:
+            user_context = {k: v for k, v in user_context.items() if k != "name"}
+
+    # 자동 생성 필드의 행 라벨 접두어 미리 뽑기 → 원본 필드가 이 라벨과 겹치면
+    # 표의 행 라벨 셀임 (PDF에 이미 라벨 인쇄됨) → LLM 프롬프트에서 제외해 혼동 방지.
+    auto_label_prefixes = set()
+    for f in fields:
+        if f.get("auto_generated"):
+            k = f.get("key", "")
+            if "_" in k:
+                auto_label_prefixes.add(k.rsplit("_", 1)[0])
+
+    def _is_row_label(field_key: str, is_auto: bool) -> bool:
+        if is_auto:
+            return False
+        for prefix in auto_label_prefixes:
+            if not prefix:
+                continue
+            if field_key == prefix or field_key in prefix or prefix in field_key:
+                return True
+        return False
+
+    # 좌표/라벨 정보를 LLM 힌트로 정리 (image type 제외 — 값 안 뱉음)
+    hints = []
+    auto_fill_map = {}   # {key: user_context 필드명}
+    text_keys: list[str] = []
+    label_keys: set[str] = set()   # 라벨 성격 필드 (프롬프트에서 제외, 결과는 빈값)
+    for f in fields:
+        if f.get("type") == "image":
+            continue
+        key = f.get("key")
+        if not key:
+            continue
+        text_keys.append(key)
+        is_auto = bool(f.get("auto_generated"))
+        # 원본 필드가 자동 라벨과 이름 겹치면 라벨 성격 → LLM에게 안 보임
+        if _is_row_label(key, is_auto):
+            label_keys.add(key)
+            continue
+        parts = [f'"{key}"']
+        if is_auto:
+            parts.append("[표셀,사용자가 명시한 값만]")
+        if f.get("label"):
+            parts.append(f'라벨={f["label"]}')
+        if f.get("multiline"):
+            parts.append("긴 서술문")
+        if f.get("width"):
+            parts.append(f'가로={f["width"]}')
+        if f.get("x") is not None and f.get("y") is not None:
+            parts.append(f'p{f.get("page", 0)}(x={f["x"]:.0f},y={f["y"]:.0f})')
+        # PDF 컨텍스트 (있으면) — 표 위치(행/열 헤더) + 근처 텍스트
+        if pdf_layout and f.get("x") is not None and f.get("y") is not None:
+            tc = _field_table_context(
+                pdf_layout, f.get("page", 0),
+                float(f["x"]), float(f["y"]),
+            )
+            if tc:
+                rh = tc.get("row_header") or ""
+                ch = tc.get("col_header") or ""
+                parts.append(f'표[행:{rh}, 열:{ch}]')
+            near = _nearby_texts(
+                pdf_layout, f.get("page", 0),
+                float(f["x"]), float(f["y"]),
+                radius_pt=25.0, top_k=5,
+            )
+            if near:
+                parts.append("주변=" + "/".join(near))
+        hints.append("  - " + ", ".join(parts))
+        af = f.get("auto_fill_from")
+        if af:
+            auto_fill_map[key] = af
+
+    system_prompt = (
+        "너는 민원 서식 자동 작성 도우미다. "
+        "사용자 대화를 참고해 서식의 각 필드에 어울리는 값을 뽑아 답한다.\n"
+        "출력 형식:\n"
+        "  반드시 다음 스키마의 JSON 오브젝트 하나로만 답한다.\n"
+        "  {\n"
+        '    \"fields\": {필드key: 값, ...},\n'
+        '    \"message\": \"사용자에게 보여줄 자연어 응답 (짧게, 2~3문장)\"\n'
+        "  }\n"
+        "message 규칙 (사용자 발화 유형별 응답 스타일):\n"
+        "  1) **질문형** (\"무슨 정보 필요해?\", \"뭐 써야 해?\", \"어떤 내용 있어?\", \"안내해줘\") → \n"
+        "     필드 목록을 자연스러운 문장으로 설명. 예: \"동물등록 신청서엔 신청인 정보(성명·주민번호·주소·연락처), 반려동물 정보(이름·품종·성별·중성화 여부·특징), 등록 유형을 적어야 해요. 어떤 것부터 알려주시겠어요?\"\n"
+        "     - 필드가 많으면 큰 카테고리로 묶어 소개.\n"
+        "  2) **정보 제공형** (\"홍길동이야\", \"주소는 서울...\") → \n"
+        "     fields에 반영하고 뭘 채웠는지 짧게 확인 + 다음 필요한 정보 안내. 예: \"성함과 주소 반영했어요. 반려동물 이름과 품종도 알려주시겠어요?\"\n"
+        "  3) **잡담·의도만** (\"같이 써보자\", \"작성해줘\") → \n"
+        "     서식 목적을 간단히 알려주고 시작. 예: \"동물등록 신청서 작성 도와드릴게요. 우선 반려동물 이름부터 알려주시겠어요?\"\n"
+        "  4) **불만·항의** (\"왜 마음대로 채워?\", \"이상해\") → \n"
+        "     사과 + 상황 재설명. 예: \"죄송해요, 사용자님이 아직 정보를 안 주셨네요. 반영할 내용을 알려주시면 채워드릴게요.\"\n"
+        "  5) **애매·확인** (\"이거 맞아?\", \"다 됐어?\") → \n"
+        "     현재 채워진 내용 요약 + 남은 필드 안내.\n"
+        "일반 규칙:\n"
+        "  - message는 항상 존댓말·친절한 한국어. 이모지 X, 마크다운 X.\n"
+        "  - **동일 문구 반복 절대 금지**. 사용자 발화에 맞춰 매번 다른 문장 구성.\n"
+        "  - 절대 \"서식을 작성했습니다\", \"어떤 정보 알려주실래요?\" 같은 정형 문구만 반복 X. 상황에 맞춰 자연스럽게.\n"
+        "  - 사용자가 서식 이름을 언급하면 그 서식의 성격을 알고 있음을 드러내며 답변.\n"
+        "\n"
+        "규칙:\n"
+        "1) 반드시 위 스키마 JSON 오브젝트로만 답한다. 설명·마크다운 금지.\n"
+        "2) fields 안 키는 아래 필드 목록의 key와 정확히 일치해야 한다.\n"
+        "3) 모르는 값(사용자가 안 준 정보, 이름·번호·금액 등)은 빈 문자열 \"\"로 둔다. 창작 금지.\n"
+        "4) 필드 성격(라벨/위치/multiline/가로)에 맞게 값 길이·톤을 조정한다.\n"
+        "   - 짧은 필드(성명·전화번호·주소·제목): 한 줄, 간결.\n"
+        "   - 긴 필드(내용/상세): 문장 여러 개로 서술.\n"
+        "5) 이전에 채워져 있던 값(current_fields)이 있으면 존중한다. "
+        "사용자가 명시적으로 바꿔달라 요청한 필드만 갱신하고, 나머지는 그대로 유지.\n"
+        "6) 사용자 정보(user_context) 사용 규칙:\n"
+        "   - user_context는 **로그인한 신청인 본인 정보**다. 신청인 관련 필드에만 사용.\n"
+        "   - 예: `취득자 성명`, `신청인 성명`, `신고인` → user_context.name 사용 가능\n"
+        "   - **다음 필드엔 user_context를 절대 사용 금지** (신청인이 아닌 다른 사람·대상):\n"
+        "     · 반려동물 관련: `동물 이름`, `반려동물 이름`, `개 이름`, `등록번호`, `품종` 등\n"
+        "     · 전 소유자/매도인: `전 소유자 성명`, `매도인 성명`, `양도인` 등\n"
+        "     · 대리인·위임자: `대리인 성명`, `위임자 성명` (단, 신청인 본인이 대리 아닐 때)\n"
+        "     · 세대원: `세대원 성명` (배우자·자녀 등, 세대주인 본인 정보 아님)\n"
+        "     · 담당자/기관: `담당자`, `공무원`, `기관 대표` 등\n"
+        "   - 판단 기준: 필드 라벨이 `누구를` 가리키는지 문맥으로 파악. `본인/신청인/신고인/취득자`가 아닌 대상은 user_context 사용 X.\n"
+        "7) 좌표 활용:\n"
+        "   - 좌표는 렌더링용이 아니라 필드 간 관계 이해용이다. "
+        "값에는 좌표를 절대 넣지 마라.\n"
+        "   - 같은 y (±10) 근처 필드는 하나의 행/세트로 판단한다. "
+        "예: 취득자 성명·주민번호·주소·전화번호가 같은 y 근처면 취득자 한 사람의 정보 세트다.\n"
+        "   - y가 아래로 내려가면(값이 작아지면) 다음 행/블록이다.\n"
+        "8) 반복 행 표기 (`_2`, `_3` 접미):\n"
+        "   - key가 `세대원_1_성명`, `세대원_2_성명` 처럼 접미 번호가 있으면 같은 성격의 반복 행이다. "
+        "사용자가 여러 명 언급했으면 순서대로 채우고, 없으면 빈 문자열.\n"
+        "   - `취득물건내역`, `취득물건내역_2` 처럼 이름이 중복돼 서버가 접미를 붙인 경우도 동일 원칙: "
+        "좌표 y가 다르면 서로 다른 행이므로 각기 다른 값을 채울 수 있다.\n"
+        "9) 체크박스 처리:\n"
+        "   - 라벨에 `[]` 가 있거나 이름이 `배우자[]`, `직계존비속[]` 처럼 옵션명인 필드는 체크박스다.\n"
+        "   - 해당 상태면 정확히 \"V\", 아니면 빈 문자열 \"\" 로 표기한다. 다른 표기 금지.\n"
+        "   - **배타 그룹** (하나만 선택): 예: `배우자[]`/`직계존비속[]`/`친족관계[]`, "
+        "`[]기한 내`/`[]기한 후`, `포함`/`제외` 등은 하나만 \"V\", 나머지 반드시 \"\".\n"
+        "   - **여/부 (yes/no) 짝**: `X □ 여` / `X □ 부` 형식은 X에 해당하면 '여'=V, "
+        "해당 안 되면 '부'=V. 사용자가 명시적으로 부정형(\"아니다\", \"아님\", \"없다\")을 쓰면 반드시 '부'=V. "
+        "언급 없으면 그룹 전체 \"\".\n"
+        "   - `해당`/`해당 없음` 짝도 동일. 사용자가 \"해당 없다/아니다\"라고 하면 '해당 없음'=V.\n"
+        "   - **독립 체크박스**: 해당 조건이면 \"V\", 아니면 \"\".\n"
+        "   - 사용자가 명시하지 않은 체크박스는 전부 \"\" 로 둔다 (추측 금지).\n"
+        "10) 가족 관계 판단 (공공 서식에 자주 나오는 상식):\n"
+        "    - 배우자 = 남편/아내/부부.\n"
+        "    - 직계존비속 = 부모/자녀/조부모/손자녀 등 직계 혈연 (예: 아버지→저는 '직계존비속').\n"
+        "    - 친족관계 = 형제자매/사촌/삼촌/조카/처가·시가·인척 등 (직계 아닌 혈족·인척, 통상 8촌 이내 혈족·4촌 이내 인척).\n"
+        "    - 위 세 그룹은 서로 배타. 하나만 \"V\".\n"
+        "    - **중요**: 이 관계는 신고인(취득자)과 전 소유자(매도인/증여자) 사이의 관계다. "
+        "세대원 정보(배우자·자녀 언급)와는 무관하니 혼동 금지.\n"
+        "    - 판단 방법: '전 소유자가 나에게 어떤 사람인가?' 를 본다.\n"
+        "      · 전 소유자가 아버지/어머니/자녀/조부모 → 직계존비속\n"
+        "      · 전 소유자가 남편/아내 → 배우자\n"
+        "      · 전 소유자가 형제/사촌/삼촌/조카/처가 등 → 친족관계\n"
+        "      · 전 소유자가 남(회사 대표/타인) → 세 필드 모두 \"\"\n"
+        "11) 세대주 vs 세대원 판단:\n"
+        "    - 사용자 본인이 세대주라 밝히면, 세대주 행에 사용자 이름/주민번호를 넣고 '세대주와의 관계'는 \"본인\".\n"
+        "    - 세대원 정보는 세대원 행에만 채운다. 세대주 셀에 세대원 데이터를 섞지 않는다.\n"
+        "    - 사용자가 세대원을 여러 명 언급하면 배우자 → 자녀 → 부모 순으로 세대원 슬롯에 넣는 것이 자연스럽다.\n"
+        "12) 특수관계인 3택은 회사 관계 기준이다:\n"
+        "    - 임원·사용인 관계 → 경제적 연관관계.\n"
+        "    - 주주·출자자 관계 → 경영지배관계.\n"
+        "    - 그 외(가족·지인 등)는 '특수관계인이 아닌 경우' 로 표기.\n"
+        "    - 가족 간 거래(배우자·직계·친족)는 위 3택과 별도의 카테고리이므로 3택은 '아닌 경우'로 표기한다.\n"
+        "13) `[표셀,사용자가 명시한 값만]` 힌트가 붙은 필드:\n"
+        "    - 표에서 자동 생성된 셀이다. 이름 형식은 `{행라벨}_{열헤더}` (예: `취득세_과세표준액`, `합계_산출세액`).\n"
+        "    - **사용자가 대화에서 그 셀에 해당하는 값을 명시적으로 알려준 경우에만** 채운다.\n"
+        "    - 예: 사용자가 '취득세 800만원' 했으면 `취득세_산출세액=\"8000000\"`.\n"
+        "    - 언급 없으면 반드시 빈 문자열 \"\". 다른 셀 값 유추·계산·창작 금지.\n"
+        "    - **다중 행 표 (`r1_XXX`, `r2_XXX`, `r3_XXX` 같이 행 번호가 붙은 경우)**:\n"
+        "      · 사용자가 여러 건을 명시적으로 언급한 경우에만 각 행에 서로 다른 값 채움.\n"
+        "      · 1건만 언급했으면 r1만 채우고 r2, r3는 반드시 빈 문자열.\n"
+        "      · 절대 같은 값을 여러 행에 복사 금지.\n"
+        "      · 사용자가 '임의로 채워줘'라 해도 필요한 최소 건수(보통 1건)만 채우고 나머지 행은 비운다.\n"
+        "14) **행 라벨 필드에는 값을 넣지 마라**:\n"
+        "    - `취득세`, `지방교육세`, `농어촌특별세 부과분`, `합계` 처럼 표의 행 라벨(세목명)만 딱 있는 필드는 값이 아니라 라벨이다.\n"
+        "    - 사용자가 '취득세 800만원'이라 해도 `취득세=\"8000000\"` X. 반드시 `취득세_산출세액=\"8000000\"` 처럼 열 헤더 붙은 셀에 넣어라.\n"
+        "    - 라벨 필드 값은 항상 빈 문자열 \"\".\n"
+    )
+
+    user_parts = []
+    user_parts.append(f'서식 이름: {template.get("name", "")}')
+    if template.get("description"):
+        user_parts.append(f'서식 설명: {template["description"]}')
+
+    # PDF 페이지 첫 헤더 라인만 짧게 추출 (서식 섹션 파악용, 너무 길면 LLM 주의력 분산)
+    if pdf_layout:
+        header_parts = []
+        import re as _re
+        for pi, page in enumerate(pdf_layout):
+            ft = (page.get("full_text") or "").strip()
+            if not ft:
+                continue
+            # 첫 3~5줄만 (섹션 헤더/제목 정도)
+            lines = [ln.strip() for ln in ft.split("\n") if ln.strip()][:5]
+            if lines:
+                header_parts.append(f"p{pi}: " + " / ".join(lines)[:200])
+        if header_parts:
+            user_parts.append("\n서식 페이지 헤더: " + " | ".join(header_parts))
+
+    if user_context:
+        user_parts.append("\n사용자 정보 (user_context):")
+        user_parts.append(_json.dumps(user_context, ensure_ascii=False))
+
+    user_parts.append("\n필드 목록 (key + 힌트):")
+    user_parts.append("\n".join(hints))
+
+    # 배타 그룹 자동 감지 → 프롬프트에 명시적 리스트로 삽입
+    exclusive_groups = _detect_exclusive_groups(fields)
+    if exclusive_groups:
+        group_lines = []
+        for i, grp in enumerate(exclusive_groups, 1):
+            # 너무 긴 이름 잘라 표시
+            names = [k if len(k) < 40 else k[:37] + "..." for k in grp]
+            group_lines.append(f"  그룹{i}: {' / '.join(names)}")
+        user_parts.append("\n[배타 그룹 - 각 그룹에서 정확히 하나만 \"V\", 나머지 반드시 \"\"]")
+        user_parts.append("\n".join(group_lines))
+        user_parts.append(
+            "위 각 그룹은 하나의 상호배타 선택지다. "
+            "사용자 정보가 어느 옵션에도 해당 안 되면 그룹 전체를 \"\"로 둔다."
+        )
+
+    if current_fields:
+        user_parts.append("\n현재 값 (current_fields):")
+        user_parts.append(_json.dumps(current_fields, ensure_ascii=False))
+
+    if session_messages:
+        # 최근 6턴만
+        recent = []
+        for m in session_messages[-6:]:
+            role = m.get("role")
+            content = m.get("content", "")
+            if role in ("user", "assistant") and content:
+                recent.append(f'[{role}] {content}')
+        if recent:
+            user_parts.append("\n이전 상담 대화 (참고):")
+            user_parts.append("\n".join(recent))
+
+    if user_message:
+        user_parts.append("\n사용자 새 메시지:")
+        user_parts.append(user_message)
+
+    user_parts.append("\n위 정보로 JSON을 채워라.")
+
+    client = _get_openai()
+    assistant_message = ""
+    parsed_fields: dict = {}
+    try:
+        resp = await client.chat.completions.create(
+            model="gpt-4o-mini",   # 필드 추출은 가벼워서 mini로 충분 (속도↑ 비용↓)
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": "\n".join(user_parts)},
+            ],
+            temperature=0.2,
+            max_tokens=4500,   # 200+ 필드 서식일 때 응답 잘림 방지
+            response_format={"type": "json_object"},
+        )
+        raw = (resp.choices[0].message.content or "").strip()
+        parsed = _json.loads(raw)
+        if isinstance(parsed, dict):
+            # 새 스키마: {"fields": {...}, "message": "..."}
+            if "fields" in parsed and isinstance(parsed["fields"], dict):
+                parsed_fields = parsed["fields"]
+                assistant_message = str(parsed.get("message") or "").strip()
+            else:
+                # 하위 호환: flat dict 인 경우 (이전 프롬프트 스타일)
+                parsed_fields = parsed
+    except Exception:
+        parsed_fields = dict(current_fields or {})
+        assistant_message = "죄송해요, 처리 중 오류가 있었어요. 다시 말씀해주시겠어요?"
+
+    # 자동 필드는 user_context로 강제 덮어쓰기 (LLM 창작 방지)
+    # 라벨 성격 필드는 무조건 빈 문자열.
+    result = {}
+    for key in text_keys:
+        if key in label_keys:
+            result[key] = ""
+            continue
+        auto_source = auto_fill_map.get(key)
+        val = None
+        if auto_source and user_context:
+            src = auto_source.split(".", 1)[-1] if "." in auto_source else auto_source
+            val = user_context.get(src) or None
+        if val is None:
+            val = parsed_fields.get(key)
+        if val is None and current_fields:
+            val = current_fields.get(key)
+        if val is None:
+            val = ""
+        result[key] = val
+
+    # 체크박스 필드 강제 정규화: 값이 "V" 또는 "" 만 허용.
+    # LLM이 필드명 "휴대전화요금" 같은 걸 보고 전화번호 등을 잘못 넣는 경우 방지.
+    # 필드명에 □/[]/[ ] 포함되면 체크박스로 간주.
+    for f in fields:
+        if f.get("type") == "image":
+            continue
+        key = f.get("key")
+        if not key or key not in result:
+            continue
+        if _is_checkbox_field(key):
+            v = result[key]
+            if v != "V":
+                result[key] = ""
+
+    # 표 라벨 필드 강제 정규화:
+    # 자동 생성 필드가 `{X}_{Y}` 패턴이면 X는 행 라벨. `X`와 매칭되는 원본 필드에 값이 들어있으면
+    # 라벨이 값으로 오염된 상태이므로 빈 문자열로 강제.
+    # 예: `취득세_과세표준액` 자동 생성됨 → `취득세` 필드는 라벨 → 값 빈문자열.
+    # 매칭은 정확 일치 OR 접두어/포함 관계로 유연하게 (라벨명이 PDF마다 미세하게 다를 수 있음).
+    label_prefixes = set()
+    for f in fields:
+        if not f.get("auto_generated"):
+            continue
+        key = f.get("key", "")
+        if "_" in key:
+            label_prefixes.add(key.rsplit("_", 1)[0])
+
+    original_keys = [f.get("key", "") for f in fields
+                     if not f.get("auto_generated") and f.get("key")]
+    for orig_key in original_keys:
+        val = result.get(orig_key)
+        if not val or val == "V":
+            continue
+        # orig_key가 어떤 auto label prefix와 유사한지 검사
+        is_label = False
+        for prefix in label_prefixes:
+            if not prefix:
+                continue
+            # 완전 일치, 접두어 관계, 또는 하나가 다른 하나를 포함
+            if (orig_key == prefix
+                    or orig_key.startswith(prefix)
+                    or prefix.startswith(orig_key)
+                    or orig_key in prefix
+                    or prefix in orig_key):
+                is_label = True
+                break
+        if is_label:
+            result[orig_key] = ""
+
+    # 배타 그룹 위반 후처리: 여러 개 V이면 첫 번째만 남기고 나머지 blank
+    for group in exclusive_groups:
+        checked = [k for k in group if result.get(k) == "V"]
+        if len(checked) > 1:
+            for k in checked[1:]:
+                result[k] = ""
+
+    # LLM이 message를 안 뱉었을 경우 fallback (사용자 메시지 유무로 판단)
+    if not assistant_message:
+        if not (user_message and user_message.strip()):
+            assistant_message = (
+                f"'{template.get('name','서식')}' 작성을 도와드릴게요. "
+                "성함·주소·연락처 등 필요한 정보를 편하게 알려주시면 서식에 반영해드립니다."
+            )
+        else:
+            assistant_message = "말씀 반영했어요. 추가로 필요한 정보 있으면 알려주세요."
+
+    return result, assistant_message
+
+
 async def extract_keywords(text: str, max_keywords: int = 3) -> list[str]:
     """사용자 텍스트에서 핵심 키워드 추출 (OpenAI 호출).
 

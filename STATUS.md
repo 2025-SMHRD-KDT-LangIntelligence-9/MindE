@@ -1,6 +1,6 @@
 # 진행 상황 (Resume용)
 
-마지막 업데이트: 2026-07-03 (프론트 요청 대응 + 접수 민원 자동 RAG 인덱싱)
+마지막 업데이트: 2026-07-06 밤 (PyMuPDF 하이브리드 좌표 추출·자동 표 확장·다운로드 픽셀 렌더링·대화 스타일 자연화)
 
 ## ✅ 완료 상태
 
@@ -21,10 +21,16 @@
 - `rag_documents`: law 5,441 + dept 39 + case 37,909 + **procedure 46,157** = **89,546건**
 - `complaint_clusters`: 정리 완료 (43건 → 1건, 실제 참조되는 것만 남김)
 - `complaints`: 정리 완료 (6건 → 2건, 오염 데이터 삭제)
-- **마이그레이션 v2/v3/v4 모두 적용 완료** (`scripts/migrate_v2.sql`, `migrate_v3.sql`, `migrate_v4.sql`)
+- **마이그레이션 v2/v3/v4/v5/v6 모두 적용 완료** (`scripts/migrate_v2.sql` ~ `migrate_v6.sql`)
   - v2: `users.department_id`, `complaints.memo/updated_at`, `notifications.is_read`
   - v3: `chat_sessions` 테이블 (session_id / user_id / title / status / messages JSONB / created_at)
   - v4: `chat_sessions.updated_at` + 인덱스 `(user_id, updated_at DESC)`
+  - v5: `complaint_attachments.file_size`, `uploaded_by`
+  - v6: `complaints.chat_session_id` (FK → chat_sessions, ON DELETE SET NULL) + 부분 인덱스
+  - v7: `categories.department_id` (FK → departments, ON DELETE SET NULL) + 부분 인덱스
+  - v8: `form_templates` 테이블 (서식 PDF + 좌표 매핑 JSONB) + is_active 부분 인덱스
+  - v9: `form_templates.summary` (사전 요약 저장용 컬럼, 현재 미사용 — 시도했으나 회귀로 롤백)
+  - v10: **회원/부서 삭제 cascade** — 회원 관련 FK CASCADE/SET NULL 정리, 부서 관련 SET NULL/CASCADE 정리 (아래 상세)
 
 ### chatbot_service 함수
 | 함수 | 용도 |
@@ -271,6 +277,269 @@ d68c9b3 — v10-relabel + HF 자동 다운로드 + Query Decomposition + 법령 
 - complaint_clusters: 1건만 유지 (오염 정리 완료)
 - complaints: 5건 (테스트 접수 포함)
 
+### 민원 ↔ 원본 챗봇 세션 연결 (v6) ⭐
+- **문제**: 시민이 챗봇과 여러 턴 대화 후 접수해도, 담당자 화면에서 원본 대화 못 봄 → 컨텍스트 손실
+- **해결**: `complaints.chat_session_id` 컬럼 추가로 접수 시점 세션 링크 저장
+- **마이그레이션 v6** (`scripts/migrate_v6.sql`)
+  - `ALTER TABLE complaints ADD COLUMN chat_session_id BIGINT REFERENCES chat_sessions(session_id) ON DELETE SET NULL`
+  - 부분 인덱스 `idx_complaints_chat_session_id` (NULL 제외)
+- **모델/스키마**
+  - `models.Complaint.chat_session_id` 추가
+  - `schemas.ComplaintCreate.chat_session_id: int | None = None` — 프론트가 접수 시 옵션 전달
+  - `schemas.ComplaintOut.chat_session_id` — 응답 노출 (담당자 "원본 대화 보기" 버튼 판단용)
+- **라우터**
+  - `POST /complaints` — payload에 `chat_session_id` 있으면 **본인 소유 세션인지 검증** 후 저장 (남의 세션 붙이기 방지)
+  - `GET /complaints/{id}/chat-transcript` 신규 — 민원 본인 or 담당자/관리자만 원본 세션 전체 (`ChatSessionDetailOut`) 조회. `chat_session_id`가 NULL이면 404
+- **스모크 테스트**
+  - FK 위반 정상 (존재하지 않는 세션 참조 거부)
+  - ON DELETE SET NULL 정상 (세션 삭제 시 민원의 링크만 NULL)
+  - 잔여 테스트 데이터 없음
+- **프론트 인계 필요**
+  - `POST /complaints` body에 `chat_session_id` (draft-complaint 응답 값) 실어주기
+  - 담당자 민원 상세에 **"원본 대화 보기"** 버튼 추가 → `GET /complaints/{id}/chat-transcript`
+  - `ComplaintOut.chat_session_id`가 null이면 버튼 비활성화 처리
+
+### 관리자 화면 스키마 보강 (v7) ⭐
+- **프론트 요청 A**: 부서 대표 전화번호 저장/노출 (기존 `departments.contact_phone` 있었으나 스키마 미노출)
+- **프론트 요청 B**: 카테고리별 담당 부서 지정 (localStorage 임시 저장 → DB 영속화)
+
+**변경**
+- **DB**: `categories.department_id` 컬럼 신규 (v7 마이그레이션). departments는 컬럼 그대로.
+- **models.Category**: `department_id` FK 추가.
+- **schemas**
+  - `DepartmentOut`: `phone` 필드 노출 (Pydantic alias `contact_phone` → `phone`, `populate_by_name=True`)
+  - `DepartmentCreate/Update`: `phone: str | None = None`
+  - `CategoryOut`: `department_id`, `department_name` 추가 (JOIN)
+  - `CategoryCreate/Update`: `department_id: int | None = None`
+- **routers/admin.py**
+  - `POST/PATCH /admin/departments` — `phone` → `contact_phone` 저장
+  - `POST/PATCH /admin/categories` — `department_id` 저장, 존재하지 않는 부서 400
+  - `GET /admin/categories` — `_build_category_out()`로 department_name JOIN
+- **routers/public.py**: `GET /departments` 응답에 phone 자동 포함 (DepartmentOut 그대로 씀)
+
+**스모크**
+- 부서 3건 alias 정상 노출 (`061-286-7450` 등)
+- 카테고리 3건 새 컬럼 NULL 확인 (기존 데이터 무영향)
+
+**프론트 인계**
+- 부서 관리 화면: 대표번호 입력/표시 활성화
+- 카테고리 관리 화면: localStorage 대신 `PATCH /admin/categories/{id}` 로 `department_id` 저장 → `GET /admin/categories` 응답의 `department_name`으로 표시
+
+### 민원 서식 자동 작성 (v8) ⭐
+- **접근**: LLM은 필드 **값만** 뱉고, 좌표는 팀원이 뽑은 매핑을 프론트가 렌더링에 사용 (관심사 분리)
+- **템플릿**: DB `form_templates` (PDF 파일은 `uploads/forms/`), 좌표는 `field_mappings` JSONB
+- **좌표는 LLM에 힌트로만** 전달 — 픽셀 정확도는 인간 튜닝, LLM은 필드 성격(짧은/긴 필드 등) 파악 용도
+- **자동 필드 (성명·연락처)**: `field_mappings[].auto_fill_from = "user.name"|"user.phone"` 지정 → LLM이 뭘 뱉든 서버가 `current_user`로 강제 덮어씀 (창작 방지)
+
+**엔드포인트**
+- `GET /forms/templates` — 좌측 목록용 (name/description만, 필드 매핑 제외)
+- `GET /forms/templates/{id}` — 단건 상세 (field_mappings 포함, 프론트 렌더용)
+- `GET /forms/templates/{id}/pdf` — 원본 PDF 다운로드
+- `POST /forms/fill` — AI 값 채우기. request body:
+  ```json
+  {
+    "template_id": 1,
+    "user_message": "...",             // 이번에 입력한 텍스트 (없어도 됨)
+    "chat_session_id": 42,             // 챗봇 상담에서 넘어온 경우 (없어도 됨)
+    "current_fields": { ... }          // 이전 값 or 사용자가 직접 수정한 값 (반복 갱신)
+  }
+  ```
+  response:
+  ```json
+  { "template_id": 1, "fields": { "성명": "...", "민원 내용": "...", ... } }
+  ```
+
+**LLM 정책**
+- gpt-4o-mini (필드 추출은 가벼움 → 속도·비용 최적)
+- `response_format=json_object` 강제
+- 규칙: 모르는 값 빈 문자열, current_fields 존중, 필드 성격에 맞춰 값 길이·톤 조정
+- 세션 진입 시 최근 6턴 컨텍스트로 전달
+
+**스모크 검증**
+- 초기 채우기: 자동 필드 강제 덮어쓰기 + LLM이 대화에서 주소·제목·내용 정확히 추출
+- 반복 갱신 ("제목을 정중하게"): 다른 필드 유지, 제목만 톤 조정 확인
+- current_fields 존중 규칙 동작
+
+**팀원 인계 (서식 PDF/좌표 데이터 준비)**
+- PDF는 `uploads/forms/{파일명}.pdf` 로 배치
+- `field_mappings`는 **팀 표준 메타데이터 형식** 그대로 지원:
+  ```json
+  [   /* 페이지별 배열 */
+    [ { "name": "취득자 성명", "type": "text", "position": [52.33, 262.53], "font": "DEFAULT_LIGHT", "size": 9.0 }, ... ],
+    [], [], []
+  ]
+  ```
+  - 중복 name은 서버가 자동 dedupe (`_2`, `_3` 접미)
+  - `type: "image"` (서명란 등) 필드는 LLM 출력에서 자동 제외
+  - 예전 flat 형식 `{key, x, y, ...}` 도 하위 호환 지원
+- INSERT 예시:
+  ```sql
+  INSERT INTO form_templates (name, description, pdf_url, field_mappings, is_active)
+  VALUES ('취득세 신고서', '설명',
+          'acquisition_tax_report.pdf',
+          '{...팀 메타데이터 JSON 그대로...}'::jsonb, true);
+  ```
+- **테스트 서식 이미 INSERT 완료** (form_template_id=2): 취득세 신고서 (지방세법 시행규칙) — 페이지 4장, 필드 38개 (text 36 + image 2)
+
+**프론트 인계**
+- 좌측 목록: `GET /forms/templates`
+- 서식 선택 시: `GET /forms/templates/{id}` + `GET /forms/templates/{id}/pdf`
+- 대화창 전송 시: `POST /forms/fill` → 응답의 `fields`로 미리보기 갱신
+- 사용자 직접 편집 시: 편집 값 그대로 다음 요청의 `current_fields`로 전달
+- 다운로드: 원본 PDF + 좌표(`field_mappings`) + 값(`fields`) → jsPDF/pdf-lib으로 오버레이 후 저장
+- 제출: 필드값 조합해 기존 `POST /complaints` 호출 (chat_session_id 있으면 v6 연결까지)
+
+### 서식 자동 채움 정확도 개선 (v8 후속) ⭐
+- **pdfplumber로 PDF 파싱** 후 필드 컨텍스트를 LLM에 자동 제공
+- **표 격자 자동 감지** (`page.find_tables()`) — 세대주/세대원, 1세대 소유주택 등 표 안 필드가 어느 행/열인지 자동 파악. 세대주 셀에 세대원 값 흘러 들어가는 문제 해결.
+- **근접 텍스트 스캔** — 필드 좌표 반경 25pt 내 단어 top-5를 힌트로 삽입. 라벨 없는 `□` 필드도 근처 텍스트로 의미 파악 (예: `□` at (89, 45) → 근처 `[개, 3.5%, 취득세율]` → 취득세율 옵션임을 이해)
+- **배타 그룹 자동 감지** — y좌표 ±3pt 클러스터링 + `X □ 여`/`X □ 부` 접두어 패턴 감지. 프롬프트에 `[배타 그룹 - 각 그룹에서 하나만 V]` 리스트 명시.
+- **배타 위반 후처리 강제** — LLM이 여러 개 V로 답하면 서버가 첫 V만 남기고 나머지 blank (safety net).
+- **페이지 헤더 요약** — 각 페이지 상단 5줄만 짧게 프롬프트에 삽입 (전문은 오버로드라 제외).
+- **가족 관계 판단 규칙 프롬프트** — 배우자/직계존비속/친족관계 정의 + 취득자↔전소유자 관계 명시.
+- **여/부·해당/해당없음 짝 규칙** — 사용자가 "아니다"라 하면 '부'=V, "맞다"라 하면 '여'=V.
+- **세대주 vs 세대원 판단 규칙** — 세대주 셀에 세대원 값 섞이는 것 방지, 배우자→자녀 순 세대원 슬롯 채움.
+
+**개선 로드맵 (취득세 서식 4개 시나리오 실측)**:
+| 단계 | 핵심 지표 정확도 |
+|---|---|
+| 초기 (필드명만) | ~40% |
+| +근접 텍스트 | ~50% |
+| +표 격자 컨텍스트 | ~65% |
+| +배타 그룹 감지·후처리 + 여/부 규칙 | **~95%** (4/4 시나리오 관계·특관·조정·고급·거래·기한 다 정확) |
+
+**응답 시간**: 필드 100개 서식 기준 평균 ~23초 (PDF 파싱은 1회 캐시).
+
+**최종 실측 (4개 시나리오 종합)**:
+- 아버지→저 무상: 직계존비속·아님·부·부·무상·내 (전부 정확)
+- 사촌형→저 유상: 친족관계·아님·매매·내 (전부 정확)
+- 대표이사→임원 무상: 관계 없음·경제(임원)·무상·후 (전부 정확)
+- 배우자→저 무상 (조정대상·고급주택): 배우자·아님·여·여·무상·내 (전부 정확)
+
+### 서식 fill 대화 흐름 개선 (2026-07-04 오후) ⭐
+
+**문제** (프론트 스크린샷 진단)
+- 사용자가 "같이 여권 신청서 작성 좀 해보자" 같은 잡담·의도만 표현했는데 봇이 "서식을 작성했습니다"로 응답하고 필드 임의 채움
+- 프론트가 폼 placeholder로 넣은 "태스터"/"테스트" 문자열이 `current_fields`로 전달돼 LLM이 그 값을 다른 셀에 옮겨쓰는 오염
+- 응답이 canned 문구 하나뿐이라 뭘 채웠는지, 뭐가 더 필요한지 안내가 없어 대화가 어색
+
+**해결 (chatbot_service.fill_form_fields + POST /forms/fill 응답 스키마 변경)**
+- **자연어 응답 반환**: 함수 시그니처 `-> tuple[dict, str]`로 변경. LLM이 필드값 + `message` 자연어를 함께 반환하는 JSON 스키마로 프롬프트 강화 (`{"fields": {...}, "message": "..."}`)
+- **잡담 게이트**: 사용자 메시지가 잡담/의도/불만이면 fields는 current_fields 그대로 두고 message에 "어떤 정보 알려주실래요?" 되묻기. 정보 있으면 채우고 다음에 필요한 정보 안내.
+- **플레이스홀더 필터** (`_sanitize_current_fields`): current_fields의 값이 `태스터/테스트/test/샘플/placeholder` 등이면 서버가 자동 제거 → LLM이 오염 값을 다른 셀에 복사하는 것 방지
+- **API 응답 스키마 확장**: `FormFillResponse.message: str` 추가. 이전 응답 `{template_id, fields}` → `{template_id, fields, message}`.
+- **하위 호환**: LLM이 이전 스키마(flat dict)로 답해도 그대로 파싱해 동작 (fallback).
+
+**스모크 (여권 서식, 4개 시나리오)**
+- 잡담 "같이 여권 발급 신청서 작성 좀 해보자" → message: "여권 발급 신청서를 작성해보겠습니다. 어떤 정보를 알려주실 수 있으세요?" (필드 유지)
+- 정보 "홍길동이고 목포시 상동로 45, 010-1234-5678" → message: "성함과 연락처를 반영했어요. 주소지와 주민번호를 알려주실래요?" (5개 필드 채움)
+- 항의 "왜 마음대로 작성해?" (current: 태스터/테스트) → 플레이스홀더 자동 제거 후 message: "어떤 정보 알려주실래요?"
+- 플레이스홀더 필터 "홍길동입니다" (current: 태스터/테스트) → message: "성함을 반영했어요. 주소지와 주민등록번호를 알려주실래요?" (태스터 대신 홍길동)
+
+**프론트 인계**
+- canned 문구 "서식을 작성했습니다..." 폐기 → 응답의 `message` 필드를 대화창에 그대로 표시
+- 미리보기 placeholder로 "태스터/테스트" 넣던 로직 있으면 제거 권장 (없어도 서버가 필터하니 안전)
+- 서버 재시작 필요
+
+### PyMuPDF 통합·다운로드 픽셀 렌더링·자동 좌표 확장 (2026-07-06) ⭐⭐⭐
+
+**핵심 성과**
+- 다운로드 서식 PDF **픽셀 정확 렌더링** (Malgun Gothic 실제 폰트 폭 측정 → 우측 정렬·자동 줄바꿈 완벽)
+- **팀 좌표 앵커 + PyMuPDF 하이브리드 자동 좌표 확장** — 팀이 앵커 몇 개 클릭하면 표 전체 셀 자동 추출
+- 취득세 세액 계산 표: 팀 앵커 5개 → 자동 셀 50개 확장
+- 22개 서식 중 11개에서 자동 확장 성공 (표 있는 서식)
+
+**PyMuPDF 도입 (`routers/forms.py`)**
+- `requirements.txt` 추가: `PyMuPDF>=1.24`
+- `_render_filled_pdf(pdf_path, field_mappings, values) -> bytes` — 서식에 값 픽셀 정확 렌더
+  - Malgun Gothic (`C:\Windows\Fonts\malgun.ttf`) 임베드
+  - `fitz.Font.text_length()`로 실제 폰트 폭 측정 → 우측/중앙 정렬 정확
+  - 체크박스 자동 오프셋(+1mm, +0.5mm), 크기 통일 (11pt)
+  - 긴 텍스트/자동 생성 셀은 셀 폭 감지 후 `insert_textbox()` 자동 wrap
+- `POST /forms/templates/{id}/render` 신규 — filled PDF 스트림 응답
+- `GET /forms/templates/{id}/debug-preview` 신규 — 팀 좌표(파란색) + 자동 생성(빨간색) 시각화 PDF
+
+**하이브리드 자동 좌표 (`chatbot_service.py`)**
+- `_expand_table_rows_from_anchors(field_mappings, pdf_path)` — 팀 앵커 위치를 PyMuPDF `find_tables()`로 스캔
+  - 앵커 포함 표 → 그 행의 모든 셀 자동 확장
+  - 이름 규칙: `{team_label}_{col_header}` (예: `취득세_과세표준액`)
+  - 자간 공백 정규화 (한글 단문자 조각 붙임)
+- `_generate_table_cell_fields()` 앞단에 결합 → pdfplumber 폴백과 상호 보완
+- 결과: 취득세(+101), 재산세(+16), 위임장(+3) 등 자동 확장
+
+**대화 흐름 자연화**
+- LLM 프롬프트 재작성 (5가지 발화 유형별 응답 스타일):
+  - 질문형 → 필드 목록 카테고리별 설명
+  - 정보 제공형 → 반영 확인 + 다음 필요
+  - 잡담·의도만 → 서식 목적 간단 안내
+  - 불만·항의 → 사과 + 상황 재설명
+  - 애매·확인 → 현재 진척 + 남은 안내
+- 동일 문구 반복 금지 규칙
+- `user_context` 사용 제약: 신청인 필드에만, 반려동물·전 소유자·세대원·대리인엔 사용 금지 명시
+
+**체크박스 인식 확장**
+- `_is_checkbox_field()`, `_is_checkbox_name()` — 정규식 `\[\s*\]`로 대괄호 안 공백 수 무관하게 인식
+- 이전엔 `[]`, `[ ]`만 잡음 → 이제 `[  ]`, `[   ]` 등도 정상 감지
+- 인감증명서(id=6) `[  ]휴대전화 문자전송(SMS)` 필드 오염 해결
+
+**계정 이름 placeholder 방어**
+- 로그인 사용자 계정명이 `태스터`/`테스트`/`test` 등 플레이스홀더면 auto-fill 스킵
+- 발표·데모 시 테스트 계정으로도 신청인 필드에 "태스터" 안 채워짐
+
+**표 라벨 필드 자동 정정 강화**
+- 자동 생성 필드가 `{X}_{Y}` 패턴이면 X는 라벨
+- 원본 팀 필드 `X`와 이름 겹치면(정확·접두어·포함 관계) LLM 프롬프트에서 제외 + 결과값 강제 빈값
+- 취득세 세액 표: "취득세", "지방교육세" 등 라벨 필드에 금액이 잘못 들어가는 문제 완전 해결
+
+**응답 스키마 확장**
+- `POST /forms/fill` 응답에 `rendered_fields` 추가
+  - 체크박스 오프셋 + align 자동 조정된 좌표 + 값 포함
+  - 프론트는 좌측 정렬로만 렌더하면 픽셀 정확
+- `_apply_render_adjustments()` — 폰트 폭 추정으로 우측/중앙 정렬 필드 좌표 자동 변환
+
+**스코프 조정 — 취득세 서식 숨김**
+- 표 구조 복잡성으로 부분 채움 안정도 낮음 (세대현황, 취득물건내역 표)
+- `form_templates.is_active=false`로 목록에서 숨김 (id=2)
+- 활성 서식 21 → 20개
+- 필요시 `UPDATE form_templates SET is_active=true WHERE form_template_id=2` 한 줄로 복구
+
+**LLM `max_tokens` 상향**
+- 2000 → 4500. 필드 200개+ 서식에서 응답 잘림 방지 (`finish_reason=length` 이슈)
+- 3턴 이상 대화에서 오류 안 남
+
+**PPT/발표 준비 지원**
+- 대본 다듬기 (트러블 슈팅 담백 톤·시스템 구성도·서비스 흐름도·화면 설계서)
+- 아키텍처 다이어그램 오류 정정 안내 (KoBERT→KLUE BERT, LangChain 제거, Whisper→CLOVA/ElevenLabs, OCR→좌표 매핑)
+- 팀명 확인: **"마음결"** (이전 "마음이"에서 변경)
+- OCR 문구: 미래 계획으로 명확화
+
+### 프론트 요청 5건 대응 (v10) — 2026-07-04 ⭐
+- **A. 회원 탈퇴 500 에러**: FK 참조가 남아있어 `DELETE /admin/users/{id}` 실패
+- **A-2. 부서 삭제 실패**: 담당자·민원·매핑 참조로 삭제 못 함
+- **B. 알림 개별 읽음**: `PATCH /notifications/{id}/read` 없어서 프론트가 로컬 상태로만 처리 중
+- **C. 카테고리 스키마**: v7에서 이미 구현했지만 프론트가 확인 못 함 (서버 재시작 이슈)
+- **D. 원본 대화 조회**: v6에서 이미 구현했지만 프론트가 404 신고 (서버 재시작 이슈)
+- (minor) 부서 phone alias 확인 요청 — 이미 정상 동작 (응답에서 `phone`으로 나옴)
+
+**해결**
+- `scripts/migrate_v10.sql` — FK 규칙 대대적 정리:
+  - 회원 관련: `chat_sessions`/`complaints`/`notifications`의 user_id → **CASCADE** (개인 데이터 연쇄 삭제)
+  - 회원 감사 성격: `complaint_attachments.uploaded_by`, `complaint_status_history.changed_by` → **SET NULL** (익명화)
+  - 민원 연쇄: `complaint_attachments`, `complaint_responses`, `complaint_status_history`의 complaint_id → **CASCADE**
+  - 민원↔알림: `notifications.complaint_id` → **SET NULL** (알림은 남기고 링크만 해제)
+  - 부서 관련: `users.department_id`, `complaints.assigned_department_id` → **SET NULL**
+  - 카테고리 매핑: `category_department_mapping.department_id` → **CASCADE** (매핑 row 자체 삭제)
+- `routers/notifications.py` — `PATCH /notifications/{id}/read` 추가 (남의 알림 → 404)
+
+**스모크 (v10 cascade 검증)**
+- 테스트 유저 생성 → chat_session/complaint/notification/response 심음 → `DELETE FROM users` 한 방
+- 결과: 관련 데이터 4개 모두 CASCADE 정상 삭제 (에러 없음)
+
+**프론트 담당자에게 알려줄 것**
+- 서버 재시작 후 확인 부탁 (특히 C, D는 어제 이미 구현되었지만 서버 재시작 안 돼서 프론트가 404 받은 상태)
+- A/A-2는 DB 레벨 FK CASCADE라 라우터 코드 그대로 두고 그냥 삭제 API 호출하면 자동 처리
+- B는 `PATCH /notifications/{id}/read` 신규 열림
+
 ### 커밋 히스토리 (backend-ai 오늘)
 ```
 7565814  접수 민원 자동 RAG 인덱싱 (유사 사례 확장)
@@ -308,8 +577,8 @@ e0df8b3  SYSTEM_PROMPT — 후속 턴 답변 간결화
 | 🟡 | 11 카테고리 골고루 실측 (예상 못한 케이스 대비) | 30분 | AI |
 | 🟡 | HTTPS 붙이기 (Cloudflare Tunnel) — 발표 완성도 | 30분 | 사용자 |
 | 🟡 | HF 토큰 회전 (이전 노출) | 5분 | 사용자 |
-| 🟢 | 채팅 → 민원 접수 연결 (`chat_session_id` 컬럼) — 담당자가 원본 대화 열람 | 30~60분 | AI |
-| 🟢 | 자주 쓰는 문서 양식 자동 작성 (기획서 ⑥ 완성도) | 1~2시간 | 선택 |
+| ✅ | ~~채팅 → 민원 접수 연결 (`chat_session_id` 컬럼) — 담당자가 원본 대화 열람~~ **완료 (v6)** | — | AI |
+| 🟡 | 자주 쓰는 문서 양식 자동 작성 — 백엔드 완료 (v8), **팀원 서식 PDF/좌표 데이터 대기** | 팀원 | 팀원 |
 | 🟢 | 카톡/SMS 알림 통합 | 반나절 | 백엔드 |
 | 🟢 | 세션 삭제 시 첨부 파일도 함께 삭제 | 10분 | AI |
 

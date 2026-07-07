@@ -2,7 +2,7 @@
 API가 주고받는 데이터의 '형태'를 정의 (Pydantic).
 """
 from datetime import datetime
-from pydantic import BaseModel, EmailStr, ConfigDict
+from pydantic import BaseModel, EmailStr, ConfigDict, Field
 from typing import Literal
 
 
@@ -52,6 +52,7 @@ class Token(BaseModel):
 class ComplaintCreate(BaseModel):
     title: str
     content: str
+    chat_session_id: int | None = None   # 챗봇 대화 끝에 접수한 경우 원본 세션 ID
 
 
 class ComplaintOut(BaseModel):
@@ -72,6 +73,7 @@ class ComplaintOut(BaseModel):
     memo: str | None = None
     reply: str | None = None
     reply_date: datetime | None = None
+    chat_session_id: int | None = None   # 원본 챗봇 세션 (담당자 "원본 대화 보기"용)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -139,32 +141,40 @@ class AttachmentOut(BaseModel):
 class DepartmentOut(BaseModel):
     department_id: int
     name: str
+    # DB 컬럼은 contact_phone, 프론트에는 phone 으로 노출
+    phone: str | None = Field(default=None, alias="contact_phone")
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
 class DepartmentCreate(BaseModel):
     name: str
+    phone: str | None = None
 
 
 class DepartmentUpdate(BaseModel):
     name: str
+    phone: str | None = None
 
 
 # ---------- 카테고리(Category) ----------
 class CategoryOut(BaseModel):
     category_id: int
     name: str
+    department_id: int | None = None
+    department_name: str | None = None   # JOIN으로 채워서 dict 반환
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class CategoryCreate(BaseModel):
     name: str
+    department_id: int | None = None
 
 
 class CategoryUpdate(BaseModel):
     name: str
+    department_id: int | None = None
 
 
 # ---------- 알림 설정 ----------
@@ -203,3 +213,41 @@ class ChatSessionDetailOut(BaseModel):
 class ChatSessionUpdate(BaseModel):
     title: str | None = None
     status: str | None = None
+
+
+# ---------- 서식 자동 작성 (Form Templates) ----------
+class FormTemplateSummary(BaseModel):
+    """좌측 목록용 (필드 매핑 제외, 가벼운 응답)."""
+    form_template_id: int
+    name: str
+    description: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class FormTemplateOut(BaseModel):
+    """단건 상세 — field_mappings 포함."""
+    form_template_id: int
+    name: str
+    description: str | None = None
+    pdf_url: str
+    field_mappings: list | dict
+    is_active: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class FormFillRequest(BaseModel):
+    """AI 필드 채우기 요청."""
+    template_id: int
+    user_message: str | None = None        # 이 화면에서 사용자가 새로 입력한 텍스트
+    chat_session_id: int | None = None     # 챗봇 상담에서 넘어온 경우
+    current_fields: dict | None = None     # 이전에 채워졌거나 사용자가 수정한 값 (반복 갱신용)
+
+
+class FormFillResponse(BaseModel):
+    """AI 필드 채우기 응답."""
+    template_id: int
+    fields: dict                            # {필드key: 값} — 하위 호환용
+    message: str = ""                       # AI 자연어 응답 (뭘 채웠는지 / 뭐가 더 필요한지)
+    rendered_fields: list | dict = []       # 렌더용 필드 (align·오프셋 자동 조정된 좌표 + 값 포함)

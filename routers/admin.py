@@ -137,7 +137,7 @@ async def create_department(
     db: AsyncSession = Depends(get_db),
     current_admin: models.User = Depends(get_current_admin),
 ):
-    dept = models.Department(name=payload.name)
+    dept = models.Department(name=payload.name, contact_phone=payload.phone)
     db.add(dept)
     await db.commit()
     await db.refresh(dept)
@@ -155,6 +155,7 @@ async def update_department(
     if not dept:
         raise HTTPException(status_code=404, detail="부서를 찾을 수 없습니다.")
     dept.name = payload.name
+    dept.contact_phone = payload.phone
     await db.commit()
     await db.refresh(dept)
     return dept
@@ -175,6 +176,20 @@ async def delete_department(
 
 
 # ---------- 카테고리 관리 ----------
+async def _build_category_out(db: AsyncSession, cat: models.Category) -> dict:
+    """CategoryOut dict — department_name JOIN 포함."""
+    dept_name = None
+    if cat.department_id is not None:
+        dept = await db.get(models.Department, cat.department_id)
+        dept_name = dept.name if dept else None
+    return {
+        "category_id": cat.category_id,
+        "name": cat.name,
+        "department_id": cat.department_id,
+        "department_name": dept_name,
+    }
+
+
 @router.get("/categories", response_model=list[schemas.CategoryOut])
 async def list_categories(
     db: AsyncSession = Depends(get_db),
@@ -183,7 +198,8 @@ async def list_categories(
     result = await db.execute(
         select(models.Category).order_by(models.Category.category_id.asc())
     )
-    return result.scalars().all()
+    cats = result.scalars().all()
+    return [await _build_category_out(db, c) for c in cats]
 
 
 @router.post("/categories", response_model=schemas.CategoryOut, status_code=201)
@@ -192,11 +208,15 @@ async def create_category(
     db: AsyncSession = Depends(get_db),
     current_admin: models.User = Depends(get_current_admin),
 ):
-    cat = models.Category(name=payload.name)
+    if payload.department_id is not None:
+        dept = await db.get(models.Department, payload.department_id)
+        if not dept:
+            raise HTTPException(status_code=404, detail="부서를 찾을 수 없습니다.")
+    cat = models.Category(name=payload.name, department_id=payload.department_id)
     db.add(cat)
     await db.commit()
     await db.refresh(cat)
-    return cat
+    return await _build_category_out(db, cat)
 
 
 @router.patch("/categories/{category_id}", response_model=schemas.CategoryOut)
@@ -209,10 +229,15 @@ async def update_category(
     cat = await db.get(models.Category, category_id)
     if not cat:
         raise HTTPException(status_code=404, detail="카테고리를 찾을 수 없습니다.")
+    if payload.department_id is not None:
+        dept = await db.get(models.Department, payload.department_id)
+        if not dept:
+            raise HTTPException(status_code=404, detail="부서를 찾을 수 없습니다.")
     cat.name = payload.name
+    cat.department_id = payload.department_id
     await db.commit()
     await db.refresh(cat)
-    return cat
+    return await _build_category_out(db, cat)
 
 
 @router.delete("/categories/{category_id}", status_code=204)
