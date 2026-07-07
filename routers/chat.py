@@ -16,6 +16,7 @@
 - POST   /chat/sessions/{id}/draft-complaint — 세션 → 민원 접수 초안 (title/content/attachments)
 - GET    /chat/files/{name} — 세션에 첨부된 파일 다운로드 (권한 확인)
 """
+import asyncio
 import mimetypes
 import uuid
 from datetime import datetime
@@ -419,10 +420,18 @@ async def delete_chat_session(
 # ---------- 민원 접수 초안 자동 생성 ----------
 _DRAFT_PROMPT = """\
 당신은 시민 민원 상담 챗봇의 접수 어시스턴트입니다.
-아래 유저↔AI 대화 로그를 바탕으로 시민이 '민원 접수' 화면에서 바로 쓸 수 있는
-**민원 제목**과 **민원 내용**을 만들어주세요.
+아래 유저↔AI 대화 로그에는 서로 다른 민원이 여러 건 섞여 있을 수 있습니다.
+각 민원을 **개별 건으로 분리**해, 시민이 '민원 접수' 화면에서 바로 쓸 수 있는
+**제목**과 **내용**을 건별로 만들어주세요.
 
 ## 규칙
+- 대화에서 사용자가 제기한 **서로 다른 민원을 하나도 빠뜨리지 말고** 각각 개별 건으로 분리한다.
+  사용자가 여러 주제를 말했다면 **주제 수만큼 초안이 나와야 한다** (예: 주차·쓰레기·건물안전 → 3건).
+- 같은 사안의 후속·보충 발언은 **한 건으로 합친다**.
+- **아래만 접수 대상에서 제외**하고, 나머지는 모두 포함한다:
+  - 단순 인사·잡담·감사 표현
+  - 순수 범죄·치안 신고(흉기 소지, 폭행, 절도 등 경찰 112 소관) — 행정 민원 대상이 아님
+  - ※ 건물 붕괴·가스 누출·산사태 등 재난·안전 문제는 담당 부서가 처리하는 **민원이므로 반드시 포함**한다(긴급 민원).
 - **제목**: 간결한 한 줄 (10~30자). 이슈 유형이 드러나야 함.
   예: "도로 포트홀 신고", "가로등 고장 문의", "가족관계증명서 발급 절차"
 - **내용**: 담당 공무원이 읽고 처리할 수 있는 정중한 서술체 (2~4문장, 100~250자).
@@ -430,6 +439,7 @@ _DRAFT_PROMPT = """\
   - 이미지가 첨부되었다면 이미지에서 확인된 사실을 반영.
   - **금지**: "카테고리 후보:", "[첨부 이미지 분석]", "[사용자 메시지]" 같은 시스템 메타 표기는 절대 넣지 마세요.
   - 이모지·해시태그 금지. 대화체("~에요") 대신 서술체("~니다") 사용.
+- 접수 가능한 민원이 하나도 없으면 drafts를 빈 배열([])로 둔다.
 
 ## 대화 로그
 {conversation}
@@ -438,18 +448,30 @@ _DRAFT_PROMPT = """\
 {image_desc}
 
 ## 출력 형식 (JSON만 출력)
-{{"title": "...", "content": "..."}}
+{{"drafts": [{{"title": "...", "content": "..."}}, ...]}}
 """
+
+
+class DraftItem(BaseModel):
+    title: str
+    content: str
+    # LLM이 top-3 후보 중 골라준 최종 분류/부서 (프론트가 그대로 표시)
+    category: dict | None = None       # {category_id, name}
+    department: dict | None = None     # {department_id, name, phone}
+    urgency_score: float | None = None
 
 
 class DraftComplaintOut(BaseModel):
     session_id: int
+    # ⭐ 복합 민원 대응: 대화에 섞인 민원을 건별로 분리한 초안 리스트
+    drafts: list[DraftItem] = []
+    attachments: list[dict] = []
+    # ─── 하위 호환: 기존 단일 접수 화면용 (drafts[0] 값과 동일) ───
+    # 프론트가 drafts 렌더로 전환하기 전까지 기존 화면이 깨지지 않게 유지.
     title: str
     content: str
-    attachments: list[dict] = []
-    # LLM이 top-3 후보 중 골라준 최종 분류/부서 (프론트가 그대로 표시)
-    category: dict | None = None       # {category_id, name}
-    department: dict | None = None     # {department_id, name, phone}
+    category: dict | None = None
+    department: dict | None = None
     urgency_score: float | None = None
 
 
@@ -501,64 +523,100 @@ async def draft_complaint_from_session(
 
     prompt = _DRAFT_PROMPT.format(conversation=conversation, image_desc=image_desc_text)
 
-    # LLM 호출
+    # LLM 호출 → 민원별 초안 리스트
     client = svc._get_openai()
     resp = await client.chat.completions.create(
         model=svc.OPENAI_MODEL,
         messages=[{"role": "user", "content": prompt}],
+        temperature=0,
         response_format={"type": "json_object"},
     )
     import json as _json
     raw = (resp.choices[0].message.content or "").strip()
     try:
         parsed = _json.loads(raw)
-        title = str(parsed.get("title", "")).strip()
-        content = str(parsed.get("content", "")).strip()
+        raw_drafts = parsed.get("drafts", [])
     except Exception:
         raise HTTPException(500, f"초안 생성 파싱 실패: {raw[:200]}")
 
-    if not title:
-        title = "민원 접수"
-    if not content:
-        content = conversation[:200]
+    # 유효한 title/content만 추림
+    clean_drafts = []
+    for d in (raw_drafts if isinstance(raw_drafts, list) else []):
+        if not isinstance(d, dict):
+            continue
+        t = str(d.get("title", "")).strip()
+        c = str(d.get("content", "")).strip()
+        if t or c:
+            clean_drafts.append({"title": t or "민원 접수", "content": c or conversation[:200]})
 
-    # ─── title+content로 LLM 재판정 (분류기 top-1 오분류 방지) ───
+    # 접수 대상이 하나도 없으면(전부 잡담/범위 밖) 대화 전체로 1건 fallback
+    # — 사용자가 접수를 눌렀으니 최소 1건은 채워 화면이 비지 않게.
+    if not clean_drafts:
+        clean_drafts = [{"title": "민원 접수", "content": conversation[:200]}]
+
+    # ─── 각 초안을 title+content로 병렬 재분류 (분류기 top-1 오분류 방지) ───
     # answer_chatbot 흐름: 분류기 top-3 → LLM이 의미상 맞는 것 선택 → 부서 매핑
     # 클러스터는 안 만듦 (create_cluster=False)
-    category_out = None
-    department_out = None
-    urgency_score = None
+    classify_results = await asyncio.gather(
+        *[_classify_draft(d["title"], d["content"]) for d in clean_drafts],
+        return_exceptions=True,
+    )
+
+    draft_items: list[DraftItem] = []
+    for d, res in zip(clean_drafts, classify_results):
+        cat = dept = None
+        urg = None
+        if isinstance(res, tuple):
+            cat, dept, urg = res
+        draft_items.append(DraftItem(
+            title=d["title"][:200],
+            content=d["content"],
+            category=cat,
+            department=dept,
+            urgency_score=urg,
+        ))
+
+    # 하위 호환: 기존 단일 화면용 top-level = 첫 초안
+    head = draft_items[0]
+    return DraftComplaintOut(
+        session_id=session_id,
+        drafts=draft_items,
+        attachments=attachments_all,
+        title=head.title,
+        content=head.content,
+        category=head.category,
+        department=head.department,
+        urgency_score=head.urgency_score,
+    )
+
+
+async def _classify_draft(title: str, content: str):
+    """초안 하나를 answer_chatbot으로 재분류 → (category, department, urgency_score).
+
+    실패 시 (None, None, None) 반환 (접수 시 프론트가 재분류).
+    """
     try:
         analysis = await svc.answer_chatbot(f"{title}\n{content}", create_cluster=False)
         md = analysis.get("metadata") or {}
-        if md.get("tool_used"):
-            cls = md.get("classification") or {}
-            depts = md.get("departments") or []
-            urg = md.get("urgency") or {}
-            if cls.get("category_id"):
-                category_out = {
-                    "category_id": cls["category_id"],
-                    "name": cls.get("category"),
-                }
-            if depts:
-                d0 = depts[0]
-                department_out = {
-                    "department_id": d0.get("department_id"),
-                    "name": d0.get("name"),
-                    "phone": d0.get("phone"),
-                }
-            if urg.get("probability_urgent") is not None:
-                urgency_score = round(float(urg["probability_urgent"]), 4)
+        if not md.get("tool_used"):
+            return (None, None, None)
+        cls = md.get("classification") or {}
+        depts = md.get("departments") or []
+        urg = md.get("urgency") or {}
+        category_out = None
+        if cls.get("category_id"):
+            category_out = {"category_id": cls["category_id"], "name": cls.get("category")}
+        department_out = None
+        if depts:
+            d0 = depts[0]
+            department_out = {
+                "department_id": d0.get("department_id"),
+                "name": d0.get("name"),
+                "phone": d0.get("phone"),
+            }
+        urgency_score = None
+        if urg.get("probability_urgent") is not None:
+            urgency_score = round(float(urg["probability_urgent"]), 4)
+        return (category_out, department_out, urgency_score)
     except Exception:
-        # 분류 실패해도 초안은 반환 (프론트가 접수 시 재분류)
-        pass
-
-    return DraftComplaintOut(
-        session_id=session_id,
-        title=title[:200],
-        content=content,
-        attachments=attachments_all,
-        category=category_out,
-        department=department_out,
-        urgency_score=urgency_score,
-    )
+        return (None, None, None)

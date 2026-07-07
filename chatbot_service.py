@@ -1013,13 +1013,15 @@ sub_queries가 여러 개면 각 서브의 procedures를 개별적으로 활용.
 
 context.cases (또는 sub_queries[N].cases)에 관련성 있는 사례가 있으면 **반드시 답변에 반영**하세요.
 
-- **활용 조건**: similarity ≥ 0.5인 사례가 하나라도 있으면 답변에 포함
-- **인용 방식**: top-1 사례 1건만 짧게 인용 (여러 개 넣으면 답변 산만)
-  - 형식 예: "유사 사례로 '{title}'이 있으며, 이 경우 {content 요약}"
-  - title은 metadata.cases[0].title 문자열 그대로 사용 (창작 금지)
-  - content는 첫 100~200자 정도로 요약
-- **위치**: 부서 안내 뒤, 신고 채널 안내 다음에 자연스럽게. 답변 맨 끝에 "다른 지자체의 유사 처리 사례를 참고하시면..." 같은 문구로
-- **미활용 조건**: cases 배열이 비어있거나 top-1의 similarity < 0.5면 언급 생략
+- **활용 조건**: similarity ≥ 0.5인 사례만 사용 (그 미만은 무시)
+- **인용 방식**: 조건을 만족하는 사례를 **최대 3건까지** 간결하게 나열
+  - 2건 이상이면 **목록 형태**로 읽기 쉽게. 각 사례는 **한 줄**로 짧게:
+    - 형식 예: "'{title}' — {content 핵심 한 줄 요약}"
+  - 1건뿐이면 문장으로 자연스럽게: "유사 사례로 '{title}'이 있으며, 이 경우 {한 줄 요약}"
+  - title은 metadata.cases[N].title 문자열 그대로 사용 (창작 금지), content는 **한 줄**로만 요약
+  - **장황 금지**: 각 건은 짧게 핵심만. 노년층도 읽기 쉽게 여러 건이어도 전체 3~4줄 이내로.
+- **위치**: 부서 안내 뒤, 신고 채널 안내 다음에 자연스럽게. "다른 지자체의 유사 처리 사례로는..." 같은 도입 문구로
+- **미활용 조건**: cases 배열이 비어있거나 similarity ≥ 0.5인 사례가 하나도 없으면 언급 생략
 - sub_queries가 여러 개면 각 서브의 cases를 개별적으로 활용
 
 ## 조건부
@@ -2708,6 +2710,30 @@ async def answer_chatbot(
     # ─── 3단계: 컨텍스트를 LLM에 한 번 전달 ───
     context_json = _json.dumps(metadata, ensure_ascii=False, default=str)
     user_message = f"<context>\n{context_json}\n</context>\n\n질문: {text}"
+
+    # 유사 사례를 민원(서브)별로 그룹핑한 필드 — 프론트 "유사 민원 사례" 패널용.
+    # context_json 스냅샷 이후에 추가해 LLM 프롬프트는 비대해지지 않음
+    # (사례는 이미 sub_queries에 있어 중복 전달 방지).
+    _CASE_MIN_SIM = 0.5
+    metadata['grouped_cases'] = [
+        {
+            'query': sub.get('query'),
+            'category': (sub.get('classification') or {}).get('category'),
+            'category_id': (sub.get('classification') or {}).get('category_id'),
+            'cases': [
+                {
+                    'document_id': c.get('document_id'),
+                    'title': c.get('title'),
+                    'similarity': c.get('similarity'),
+                    'source_type': c.get('source_type'),
+                    'content': (c.get('content') or '')[:150],
+                }
+                for c in (sub.get('cases') or [])
+                if (c.get('similarity') or 0) >= _CASE_MIN_SIM
+            ][:5],
+        }
+        for sub in sub_results
+    ]
 
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     if history:

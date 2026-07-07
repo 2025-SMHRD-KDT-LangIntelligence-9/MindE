@@ -13,6 +13,7 @@
 import io
 import os
 from pathlib import Path
+from urllib.parse import quote
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
@@ -35,9 +36,11 @@ FORMS_DIR = Path("uploads/forms").resolve()
 
 
 # 체크박스 자동 오프셋 상수 (mm 단위)
-_CHECKBOX_X_OFFSET_MM = 1.0
+# X: 0 = 필드 앵커(브라켓 [ 위치) 그대로 → V가 [ ] 안 왼쪽부터. 오른쪽 밀림/라벨 겹침 방지.
+# 크기는 라벨 글자(9pt)에 맞춰 박스 안에 들어오게.
+_CHECKBOX_X_OFFSET_MM = 0.0
 _CHECKBOX_Y_OFFSET_MM = 0.5
-_CHECKBOX_FONT_SIZE = 11.0
+_CHECKBOX_FONT_SIZE = 9.0
 
 # pt <-> mm 변환
 _PT_PER_MM = 72.0 / 25.4
@@ -284,40 +287,44 @@ def _render_filled_pdf(pdf_source_path: str, field_mappings, values: dict) -> by
                 # 실제 폰트로 폭 측정 → 우측/중앙 정렬 정확히
                 text_width_pt = korean_font.text_length(str(value), fontsize=size)
 
-                # 긴 텍스트 자동 줄바꿈: 셀 폭 감지 후 textbox로 렌더
-                # 자동 생성 표 셀이거나, 텍스트 길거나, multiline 지정이면 자동 wrap
-                is_auto_cell = bool(f.get("auto_generated"))
-                is_long = (is_auto_cell
-                           or text_width_pt > 60
-                           or f.get("multiline") is True)
-                if is_long:
-                    # 셀 폭 추정: PyMuPDF find_tables()로 앵커 위치의 셀 폭 감지
-                    cell_width_pt = None
-                    try:
-                        tables = list(page.find_tables())
-                        for t in tables:
-                            for row in t.rows:
-                                for cb in (row.cells or []):
-                                    if not cb:
-                                        continue
-                                    if (cb[0] <= x_pt <= cb[2]
-                                            and cb[1] <= y_pt <= cb[3]):
-                                        cell_width_pt = cb[2] - cb[0] - 4  # 4pt 여백
-                                        cell_top = cb[1] + 2
-                                        cell_bottom = cb[3] - 2
-                                        break
-                                if cell_width_pt:
+                # 앵커 위치의 표 셀 감지 (가용 폭·하단 계산용)
+                cell_right = None
+                cell_bottom_edge = None
+                try:
+                    tables = list(page.find_tables())
+                    for t in tables:
+                        for row in t.rows:
+                            for cb in (row.cells or []):
+                                if not cb:
+                                    continue
+                                if (cb[0] <= x_pt <= cb[2]
+                                        and cb[1] <= y_pt <= cb[3]):
+                                    cell_right = cb[2]
+                                    cell_bottom_edge = cb[3]
                                     break
-                            if cell_width_pt:
+                            if cell_right is not None:
                                 break
-                    except Exception:
-                        pass
-                    # 셀 못 찾으면 페이지 우측까지 여백 남기고 wrap
-                    if not cell_width_pt:
-                        cell_width_pt = page.rect.width - x_pt - 20
-                        cell_top = y_pt - size
-                        cell_bottom = y_pt + size * 6   # 6줄 예상
-                    rect = fitz.Rect(x_pt, cell_top, x_pt + cell_width_pt, cell_bottom)
+                        if cell_right is not None:
+                            break
+                except Exception:
+                    pass
+
+                # 가용 폭: 셀 오른쪽 끝(없으면 페이지 끝)까지, 4pt 여백
+                avail_w = (cell_right - x_pt - 4) if cell_right is not None \
+                          else (page.rect.width - x_pt - 20)
+
+                # 줄바꿈 필요 판단: 자동 표 셀 / multiline 지정 / 한 줄에 안 들어감
+                is_auto_cell = bool(f.get("auto_generated"))
+                needs_wrap = (is_auto_cell
+                              or f.get("multiline") is True
+                              or text_width_pt > avail_w)
+
+                if needs_wrap and avail_w > 20:
+                    # 여러 줄 wrap — 베이스라인 기준 앵커(미리보기와 위치 일치), 넘치면 아래로
+                    top = y_pt - size
+                    bottom = (cell_bottom_edge - 2) if cell_bottom_edge is not None \
+                             else (y_pt + size * 6)
+                    rect = fitz.Rect(x_pt, top, x_pt + avail_w, bottom)
                     page.insert_textbox(
                         rect,
                         str(value),
@@ -328,7 +335,7 @@ def _render_filled_pdf(pdf_source_path: str, field_mappings, values: dict) -> by
                         align=fitz.TEXT_ALIGN_LEFT,
                     )
                 else:
-                    # 짧은 텍스트: 정렬 오프셋 후 한 줄 렌더
+                    # 한 줄에 들어감 → 미리보기와 동일하게 baseline 한 줄 렌더 + 정렬 오프셋
                     if align == "right":
                         x_pt -= text_width_pt
                     elif align in ("middle", "center"):
@@ -342,6 +349,12 @@ def _render_filled_pdf(pdf_source_path: str, field_mappings, values: dict) -> by
                         color=(0, 0, 0),
                     )
 
+        # 맑은고딕 전체가 임베딩되면 PDF가 수 MB로 커진다.
+        # 실제 사용된 글자만 남기는 서브셋으로 용량 대폭 축소 (수 MB → 수백 KB).
+        try:
+            doc.subset_fonts()
+        except Exception:
+            pass  # 버전/폰트 이슈로 실패해도 렌더 결과는 그대로 반환
         buf = io.BytesIO()
         doc.save(buf, garbage=4, deflate=True)   # garbage collection + 압축
         return buf.getvalue()
@@ -444,11 +457,13 @@ async def debug_preview(
     fm = svc._generate_table_cell_fields(tpl.field_mappings or [], str(pdf_full))
     pdf_bytes = _render_debug_pdf(str(pdf_full), fm)
 
+    # 한글 파일명은 latin-1 헤더로 못 넣으므로 RFC 5987(UTF-8 퍼센트 인코딩) 사용
+    disp_name = quote(f"{tpl.name}_debug.pdf")
     return StreamingResponse(
         io.BytesIO(pdf_bytes),
         media_type="application/pdf",
         headers={
-            "Content-Disposition": f'inline; filename="{tpl.name}_debug.pdf"',
+            "Content-Disposition": f"inline; filename*=UTF-8''{disp_name}",
         },
     )
 
@@ -479,11 +494,13 @@ async def render_form_pdf(
 
     pdf_bytes = _render_filled_pdf(str(pdf_full), fm, payload.fields)
 
+    # 한글 파일명은 latin-1 헤더로 못 넣으므로 RFC 5987(UTF-8 퍼센트 인코딩) 사용
+    disp_name = quote(f"{tpl.name}_filled.pdf")
     return StreamingResponse(
         io.BytesIO(pdf_bytes),
         media_type="application/pdf",
         headers={
-            "Content-Disposition": f'attachment; filename="{tpl.name}_filled.pdf"',
+            "Content-Disposition": f"attachment; filename*=UTF-8''{disp_name}",
         },
     )
 
