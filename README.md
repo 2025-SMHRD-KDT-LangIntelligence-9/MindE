@@ -17,7 +17,7 @@
 | Recharts | 3 | 관리자 통계 차트 (파이·도넛·라인 차트) |
 | pdfjs-dist | 4 | PDF 파일을 이미지로 렌더링 (서류 미리보기) |
 | Material Symbols | (CDN) | 아이콘 폰트 (Google Fonts) |
-| Public Sans / Noto Sans KR | (CDN) | 본문 폰트 (Google Fonts) |
+| Public Sans / Noto Sans KR | (CDN) | 본문 폰트 — 영문·숫자 Public Sans, 한글 Noto Sans KR (Google Fonts) |
 
 ---
 
