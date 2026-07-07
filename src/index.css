@@ -44,11 +44,11 @@
 
   --color-navy: #001c39;
 
-  --font-sans: 'Public Sans', sans-serif;
+  --font-sans: 'Public Sans', 'Noto Sans KR', sans-serif;
 }
 
 body {
-  font-family: 'Public Sans', sans-serif;
+  font-family: 'Public Sans', 'Noto Sans KR', sans-serif;
   background-color: #f8f9ff;
 }
 
