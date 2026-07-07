@@ -1,7 +1,6 @@
 ﻿import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import CitizenLayout from '../../layouts/CitizenLayout';
-import { useApp } from '../../store/AppContext';
 import { getFormTemplatesApi, getFormTemplateApi, fillFormApi, renderFormPdfApi, getFormDebugPreviewApi } from '../../api/forms';
 import FormPdfOverlay from '../../components/FormPdfOverlay';
 import ZoomableImage from '../../components/ZoomableImage';
@@ -29,7 +28,6 @@ function pickTemplateId(templates, category) {
 function DocumentOCR() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { currentUser } = useApp();
 
   // 챗봇에서 넘어온 상태 (첫 렌더에서 캡처)
   const navState = useRef(location.state?.formTab ? location.state : null).current;
@@ -55,19 +53,6 @@ function DocumentOCR() {
   );
   const selectedTemplate = template ?? templates.find((t) => t.form_template_id === selectedTemplateId) ?? null;
 
-  // 로그인 사용자 정보로 자동 채울 항목 값 (auto_fill_from 또는 필드명 휴리스틱)
-  const seedBasics = (flat) => {
-    const out = {};
-    flat.forEach((f) => {
-      const nm = fieldName(f);
-      if (/전\s*소유자|전소유자|상대방|양도인/.test(nm)) return;   // 상대방 정보는 자동 채우지 않음
-      const af = f?.auto_fill_from;
-      if ((af === 'user.name'  || (!af && /성명|이름|신청인|신고인|납세자|대표자|취득자/.test(nm))) && currentUser?.name)  out[nm] = currentUser.name;
-      else if ((af === 'user.phone' || (!af && /연락처|전화|휴대/.test(nm))) && currentUser?.phone) out[nm] = currentUser.phone;
-    });
-    return out;
-  };
-
   // AI 필드 값 채우기 (POST /forms/fill)
   const runFill = async (id, userMessage, currentFields) => {
     setFormChatLoading(true);
@@ -85,15 +70,6 @@ function DocumentOCR() {
         text: res?.message ?? '반영했어요. 추가로 수정할 내용이 있으면 이어서 말씀해 주세요.',
       }]);
     } catch (e) {
-      // 실패 시에는 자동으로 미리 채운 이름/연락처를 남기지 않고 비운다
-      const autoKeys = Object.keys(seedBasics(flattenMappings(template?.field_mappings)));
-      if (autoKeys.length) {
-        setFields((prev) => {
-          const next = { ...prev };
-          autoKeys.forEach((k) => { next[k] = ''; });
-          return next;
-        });
-      }
       const msg = e?.response?.status === 400
         ? '상담 세션 정보가 유효하지 않습니다. 상황을 직접 입력해 주세요.'
         : '작성 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.';
@@ -113,11 +89,10 @@ function DocumentOCR() {
     try {
       const tpl = await getFormTemplateApi(id);
       setTemplate(tpl);
-      // 필드 초기화 + 자동 채움 항목은 로컬 값으로 즉시 표시 (서버가 fill 시 강제 확정)
+      // 필드는 빈 값으로 초기화만 한다. 자동 채움(성명/연락처 등)은 백엔드 /forms/fill이 처리.
       const flat = flattenMappings(tpl.field_mappings);
       const init = {};
       flat.forEach((f) => { init[fieldName(f)] = ''; });
-      Object.assign(init, seedBasics(flat));
       setFields(init);
       if (boot && (navState?.sourceText?.trim() || chatSessionId != null)) {
         runFill(id, navState?.sourceText || '', init);
@@ -204,18 +179,6 @@ function DocumentOCR() {
       .finally(() => setTemplatesLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // 로그인 정보가 늦게 로드되면 비어있는 자동 항목만 채움 (사용자 편집분은 보존)
-  useEffect(() => {
-    if (!template) return;
-    const basics = seedBasics(flattenMappings(template.field_mappings));
-    setFields((prev) => {
-      const next = { ...prev };
-      Object.entries(basics).forEach(([k, v]) => { if (!next[k]) next[k] = v; });
-      return next;
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser?.name, currentUser?.phone, template]);
 
   // 제출 가능 여부: 값이 하나라도 채워져 있으면 제출 가능
   const flatFields = flattenMappings(template?.field_mappings);
