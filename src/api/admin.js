@@ -8,7 +8,8 @@ const transformUser = (u) => ({
   role:         u.user_type === 'admin' ? 'admin' : u.user_type === 'staff' ? 'staff' : 'citizen',
   dept:         u.department_name ?? '',
   departmentId: u.department_id ?? null,
-  deptGroup:    u.dept_group ?? [],
+  // 백엔드 UserOut엔 department_name(단일)만 있음 → 그룹은 단일 부서로 구성 (없던 dept_group 참조 제거)
+  deptGroup:    u.department_name ? [u.department_name] : [],
   status:       u.user_type === 'pending_staff' ? 'pending' : 'active',
   joinedAt:     u.created_at ? new Date(u.created_at).toLocaleDateString('ko-KR') : '',
 });

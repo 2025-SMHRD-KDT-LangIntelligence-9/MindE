@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import logo from '../../assets/logo.png';
 import cityBg from '../../assets/city-bg.png';
 import { useApp } from '../../store/AppContext';
-import { loginApi, getMeApi } from '../../api/auth';
+import { loginApi, getMeApi, resetPasswordApi, findEmailApi } from '../../api/auth';
 
 function Login() {
   const navigate = useNavigate();
@@ -32,7 +32,107 @@ function Login() {
   const [loading, setLoading]   = useState(false);
   const [showForgot, setShowForgot] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotPhone, setForgotPhone] = useState('');
+  const [forgotPw, setForgotPw] = useState('');
+  const [forgotPwConfirm, setForgotPwConfirm] = useState('');
+  const [forgotShowPw, setForgotShowPw] = useState(false);
+  const [forgotError, setForgotError] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
   const [forgotSent, setForgotSent] = useState(false);
+
+  const closeForgot = () => {
+    setShowForgot(false);
+    setForgotEmail(''); setForgotPhone(''); setForgotPw(''); setForgotPwConfirm('');
+    setForgotError(''); setForgotSent(false); setForgotShowPw(false);
+  };
+
+  // ── 아이디(이메일) 찾기 ──
+  const [showFindId, setShowFindId] = useState(false);
+  const [findName, setFindName] = useState('');
+  const [findPhone, setFindPhone] = useState('');
+  const [findError, setFindError] = useState('');
+  const [findLoading, setFindLoading] = useState(false);
+  const [foundEmail, setFoundEmail] = useState('');
+
+  const maskEmail = (em) => {
+    const [local, domain] = String(em).split('@');
+    if (!domain) return em;
+    const head = local.slice(0, 2);
+    return `${head}${'*'.repeat(Math.max(local.length - 2, 1))}@${domain}`;
+  };
+
+  const closeFindId = () => {
+    setShowFindId(false);
+    setFindName(''); setFindPhone(''); setFindError(''); setFindLoading(false); setFoundEmail('');
+  };
+
+  const handleFindId = async () => {
+    setFindError('');
+    if (!findName.trim() || !findPhone.trim()) {
+      setFindError('이름과 전화번호를 입력해 주세요.');
+      return;
+    }
+    const digits = findPhone.replace(/\D/g, '');
+    if (!/^010\d{8}$/.test(digits)) {
+      setFindError('전화번호를 정확히 입력해 주세요. (예: 010-1234-5678)');
+      return;
+    }
+    const phone = `010-${digits.slice(3, 7)}-${digits.slice(7)}`;
+    setFindLoading(true);
+    try {
+      const res = await findEmailApi({ name: findName.trim(), phone });
+      if (res?.email) setFoundEmail(res.email);
+      else setFindError('일치하는 계정을 찾을 수 없습니다.');
+    } catch (err) {
+      if (err.response?.status === 404 || err.response?.status === 400) {
+        setFindError('이름 또는 전화번호가 일치하는 계정이 없습니다.');
+      } else if (err.code === 'ERR_NETWORK') {
+        setFindError('서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.');
+      } else {
+        setFindError('아이디 찾기 중 오류가 발생했습니다.');
+      }
+    } finally {
+      setFindLoading(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    setForgotError('');
+    if (!forgotEmail.trim() || !forgotPhone.trim() || !forgotPw || !forgotPwConfirm) {
+      setForgotError('모든 항목을 입력해 주세요.');
+      return;
+    }
+    const digits = forgotPhone.replace(/\D/g, '');
+    if (!/^010\d{8}$/.test(digits)) {
+      setForgotError('전화번호를 정확히 입력해 주세요. (예: 010-1234-5678)');
+      return;
+    }
+    const pwValid = forgotPw.length >= 8 && /[^A-Za-z0-9\s]/.test(forgotPw);
+    if (!pwValid) {
+      setForgotError('비밀번호는 8자 이상이며 특수문자를 포함해야 합니다.');
+      return;
+    }
+    if (forgotPw !== forgotPwConfirm) {
+      setForgotError('비밀번호가 일치하지 않습니다.');
+      return;
+    }
+    const phone = `010-${digits.slice(3, 7)}-${digits.slice(7)}`;
+    setForgotLoading(true);
+    try {
+      await resetPasswordApi({ email: forgotEmail.trim(), phone, newPassword: forgotPw });
+      setForgotSent(true);
+    } catch (err) {
+      if (err.response?.status === 404 || err.response?.status === 400) {
+        setForgotError('이메일 또는 전화번호가 일치하는 계정이 없습니다.');
+      } else if (err.code === 'ERR_NETWORK') {
+        setForgotError('서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.');
+      } else {
+        setForgotError('비밀번호 재설정 중 오류가 발생했습니다.');
+      }
+    } finally {
+      setForgotLoading(false);
+    }
+  };
   const [toastType, setToastType] = useState(
     location.state?.registered ? 'citizen' :
     location.state?.staffRegistered ? 'staff' :
@@ -264,13 +364,12 @@ function Login() {
                     </div>
                   </div>
 
-                  {/* 기억하기 / 찾기 */}
-                  <div className="flex items-center justify-between mt-2">
+                  {/* 기억하기 */}
+                  <div className="flex items-center mt-2">
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input type="checkbox" className="w-4 h-4 accent-primary" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} />
                       <span className="text-sm text-on-surface-variant">아이디 기억하기</span>
                     </label>
-                    <button type="button" onClick={() => { setShowForgot(true); setForgotEmail(''); setForgotSent(false); }} className="text-sm text-primary font-bold hover:underline">비밀번호 찾기</button>
                   </div>
 
                   {/* 에러 */}
@@ -305,6 +404,18 @@ function Login() {
                       회원가입
                     </button>
                   </p>
+
+                  {/* 계정 찾기 */}
+                  <div className="flex items-center justify-center gap-2.5 text-xs text-on-surface-variant">
+                    <span>계정을 잊어버리셨나요?</span>
+                    <button type="button" onClick={() => { closeFindId(); setShowFindId(true); }} className="font-bold text-on-surface hover:text-primary hover:underline">
+                      아이디 찾기
+                    </button>
+                    <span className="text-outline-variant">|</span>
+                    <button type="button" onClick={() => { setShowForgot(true); setForgotEmail(''); setForgotSent(false); }} className="font-bold text-on-surface hover:text-primary hover:underline">
+                      비밀번호 찾기
+                    </button>
+                  </div>
                 </form>
 
                 {/* 하단 서비스 특징 */}
@@ -335,7 +446,7 @@ function Login() {
 
     {/* 비밀번호 찾기 모달 */}
     {showForgot && (
-      <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center px-4" onClick={() => setShowForgot(false)}>
+      <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center px-4" onClick={closeForgot}>
         <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[380px] overflow-hidden" onClick={(e) => e.stopPropagation()}>
 
           {/* 모달 헤더 */}
@@ -346,11 +457,11 @@ function Login() {
                   <span className="material-symbols-outlined text-primary text-lg">lock_reset</span>
                 </div>
                 <div>
-                  <h3 className="font-bold text-on-surface text-base">비밀번호 찾기</h3>
-                  <p className="text-xs text-on-surface-variant">가입한 이메일로 재설정 링크를 보내드립니다.</p>
+                  <h3 className="font-bold text-on-surface text-base">비밀번호 재설정</h3>
+                  <p className="text-xs text-on-surface-variant">가입 정보 확인 후 새 비밀번호를 설정합니다.</p>
                 </div>
               </div>
-              <button onClick={() => setShowForgot(false)} className="text-on-surface-variant hover:text-on-surface transition-colors">
+              <button onClick={closeForgot} className="text-on-surface-variant hover:text-on-surface transition-colors">
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
@@ -361,23 +472,21 @@ function Login() {
             {forgotSent ? (
               <div className="flex flex-col items-center py-4 gap-3 text-center">
                 <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center">
-                  <span className="material-symbols-outlined text-emerald-500 text-3xl">mark_email_read</span>
+                  <span className="material-symbols-outlined text-emerald-500 text-3xl">check_circle</span>
                 </div>
                 <div>
-                  <p className="font-bold text-on-surface">이메일을 전송했습니다</p>
-                  <p className="text-sm text-on-surface-variant mt-1">
-                    <span className="text-primary font-bold">{forgotEmail}</span>으로<br />비밀번호 재설정 링크를 보냈습니다.
-                  </p>
+                  <p className="font-bold text-on-surface">비밀번호가 변경되었습니다</p>
+                  <p className="text-sm text-on-surface-variant mt-1">새 비밀번호로 로그인해 주세요.</p>
                 </div>
                 <button
-                  onClick={() => setShowForgot(false)}
+                  onClick={closeForgot}
                   className="mt-2 px-6 py-2.5 rounded-xl bg-primary text-white text-sm font-bold hover:brightness-105 shadow-md shadow-primary/25"
                 >
-                  확인
+                  로그인하기
                 </button>
               </div>
             ) : (
-              <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-3">
                 <div>
                   <label className="text-xs font-bold text-on-surface-variant block mb-1.5">가입한 이메일</label>
                   <div className="relative">
@@ -387,22 +496,183 @@ function Login() {
                       value={forgotEmail}
                       onChange={(e) => setForgotEmail(e.target.value)}
                       placeholder="example@email.com"
-                      className="w-full h-12 pl-11 pr-4 border-2 border-outline-variant rounded-xl focus:border-primary outline-none transition-all text-on-surface text-sm bg-surface-container-low/40 focus:bg-white"
+                      className="w-full h-11 pl-11 pr-4 border-2 border-outline-variant rounded-xl focus:border-primary outline-none transition-all text-on-surface text-sm bg-surface-container-low/40 focus:bg-white"
                     />
                   </div>
                 </div>
-                <div className="flex gap-2">
+                <div>
+                  <label className="text-xs font-bold text-on-surface-variant block mb-1.5">가입한 전화번호</label>
+                  <div className="relative">
+                    <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-outline text-[20px]">phone</span>
+                    <input
+                      type="tel"
+                      inputMode="numeric"
+                      value={forgotPhone}
+                      onChange={(e) => setForgotPhone(e.target.value)}
+                      placeholder="010-1234-5678"
+                      className="w-full h-11 pl-11 pr-4 border-2 border-outline-variant rounded-xl focus:border-primary outline-none transition-all text-on-surface text-sm bg-surface-container-low/40 focus:bg-white"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-on-surface-variant block mb-1.5">새 비밀번호</label>
+                  <div className="relative">
+                    <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-outline text-[20px]">lock</span>
+                    <input
+                      type={forgotShowPw ? 'text' : 'password'}
+                      value={forgotPw}
+                      onChange={(e) => setForgotPw(e.target.value)}
+                      placeholder="8자 이상, 특수문자 포함"
+                      className="w-full h-11 pl-11 pr-10 border-2 border-outline-variant rounded-xl focus:border-primary outline-none transition-all text-on-surface text-sm bg-surface-container-low/40 focus:bg-white"
+                    />
+                    <button type="button" onClick={() => setForgotShowPw((v) => !v)} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-outline hover:text-on-surface">
+                      <span className="material-symbols-outlined text-[20px]">{forgotShowPw ? 'visibility_off' : 'visibility'}</span>
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-on-surface-variant block mb-1.5">새 비밀번호 확인</label>
+                  <div className="relative">
+                    <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-outline text-[20px]">lock_reset</span>
+                    <input
+                      type={forgotShowPw ? 'text' : 'password'}
+                      value={forgotPwConfirm}
+                      onChange={(e) => setForgotPwConfirm(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') handleResetPassword(); }}
+                      placeholder="비밀번호를 다시 입력하세요"
+                      className="w-full h-11 pl-11 pr-4 border-2 border-outline-variant rounded-xl focus:border-primary outline-none transition-all text-on-surface text-sm bg-surface-container-low/40 focus:bg-white"
+                    />
+                  </div>
+                </div>
+
+                {forgotError && (
+                  <div className="flex items-center gap-2 bg-error-container text-error px-3 py-2.5 rounded-xl text-xs">
+                    <span className="material-symbols-outlined text-base shrink-0">error</span>
+                    {forgotError}
+                  </div>
+                )}
+
+                <div className="flex gap-2 mt-1">
                   <button
-                    onClick={() => setShowForgot(false)}
+                    onClick={closeForgot}
                     className="flex-1 py-2.5 rounded-xl border border-outline-variant text-sm font-bold text-on-surface-variant hover:bg-slate-50"
                   >
                     취소
                   </button>
                   <button
-                    onClick={() => { if (forgotEmail) setForgotSent(true); }}
+                    onClick={handleResetPassword}
+                    disabled={forgotLoading}
+                    className="flex-1 py-2.5 rounded-xl bg-primary text-white text-sm font-bold hover:brightness-105 shadow-md shadow-primary/25 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {forgotLoading ? '변경 중...' : '비밀번호 변경'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* 아이디(이메일) 찾기 모달 */}
+    {showFindId && (
+      <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center px-4" onClick={closeFindId}>
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[380px] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+
+          <div className="px-6 pt-6 pb-4 border-b border-outline-variant/50">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
+                  <span className="material-symbols-outlined text-primary text-lg">badge</span>
+                </div>
+                <div>
+                  <h3 className="font-bold text-on-surface text-base">아이디 찾기</h3>
+                  <p className="text-xs text-on-surface-variant">가입 정보로 이메일(아이디)을 찾습니다.</p>
+                </div>
+              </div>
+              <button onClick={closeFindId} className="text-on-surface-variant hover:text-on-surface transition-colors">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="px-6 py-5">
+            {foundEmail ? (
+              <div className="flex flex-col items-center py-4 gap-3 text-center">
+                <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center">
+                  <span className="material-symbols-outlined text-emerald-500 text-3xl">mark_email_read</span>
+                </div>
+                <div>
+                  <p className="font-bold text-on-surface">가입된 아이디를 찾았습니다</p>
+                  <p className="text-lg font-bold text-primary mt-1.5">{maskEmail(foundEmail)}</p>
+                  <p className="text-xs text-on-surface-variant mt-1">이 이메일로 로그인해 주세요.</p>
+                </div>
+                <div className="w-full flex gap-2 mt-1">
+                  <button
+                    onClick={() => { closeFindId(); setShowForgot(true); setForgotEmail(foundEmail); setForgotSent(false); }}
+                    className="flex-1 py-2.5 rounded-xl border border-outline-variant text-sm font-bold text-on-surface-variant hover:bg-slate-50"
+                  >
+                    비밀번호 찾기
+                  </button>
+                  <button
+                    onClick={closeFindId}
                     className="flex-1 py-2.5 rounded-xl bg-primary text-white text-sm font-bold hover:brightness-105 shadow-md shadow-primary/25"
                   >
-                    재설정 링크 전송
+                    로그인하기
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                <div>
+                  <label className="text-xs font-bold text-on-surface-variant block mb-1.5">이름</label>
+                  <div className="relative">
+                    <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-outline text-[20px]">person</span>
+                    <input
+                      type="text"
+                      value={findName}
+                      onChange={(e) => setFindName(e.target.value)}
+                      placeholder="홍길동"
+                      className="w-full h-11 pl-11 pr-4 border-2 border-outline-variant rounded-xl focus:border-primary outline-none transition-all text-on-surface text-sm bg-surface-container-low/40 focus:bg-white"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-on-surface-variant block mb-1.5">가입한 전화번호</label>
+                  <div className="relative">
+                    <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-outline text-[20px]">phone</span>
+                    <input
+                      type="tel"
+                      inputMode="numeric"
+                      value={findPhone}
+                      onChange={(e) => setFindPhone(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') handleFindId(); }}
+                      placeholder="010-1234-5678"
+                      className="w-full h-11 pl-11 pr-4 border-2 border-outline-variant rounded-xl focus:border-primary outline-none transition-all text-on-surface text-sm bg-surface-container-low/40 focus:bg-white"
+                    />
+                  </div>
+                </div>
+
+                {findError && (
+                  <div className="flex items-center gap-2 bg-error-container text-error px-3 py-2.5 rounded-xl text-xs">
+                    <span className="material-symbols-outlined text-base shrink-0">error</span>
+                    {findError}
+                  </div>
+                )}
+
+                <div className="flex gap-2 mt-1">
+                  <button
+                    onClick={closeFindId}
+                    className="flex-1 py-2.5 rounded-xl border border-outline-variant text-sm font-bold text-on-surface-variant hover:bg-slate-50"
+                  >
+                    취소
+                  </button>
+                  <button
+                    onClick={handleFindId}
+                    disabled={findLoading}
+                    className="flex-1 py-2.5 rounded-xl bg-primary text-white text-sm font-bold hover:brightness-105 shadow-md shadow-primary/25 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {findLoading ? '찾는 중...' : '아이디 찾기'}
                   </button>
                 </div>
               </div>

@@ -4,6 +4,7 @@ import CitizenLayout from '../../layouts/CitizenLayout';
 import { CATEGORY_STYLE, useApp } from '../../store/AppContext';
 import { chatAskApi, chatImageApi, chatFileApi, getChatSessionApi, chatVoiceReplyApi, getChatFileBlobUrlApi, createComplaintDraftApi, updateChatSessionApi } from '../../api/chat';
 import { uploadAttachmentApi } from '../../api/complaints';
+import { DEPARTMENTS } from '../../utils/departments';
 
 const quickReplies = [
   { icon: 'description', label: '필요 서류 안내',  action: 'send' },
@@ -12,6 +13,23 @@ const quickReplies = [
   { icon: 'menu_book',   label: '이용 가이드 보기', action: 'faq' },
   { icon: 'logout',      label: '상담 종료',       action: 'end' },
 ];
+
+// AI 답변에서 중요 정보를 자동으로 굵게 표시하기 위한 패턴
+// (백엔드가 **로 감싼 부분 + 전화번호 + 법령/조항 + 도청·시청 + 실제 부서명)
+const DEPT_NAMES = DEPARTMENTS
+  .map((d) => d.name)
+  .filter(Boolean)
+  .sort((a, b) => b.length - a.length);   // 긴 이름 우선 매칭
+const EMPHASIS_RE = new RegExp(
+  '(' + [
+    '\\*\\*[^*]+\\*\\*',                                          // **명시적 강조**
+    '\\d{2,4}-\\d{3,4}-\\d{4}',                                   // 전화번호
+    '[가-힣]{2,}법(?:\\s?시행령|\\s?시행규칙)?(?:\\s?제\\d+조(?:의\\d+)?(?:\\s?제\\d+항)?(?:\\s?제\\d+호)?)?', // 법령(+조항)
+    '제\\d+조(?:의\\d+)?(?:\\s?제\\d+항)?(?:\\s?제\\d+호)?',       // 조항 단독
+    '[가-힣]{1,6}(?:도청|시청|군청|구청)',                        // 광역/기초 지자체
+    ...DEPT_NAMES,                                                // 실제 부서명(정확 매칭)
+  ].join('|') + ')'
+);
 
 // 민원 내용 최소 길이 (백엔드 게이트: 10자 미만이면 400)
 const MIN_COMPLAINT_LEN = 10;
@@ -288,13 +306,93 @@ function MessageBubble({ msg, isSpeaking, onSpeak }) {
           )}
           {lines.map((line, i) => (
             <p key={i} className={line === '' ? 'h-1.5' : ''}>
-              {line.replace(/\*\*(.*?)\*\*/g, '$1').split(/(\*\*.*?\*\*)/).map((part, j) =>
-                /^\*\*/.test(part)
-                  ? <strong key={j} className={isAI ? 'text-primary' : 'text-white font-bold'}>{part.replace(/\*\*/g, '')}</strong>
-                  : part
-              )}
+              {line.split(EMPHASIS_RE).map((part, j) => {
+                if (!part) return null;
+                // split의 캡처 그룹 → 홀수 인덱스가 강조 대상
+                if (j % 2 === 1) {
+                  const clean = part.startsWith('**') ? part.replace(/\*\*/g, '') : part;
+                  return <strong key={j} className={isAI ? 'text-primary font-bold' : 'text-white font-bold'}>{clean}</strong>;
+                }
+                return part;
+              })}
             </p>
           ))}
+
+          {/* 유사 민원 사례 카드 — grouped_cases (카테고리 그룹) */}
+          {isAI && Array.isArray(msg.groupedCases) && msg.groupedCases.length > 0 && (
+            <div className="mt-3 space-y-3">
+              <p className="flex items-center gap-1 text-[11px] font-bold text-primary">
+                <span className="material-symbols-outlined text-sm">history</span>
+                유사 민원 사례 (카테고리별)
+              </p>
+              {msg.groupedCases.map((group, gi) => (
+                <div key={gi}>
+                  <p className="text-[10px] font-bold text-on-surface-variant mb-1.5 flex items-center gap-1">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-primary/60" />
+                    {group.category ?? '기타'}
+                  </p>
+                  <div className="space-y-1.5">
+                    {(group.cases ?? []).map((c, i) => (
+                      <div key={i} className="rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-xs font-bold text-on-surface leading-snug flex-1 min-w-0">
+                            <span className="text-primary mr-1">{i + 1}.</span>{c.title ?? c.content ?? '유사 사례'}
+                          </p>
+                          {typeof c.similarity === 'number' && (
+                            <span className="shrink-0 text-[10px] font-bold text-primary bg-white border border-primary/30 rounded-full px-1.5 py-0.5">
+                              유사도 {Math.round(c.similarity * 100)}%
+                            </span>
+                          )}
+                        </div>
+                        {c.source_type && (
+                          <div className="mt-1.5">
+                            <span className="text-[10px] font-bold text-on-surface-variant bg-white border border-outline-variant/60 rounded-full px-1.5 py-0.5">
+                              {c.source_type === 'complaint' ? '접수 민원' : '국민신문고 사례'}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* 유사 민원 사례 카드 — flat cases fallback (유사 사례 보기 클릭 시) */}
+          {isAI && !msg.groupedCases?.length && Array.isArray(msg.cases) && msg.cases.length > 0 && (
+            <div className="mt-3 space-y-2">
+              <p className="flex items-center gap-1 text-[11px] font-bold text-primary">
+                <span className="material-symbols-outlined text-sm">history</span>
+                유사 민원 사례 {msg.cases.length}건
+              </p>
+              {msg.cases.map((c, i) => (
+                <div key={i} className="rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-xs font-bold text-on-surface leading-snug flex-1 min-w-0">
+                      <span className="text-primary mr-1">{i + 1}.</span>{c.title ?? c.content ?? '유사 사례'}
+                    </p>
+                    {typeof c.similarity === 'number' && (
+                      <span className="shrink-0 text-[10px] font-bold text-primary bg-white border border-primary/30 rounded-full px-1.5 py-0.5">
+                        유사도 {Math.round(c.similarity * 100)}%
+                      </span>
+                    )}
+                  </div>
+                  {c.title && c.content && c.content !== c.title && (
+                    <p className="text-[11px] text-on-surface-variant mt-1 leading-relaxed line-clamp-2">{c.content}</p>
+                  )}
+                  {c.source_type && (
+                    <div className="mt-1.5">
+                      <span className="text-[10px] font-bold text-on-surface-variant bg-white border border-outline-variant/60 rounded-full px-1.5 py-0.5">
+                        {c.source_type === 'complaint' ? '접수 민원' : '국민신문고 사례'}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
           {isAI && (
             <button
               onClick={() => onSpeak(msg.text.replace(/\*\*/g, '').replace(/\n/g, ' '))}
@@ -341,14 +439,16 @@ function Chatbot() {
   const [summary, setSummary]             = useState(restored?.summary ?? { category: null, dept: null, urgency: null });
   const [procedures, setProcedures]       = useState(restored?.procedures ?? null);
   const [cases, setCases]                 = useState(restored?.cases ?? []);
+  const [groupedCases, setGroupedCases]   = useState(restored?.groupedCases ?? []);
   const [imageNotes, setImageNotes]       = useState(restored?.imageNotes ?? []);
   const [liveSnapshot, setLiveSnapshot]   = useState(null);
   const [currentSessionId, setCurrentSessionId] = useState(restored?.currentSessionId ?? null);
 
   /* ── 민원 접수 모달 ── */
-  const [submitModal, setSubmitModal] = useState({ open: false, title: '', content: '' });
-  const [submitting, setSubmitting]   = useState(false);
+  const [submitModal, setSubmitModal] = useState({ open: false, drafts: [], loading: false });
+  const [submittingSet, setSubmittingSet] = useState(new Set());
   const [submitDone, setSubmitDone]   = useState(null); // { title, category, dept } | null
+  const [showEndConfirm, setShowEndConfirm] = useState(false); // 상담 종료 확인 모달
   const [pendingFormSubmit, setPendingFormSubmit] = useState(null); // 서식 제출 → 접수 대기 { title, content, category, formName }
   const [viewingHistory, setViewingHistory] = useState(null);
   const [input, setInput]                 = useState('');
@@ -614,7 +714,7 @@ function Chatbot() {
   // 서식 제출 확인(긍정) → 바로 접수하지 않고 민원 접수 모달(요약창)을 열어 최종 확인
   const confirmFormSubmit = (pending) => {
     if (pending.category) setSummary((s) => ({ ...s, category: pending.category }));
-    setSubmitModal({ open: true, title: pending.title, content: pending.content, loading: false });
+    setSubmitModal({ open: true, loading: false, drafts: [{ title: pending.title || '', content: pending.content || '', category: pending.category ? { name: pending.category } : null, department: null, urgency_score: 0 }] });
     setMessages((prev) => [...prev, {
       role: 'ai', time: now(),
       text: '민원 접수 창을 열었습니다. 내용을 확인하신 뒤 **접수하기**를 눌러 주세요.',
@@ -695,16 +795,27 @@ function Chatbot() {
       } else if (md?.procedures) {
         setProcedures(md.procedures);
       }
-      // 유사 민원 사례 (있을 때만 갱신)
-      if (Array.isArray(md?.cases) && md.cases.length > 0) {
+      // 유사 민원 사례 — grouped_cases 우선, flat cases fallback
+      let msgCases = null;
+      let msgGroupedCases = null;
+      if (Array.isArray(md?.grouped_cases) && md.grouped_cases.length > 0) {
+        setGroupedCases(md.grouped_cases);
+        setCases(md.grouped_cases.flatMap((g) => g.cases ?? []));
+        if (text === '유사 사례 보기') msgGroupedCases = md.grouped_cases;
+      } else if (Array.isArray(md?.cases) && md.cases.length > 0) {
         setCases(md.cases);
+        setGroupedCases([]);
+        if (text === '유사 사례 보기') msgCases = md.cases.slice(0, 3);
       }
       // 이미지 첨부 시 AI가 분석한 설명 저장 (민원 접수 내용 자동 채움용)
       if (result.image_description) {
         setImageNotes((prev) => [...prev, result.image_description]);
       }
 
-      setMessages(prev => [...prev, { role: 'ai', time: now(), text: result.answer, duration: (Date.now() - t0) / 1000 }]);
+      setMessages(prev => [...prev, {
+        role: 'ai', time: now(), text: result.answer, duration: (Date.now() - t0) / 1000,
+        ...(msgGroupedCases ? { groupedCases: msgGroupedCases } : msgCases ? { cases: msgCases } : {}),
+      }]);
     } catch {
       setMessages(prev => [...prev, { role: 'ai', time: now(), text: '서버 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.', duration: (Date.now() - t0) / 1000 }]);
     } finally {
@@ -722,6 +833,7 @@ function Chatbot() {
     if (!viewingHistory) snapshotLive(); // 진행 중 상담 보관 (덮이기 전에)
     setProcedures(null); // 과거 상담엔 절차 안내 데이터가 없음
     setCases([]);
+    setGroupedCases([]);
     setImageNotes([]);
     if (!h.conversation && h.session_id) {
       try {
@@ -741,7 +853,7 @@ function Chatbot() {
 
   // 진행 중인 상담을 보관(과거 내역 열기 전) / 복원(현재 상담으로 돌아오기)
   const snapshotLive = () => {
-    setLiveSnapshot({ messages, summary, procedures, cases, imageNotes, currentSessionId });
+    setLiveSnapshot({ messages, summary, procedures, cases, groupedCases, imageNotes, currentSessionId });
   };
   const returnToLive = () => {
     if (view === 'chat' && !viewingHistory) return; // 이미 현재 상담 화면
@@ -750,6 +862,7 @@ function Chatbot() {
       setSummary(liveSnapshot.summary);
       setProcedures(liveSnapshot.procedures);
       setCases(liveSnapshot.cases);
+    setGroupedCases(liveSnapshot.groupedCases ?? []);
       setImageNotes(liveSnapshot.imageNotes);
       setCurrentSessionId(liveSnapshot.currentSessionId);
     }
@@ -765,6 +878,7 @@ function Chatbot() {
     setSummary({ category: null, dept: null, urgency: null });
     setProcedures(null);
     setCases([]);
+    setGroupedCases([]);
     setImageNotes([]);
     setLiveSnapshot(null);
     setView('chat');
@@ -792,37 +906,47 @@ function Chatbot() {
       // 세션 초안(draft-complaint)은 모달 열 때 '딱 한 번' 호출해 폼을 채운다.
       // 접수 모달은 최종 확인용(제목·내용·첨부)만. 분류/담당은 오른쪽 상담 요약 카드가 담당.
       if (currentSessionId) {
-        setSubmitModal({ open: true, title: '', content: '', loading: true });
+        setSubmitModal({ open: true, drafts: [], loading: true });
         try {
           const d = await createComplaintDraftApi(currentSessionId);
-          // 로딩 중 닫혔으면(취소) 다시 뜨지 않게 유지
-          setSubmitModal((p) => (p.open ? { open: true, title: d?.title || title, content: d?.content || content, loading: false } : p));
+          const rawDrafts = Array.isArray(d?.drafts) && d.drafts.length > 0
+            ? d.drafts
+            : (d?.title ? [d] : [{ title, content }]);
+          const drafts = rawDrafts.map((dr) => ({
+            title:         dr.title    || '',
+            content:       dr.content  || '',
+            category:      dr.category   ?? null,
+            department:    dr.department  ?? null,
+            urgency_score: dr.urgency_score ?? 0,
+          }));
+          setSubmitModal((p) => p.open ? { open: true, drafts, loading: false } : p);
         } catch {
-          setSubmitModal((p) => (p.open ? { open: true, title, content, loading: false } : p));
+          setSubmitModal((p) => p.open ? { open: true, drafts: [{ title, content, category: null, department: null, urgency_score: 0 }], loading: false } : p);
         }
       } else {
-        setSubmitModal({ open: true, title, content, loading: false });
+        setSubmitModal({ open: true, loading: false, drafts: [{ title, content, category: null, department: null, urgency_score: 0 }] });
       }
     } finally {
       openingRef.current = false;
     }
   };
 
-  const handleComplaintSubmit = async () => {
-    if (!submitModal.title.trim() || submitModal.content.trim().length < MIN_COMPLAINT_LEN) return;
-    setSubmitting(true);
-    // 분류/담당은 오른쪽 상담 요약 카드 값 사용 (표시와 접수 완료 팝업 일치)
-    const cat = summary.category ?? '기타';
-    const dept = summary.dept ?? null;
+  const updateDraft = (idx, field, value) =>
+    setSubmitModal((p) => ({ ...p, drafts: p.drafts.map((d, i) => i === idx ? { ...d, [field]: value } : d) }));
+
+  const handleDraftSubmit = async (idx) => {
+    const draft = submitModal.drafts[idx];
+    if (!draft?.title.trim() || draft.content.trim().length < MIN_COMPLAINT_LEN) return;
+    setSubmittingSet((p) => new Set(p).add(idx));
+    const cat  = draft.category?.name  ?? summary.category ?? '기타';
+    const dept = draft.department?.name ?? summary.dept     ?? null;
     try {
       const newId = await addComplaint({
-        title: submitModal.title.trim(),
-        content: submitModal.content.trim(),
+        title: draft.title.trim(),
+        content: draft.content.trim(),
         category: cat,
-        chatSessionId: currentSessionId,   // 원본 챗봇 대화 세션 연결
+        chatSessionId: currentSessionId,
       });
-      // 채팅에 첨부한 파일들을 접수된 민원에 업로드 → 담당자에게 전달
-      // (탭 이동/복원으로 File 객체가 사라진 이미지는 data URL에서 File을 재생성)
       const files = messages
         .flatMap((m) => m.files ?? [])
         .map((f) => {
@@ -834,20 +958,15 @@ function Chatbot() {
       if (newId && files.length) {
         await Promise.all(files.map((f) => uploadAttachmentApi(newId, f).catch(() => {})));
       }
-      setSubmitModal({ open: false, title: '', content: '' });
-      const doneInfo = {
-        title: submitModal.title.trim(),
-        category: cat,
-        dept,
-      };
-      setSubmitDone(doneInfo);
-      // 세션을 '민원 접수'로 표시 + 목록 갱신 (세션은 백엔드가 관리)
+      const remaining = submitModal.drafts.filter((_, i) => i !== idx);
+      setSubmitModal((p) => ({ ...p, drafts: remaining, open: remaining.length > 0 }));
+      setSubmitDone({ title: draft.title.trim(), category: cat, dept });
       if (currentSessionId) {
         try { await updateChatSessionApi(currentSessionId, { status: '민원 접수' }); } catch { /* ignore */ }
       }
       refreshChatSessions();
     } finally {
-      setSubmitting(false);
+      setSubmittingSet((p) => { const s = new Set(p); s.delete(idx); return s; });
     }
   };
 
@@ -986,15 +1105,16 @@ function Chatbot() {
                   </div>
                 )}
 
-                {/* 빠른 답변 버튼 (새 채팅 + 마지막 메시지가 AI일 때) */}
+                {/* 빠른 답변 버튼 (새 채팅 + 마지막 메시지가 AI일 때)
+                    요약 전(초기 진입)에는 '이용 가이드 보기'만, 요약이 나오면 전체 표시 */}
                 {!viewingHistory && messages.length >= 1 && messages[messages.length - 1]?.role === 'ai' && !isTyping && (
                   <div className="flex flex-wrap gap-2 pl-11">
-                    {quickReplies.map((r) => (
+                    {(messages.some(m => m.role === 'user') ? quickReplies : quickReplies.filter((r) => r.action === 'faq')).map((r) => (
                       <button
                         key={r.label}
                         onClick={() => {
                           if (r.action === 'faq') navigate('/faq');       // 이용 가이드 → 자주 묻는 질문
-                          else if (r.action === 'end') startNewChat();     // 상담 종료 → 새 채팅
+                          else if (r.action === 'end') setShowEndConfirm(true); // 상담 종료 → 확인 모달
                           else handleSend(r.label);                        // 나머지 → 바로 전송
                         }}
                         className="flex items-center gap-1.5 text-xs bg-white border border-primary/30 text-primary px-3 py-1.5 rounded-full font-bold hover:bg-primary hover:text-white transition-all shadow-sm"
@@ -1258,7 +1378,29 @@ function Chatbot() {
                   <span className="material-symbols-outlined text-sm text-primary">history</span>
                   유사 민원 사례
                 </p>
-                {cases.length > 0 ? (
+                {groupedCases.length > 0 ? (
+                  <div className="space-y-2.5">
+                    {groupedCases.map((group, gi) => (
+                      <div key={gi}>
+                        <p className="text-[10px] font-bold text-on-surface-variant mb-1 flex items-center gap-1">
+                          <span className="inline-block w-1.5 h-1.5 rounded-full bg-primary/60 shrink-0" />
+                          {group.category ?? '기타'}
+                        </p>
+                        <div className="space-y-1">
+                          {(group.cases ?? []).slice(0, 2).map((c, i) => (
+                            <div key={i} className="flex items-start gap-1.5 text-[11px] leading-relaxed">
+                              <span className="material-symbols-outlined text-[14px] text-on-surface-variant mt-0.5 shrink-0">description</span>
+                              <span className="text-on-surface break-words min-w-0 flex-1">{c.title ?? c.content ?? ''}</span>
+                              {typeof c.similarity === 'number' && (
+                                <span className="text-[10px] font-bold text-primary shrink-0 mt-0.5">{Math.round(c.similarity * 100)}%</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : cases.length > 0 ? (
                   <div className="space-y-1.5">
                     {cases.slice(0, 3).map((c, i) => (
                       <div key={i} className="flex items-start gap-1.5 text-[11px] leading-relaxed">
@@ -1308,103 +1450,120 @@ function Chatbot() {
 
       {/* 민원 접수 모달 (배경 클릭/ESC로는 안 닫힘 — 취소/X/접수로만) */}
       {submitModal.open && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[480px] overflow-hidden">
-            <div className="px-6 pt-6 pb-4 border-b border-outline-variant/50 flex items-center justify-between">
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[520px] max-h-[90vh] flex flex-col overflow-hidden">
+            {/* 헤더 */}
+            <div className="px-6 pt-6 pb-4 border-b border-outline-variant/50 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
                   <span className="material-symbols-outlined text-primary text-lg">edit_document</span>
                 </div>
                 <div>
                   <h3 className="font-bold text-on-surface text-base">민원 접수</h3>
-                  <p className="text-xs text-on-surface-variant">상담 내용을 바탕으로 자동 작성되었습니다.</p>
+                  <p className="text-xs text-on-surface-variant">
+                    {submitModal.loading ? 'AI가 초안을 작성하고 있습니다...' : `초안 ${submitModal.drafts.length}건 — 각각 확인 후 접수하세요`}
+                  </p>
                 </div>
               </div>
               <button onClick={() => setSubmitModal(p => ({ ...p, open: false }))} className="text-on-surface-variant hover:text-on-surface">
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
-            <div className="px-6 py-5 flex flex-col gap-4">
+
+            {/* 스크롤 영역 */}
+            <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
               {submitModal.loading && (
                 <div className="flex items-center gap-2 px-3 py-2.5 bg-blue-50 border border-blue-200 rounded-xl">
                   <span className="material-symbols-outlined text-blue-500 text-base animate-spin">progress_activity</span>
                   <p className="text-xs font-bold text-blue-700">AI가 민원 초안을 작성하고 있습니다...</p>
                 </div>
               )}
-              <div>
-                <label className="text-xs font-bold text-on-surface-variant block mb-1.5">민원 제목</label>
-                <input
-                  type="text"
-                  value={submitModal.title}
-                  onChange={e => setSubmitModal(p => ({ ...p, title: e.target.value }))}
-                  className="w-full h-11 px-3.5 border-2 border-outline-variant rounded-xl focus:border-primary outline-none text-sm text-on-surface"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-on-surface-variant block mb-1.5">민원 내용</label>
-                <textarea
-                  value={submitModal.content}
-                  onChange={e => setSubmitModal(p => ({ ...p, content: e.target.value }))}
-                  rows={6}
-                  className="w-full px-3.5 py-3 border-2 border-outline-variant rounded-xl focus:border-primary outline-none text-sm text-on-surface resize-none"
-                />
-                {!submitModal.loading && submitModal.content.trim().length < MIN_COMPLAINT_LEN && (
-                  <p className="text-[11px] text-error mt-1.5 flex items-center gap-1">
-                    <span className="material-symbols-outlined text-sm">info</span>
-                    민원 내용은 {MIN_COMPLAINT_LEN}자 이상 입력해 주세요. (현재 {submitModal.content.trim().length}자)
-                  </p>
-                )}
-              </div>
-              {/* 분류/담당 (오른쪽 상담 요약과 동일한 값) */}
-              {summary.category && (
-                <div className="flex items-center gap-2 text-xs text-on-surface-variant bg-surface-container-low/60 px-3 py-2 rounded-xl">
-                  <span className="material-symbols-outlined text-base text-primary">category</span>
-                  분류: <span className="font-bold text-primary">{summary.category}</span>
-                  {summary.dept && <> · 담당: <span className="font-bold text-on-surface">{summary.dept}</span></>}
-                </div>
-              )}
 
-              {/* 첨부파일 미리보기 */}
-              {submitFiles.length > 0 && (
-                <div>
-                  <label className="text-xs font-bold text-on-surface-variant block mb-1.5">
-                    첨부 파일 ({submitFiles.length})
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    {submitFiles.map((f, i) => (
-                      f.isImage && f.url ? (
-                        <img
-                          key={i}
-                          src={f.url}
-                          alt={f.name}
-                          className="w-16 h-16 rounded-lg object-cover border border-outline-variant"
-                        />
-                      ) : (
-                        <div key={i} className="flex items-center gap-1.5 bg-surface-container px-2.5 py-1.5 rounded-lg text-xs text-on-surface border border-outline-variant">
-                          <span className="material-symbols-outlined text-sm text-primary">attach_file</span>
-                          <span className="max-w-[100px] truncate">{f.name}</span>
-                        </div>
-                      )
-                    ))}
+              {submitModal.drafts.map((draft, idx) => (
+                <div key={idx} className="relative border border-outline-variant rounded-2xl p-4 flex flex-col gap-3">
+                  {/* 접수 중 오버레이 */}
+                  {submittingSet.has(idx) && (
+                    <div className="absolute inset-0 rounded-2xl bg-white/80 backdrop-blur-sm z-10 flex flex-col items-center justify-center gap-2">
+                      <span className="material-symbols-outlined text-primary text-3xl animate-spin">progress_activity</span>
+                      <p className="text-sm font-bold text-primary">접수 중...</p>
+                    </div>
+                  )}
+                  {/* 카드 헤더: 번호 + 긴급 뱃지 */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-on-surface-variant bg-surface-container px-2 py-0.5 rounded-lg">초안 {idx + 1}</span>
+                    {draft.urgency_score >= 0.5 && (
+                      <span className="flex items-center gap-0.5 text-[11px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-lg border border-red-200">
+                        <span className="material-symbols-outlined text-sm">priority_high</span>긴급
+                      </span>
+                    )}
+                    {(draft.category?.name || draft.department?.name) && (
+                      <span className="ml-auto text-[11px] text-on-surface-variant">
+                        {draft.category?.name && <span className="text-primary font-bold">{draft.category.name}</span>}
+                        {draft.department?.name && <span> · {draft.department.name}</span>}
+                      </span>
+                    )}
                   </div>
-                </div>
-              )}
 
-              <div className="flex gap-2 pt-1">
-                <button
-                  onClick={handleComplaintSubmit}
-                  disabled={submitting || submitModal.loading || !submitModal.title.trim() || submitModal.content.trim().length < MIN_COMPLAINT_LEN}
-                  className="flex-1 py-2.5 rounded-xl bg-primary text-white text-sm font-bold hover:brightness-105 shadow-md shadow-primary/25 disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  {submitting ? '접수 중...' : '접수하기'}
-                </button>
-                <button
-                  onClick={() => setSubmitModal(p => ({ ...p, open: false }))}
-                  className="flex-1 py-2.5 rounded-xl border border-outline-variant text-sm font-bold text-on-surface-variant hover:bg-slate-50"
-                >
-                  취소
-                </button>
-              </div>
+                  {/* 제목 */}
+                  <div>
+                    <label className="text-xs font-bold text-on-surface-variant block mb-1">민원 제목</label>
+                    <input type="text" value={draft.title}
+                      onChange={e => updateDraft(idx, 'title', e.target.value)}
+                      className="w-full h-10 px-3 border-2 border-outline-variant rounded-xl focus:border-primary outline-none text-sm text-on-surface"
+                    />
+                  </div>
+
+                  {/* 내용 */}
+                  <div>
+                    <label className="text-xs font-bold text-on-surface-variant block mb-1">민원 내용</label>
+                    <textarea value={draft.content}
+                      onChange={e => updateDraft(idx, 'content', e.target.value)}
+                      rows={5}
+                      className="w-full px-3 py-2.5 border-2 border-outline-variant rounded-xl focus:border-primary outline-none text-sm text-on-surface resize-none"
+                    />
+                    {draft.content.trim().length < MIN_COMPLAINT_LEN && (
+                      <p className="text-[11px] text-error mt-1 flex items-center gap-1">
+                        <span className="material-symbols-outlined text-sm">info</span>
+                        {MIN_COMPLAINT_LEN}자 이상 입력 필요 (현재 {draft.content.trim().length}자)
+                      </p>
+                    )}
+                  </div>
+
+                  {/* 첨부파일 (첫 번째 초안에만 표시) */}
+                  {idx === 0 && submitFiles.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {submitFiles.map((f, fi) => (
+                        f.isImage && f.url
+                          ? <img key={fi} src={f.url} alt={f.name} className="w-12 h-12 rounded-lg object-cover border border-outline-variant" />
+                          : <div key={fi} className="flex items-center gap-1 bg-surface-container px-2 py-1 rounded-lg text-[11px] text-on-surface border border-outline-variant">
+                              <span className="material-symbols-outlined text-sm text-primary">attach_file</span>
+                              <span className="max-w-[80px] truncate">{f.name}</span>
+                            </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* 접수 버튼 */}
+                  <button
+                    onClick={() => handleDraftSubmit(idx)}
+                    disabled={submittingSet.size > 0 || submitModal.loading || !draft.title.trim() || draft.content.trim().length < MIN_COMPLAINT_LEN}
+                    className="w-full py-2.5 rounded-xl bg-primary text-white text-sm font-bold hover:brightness-105 shadow-sm shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                  >
+                    {submittingSet.has(idx)
+                      ? <><span className="material-symbols-outlined text-base animate-spin">progress_activity</span>접수 중...</>
+                      : <><span className="material-symbols-outlined text-base">send</span>민원 접수</>
+                    }
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            {/* 닫기 */}
+            <div className="px-6 py-3 border-t border-outline-variant/50 shrink-0">
+              <button onClick={() => setSubmitModal(p => ({ ...p, open: false }))}
+                className="w-full py-2.5 rounded-xl border border-outline-variant text-sm font-bold text-on-surface-variant hover:bg-slate-50">
+                닫기
+              </button>
             </div>
           </div>
         </div>
@@ -1455,6 +1614,35 @@ function Chatbot() {
               확인
             </button>
             <p className="text-xs text-on-surface-variant/50">ESC 또는 확인을 눌러 닫기</p>
+          </div>
+        </div>
+      )}
+
+      {/* 상담 종료 확인 모달 */}
+      {showEndConfirm && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center px-4" onClick={() => setShowEndConfirm(false)}>
+          <div className="flex flex-col items-center gap-4 bg-white border border-outline-variant px-8 py-8 rounded-3xl shadow-2xl w-full max-w-[340px]" onClick={e => e.stopPropagation()}>
+            <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center">
+              <span className="material-symbols-outlined text-3xl text-primary">logout</span>
+            </div>
+            <div className="text-center">
+              <p className="text-lg font-bold text-on-surface mb-1">상담을 종료할까요?</p>
+              <p className="text-sm text-on-surface-variant">확인 시 현재 상담이 종료되고<br />새 채팅으로 이동합니다.</p>
+            </div>
+            <div className="w-full flex gap-2 mt-1">
+              <button
+                onClick={() => { setShowEndConfirm(false); startNewChat(); }}
+                className="flex-1 py-2.5 rounded-xl bg-primary text-white font-bold text-sm hover:brightness-105 shadow-md shadow-primary/25"
+              >
+                상담 종료
+              </button>
+              <button
+                onClick={() => setShowEndConfirm(false)}
+                className="flex-1 py-2.5 rounded-xl border border-outline-variant text-on-surface-variant font-bold text-sm hover:bg-surface-container-low transition-colors"
+              >
+                취소
+              </button>
+            </div>
           </div>
         </div>
       )}
