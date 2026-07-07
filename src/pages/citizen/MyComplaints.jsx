@@ -20,9 +20,11 @@ function MyComplaints() {
   const { stats, notifications } = useApp();
   const complaints = stats.myComplaints;
 
+  const PAGE_SIZE = 8;
   const [filterType,   setFilterType]   = useState('전체 유형');
   const [filterStatus, setFilterStatus] = useState('전체 상태');
   const [search,       setSearch]       = useState('');
+  const [page,         setPage]         = useState(1);
   const [selected,     setSelected]     = useState(null);
   const [attachments,  setAttachments]  = useState([]);  // 이 민원의 첨부(민원인+담당자)
   const [preview,      setPreview]      = useState(null);
@@ -73,6 +75,10 @@ function MyComplaints() {
     const matchSearch = c.title.includes(search) || c.id.includes(search);
     return matchType && matchStatus && matchSearch;
   });
+
+  const totalPages   = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage     = Math.min(page, totalPages);
+  const pagedFiltered = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   const myNotifs = notifications.filter((n) =>
     complaints.some((c) => c.id === n.complaintId)
@@ -383,16 +389,16 @@ function MyComplaints() {
               <h2 className="text-sm font-bold text-on-surface">제출한 민원 목록</h2>
             </div>
             <div className="flex flex-wrap items-center gap-2 px-6 py-3 border-b border-outline-variant bg-surface-container-low/30">
-              <select value={filterType} onChange={(e) => setFilterType(e.target.value)}
+              <select value={filterType} onChange={(e) => { setFilterType(e.target.value); setPage(1); }}
                 className="h-9 px-3 rounded-lg border border-outline-variant text-xs text-on-surface bg-white outline-none">
                 {categoryFilterOptions.map((o) => <option key={o}>{o}</option>)}
               </select>
-              <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}
+              <select value={filterStatus} onChange={(e) => { setFilterStatus(e.target.value); setPage(1); }}
                 className="h-9 px-3 rounded-lg border border-outline-variant text-xs text-on-surface bg-white outline-none">
                 {statusFilterOptions.map((o) => <option key={o}>{o}</option>)}
               </select>
               <div className="relative flex-1 min-w-[150px]">
-                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="민원 제목 검색"
+                <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="민원 제목 검색"
                   className="w-full h-9 pl-3 pr-8 rounded-lg border border-outline-variant text-xs outline-none bg-white" />
                 <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-outline text-base">search</span>
               </div>
@@ -407,7 +413,7 @@ function MyComplaints() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-outline-variant/50">
-                {filtered.length === 0 ? (
+                {pagedFiltered.length === 0 ? (
                   <tr>
                     <td colSpan={6}>
                       <EmptyState
@@ -417,7 +423,7 @@ function MyComplaints() {
                       />
                     </td>
                   </tr>
-                ) : filtered.map((c) => {
+                ) : pagedFiltered.map((c) => {
                   const cfg = statusConfig[c.status] ?? statusConfig['접수'];
                   return (
                     <tr key={c.id} onClick={() => navigate(`/my-complaints?id=${c.id}`)} className="hover:bg-surface-container-low/50 cursor-pointer transition-colors">
@@ -437,6 +443,65 @@ function MyComplaints() {
               </tbody>
             </table>
             </div>
+
+            {/* 페이지네이션 */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-6 py-3 border-t border-outline-variant/60">
+                <p className="text-xs text-on-surface-variant">
+                  총 {filtered.length}건 · {safePage}/{totalPages} 페이지
+                </p>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setPage(1)}
+                    disabled={safePage === 1}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:bg-surface-container disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-base">first_page</span>
+                  </button>
+                  <button
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={safePage === 1}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:bg-surface-container disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-base">chevron_left</span>
+                  </button>
+                  {(() => {
+                    const WINDOW = 5;
+                    const half = Math.floor(WINDOW / 2);
+                    let start = Math.max(1, safePage - half);
+                    let end   = Math.min(totalPages, start + WINDOW - 1);
+                    if (end - start < WINDOW - 1) start = Math.max(1, end - WINDOW + 1);
+                    return Array.from({ length: end - start + 1 }, (_, i) => start + i).map((p) => (
+                      <button
+                        key={p}
+                        onClick={() => setPage(p)}
+                        className={`w-8 h-8 rounded-lg text-xs font-bold transition-colors ${
+                          p === safePage
+                            ? 'bg-primary text-white shadow-sm'
+                            : 'text-on-surface-variant hover:bg-surface-container'
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    ));
+                  })()}
+                  <button
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={safePage === totalPages}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:bg-surface-container disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-base">chevron_right</span>
+                  </button>
+                  <button
+                    onClick={() => setPage(totalPages)}
+                    disabled={safePage === totalPages}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:bg-surface-container disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-base">last_page</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
