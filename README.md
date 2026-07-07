@@ -13,7 +13,7 @@
 | Vite | 5 | 번들러 / 개발 서버 |
 | Tailwind CSS | 4 | 유틸리티 기반 CSS 스타일링 |
 | React Router DOM | 7 | 클라이언트 사이드 라우팅 |
-| Axios | 1.6 | HTTP 클라이언트 (API 통신) |
+| Axios | 1.18 | HTTP 클라이언트 (API 통신) |
 | Recharts | 3 | 관리자 통계 차트 (파이·도넛·라인 차트) |
 | pdfjs-dist | 4 | PDF 파일을 이미지로 렌더링 (서류 미리보기) |
 | Material Symbols | (CDN) | 아이콘 폰트 (Google Fonts) |
