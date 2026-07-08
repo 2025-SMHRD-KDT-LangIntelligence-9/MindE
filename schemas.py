@@ -68,6 +68,7 @@ class ComplaintOut(BaseModel):
     # 추가 표시용 필드 (JOIN으로 채워서 dict 반환)
     category: str | None = None
     department: str | None = None
+    dept_phone: str | None = None       # 담당 부서 연락처 (프론트 MyComplaints용)
     citizen_name: str | None = None
     updated_at: datetime | None = None
     memo: str | None = None

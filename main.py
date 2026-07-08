@@ -30,7 +30,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="MindE API", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="MindE API", version="0.2.1", lifespan=lifespan)
 
 # React(프론트엔드)에서 호출할 수 있도록 CORS 허용
 app.add_middleware(

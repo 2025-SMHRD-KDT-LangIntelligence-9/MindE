@@ -368,6 +368,99 @@ def search_cases(query: str, category_id: Optional[int] = None, limit: int = 5) 
     return _search_rag(query, ['case', 'complaint'], category_id, limit)
 
 
+# ── 서식(민원 신청서) 인식 도구 ──────────────────────────
+# 챗봇이 "이 민원은 ○○ 신청서로 작성 가능"을 인지하고 안내하게 하는 용도.
+_form_cache = None  # [{id, name, description, fields, embedding}]
+
+
+def _extract_form_field_names(fm) -> list:
+    """서식 field_mappings에서 사용자가 채울 필드명 추출 (자동생성 셀·이미지 제외)."""
+    names = []
+
+    def walk(x):
+        if isinstance(x, list):
+            for e in x:
+                walk(e)
+        elif isinstance(x, dict):
+            if x.get('auto_generated') or x.get('type') == 'image':
+                return
+            n = x.get('name') or x.get('key')
+            if n and n not in names:
+                names.append(n)
+    walk(fm)
+    return names
+
+
+def _form_bigrams(s: str) -> set:
+    """서식명 매칭용 글자 bigram 집합. 괄호 부연설명·공백 제거해 핵심어만."""
+    import re as _re
+    s = _re.sub(r'[\(（].*?[\)）]', '', s or '')   # (세대 모두 이동) 등 제거
+    s = ''.join(s.split())
+    return set(s[i:i + 2] for i in range(len(s) - 1))
+
+
+def _get_form_cache() -> list:
+    """활성 서식을 이름 bigram·필드와 함께 캐시. 첫 호출 시 1회 계산."""
+    global _form_cache
+    if _form_cache is not None:
+        return _form_cache
+    import json as _json
+    conn = _get_db()
+    with conn.cursor() as c:
+        c.execute("SELECT form_template_id, name, description, field_mappings "
+                  "FROM form_templates WHERE is_active ORDER BY form_template_id")
+        rows = c.fetchall()
+    cache = []
+    for tid, name, desc, fm in rows:
+        if isinstance(fm, str):
+            try:
+                fm = _json.loads(fm)
+            except Exception:
+                fm = []
+        cache.append({
+            'id': int(tid), 'name': name, 'description': desc,
+            'fields': _extract_form_field_names(fm),
+            'bigrams': _form_bigrams(name),
+        })
+    _form_cache = cache
+    return cache
+
+
+def search_forms(query: str, limit: int = 3, min_sim: float = 0.34) -> list[dict]:
+    """민원 텍스트와 관련된 보유 서식을 글자 bigram 겹침으로 매칭.
+
+    서식명은 특정 명사(정보공개 청구서 등)라, 의미 임베딩보다 bigram 겹침이
+    안정적(엉뚱한 '자석' 서식 방지). similarity = 서식명 bigram 커버리지.
+    Returns: [{form_template_id, name, description, required_fields, similarity}]
+    """
+    query = (query or '').strip()
+    if not query:
+        return []
+    try:
+        cache = _get_form_cache()
+        qb = _form_bigrams(query)
+        if not qb:
+            return []
+        scored = []
+        for f in cache:
+            nb = f['bigrams']
+            if not nb:
+                continue
+            sim = len(qb & nb) / len(nb)
+            if sim >= min_sim:
+                scored.append((sim, f))
+        scored.sort(key=lambda x: -x[0])
+        return [{
+            'form_template_id': f['id'],
+            'name': f['name'],
+            'description': f['description'],
+            'required_fields': f['fields'][:8],
+            'similarity': round(sim, 3),
+        } for sim, f in scored[:limit]]
+    except Exception:
+        return []
+
+
 def index_complaint_for_rag(complaint_id: int, title: str, content: str, category_id: Optional[int] = None) -> Optional[int]:
     """접수된 민원을 rag_documents에 임베딩·저장. 유사 사례 검색용.
 
@@ -1023,6 +1116,14 @@ context.cases (또는 sub_queries[N].cases)에 관련성 있는 사례가 있으
 - **위치**: 부서 안내 뒤, 신고 채널 안내 다음에 자연스럽게. "다른 지자체의 유사 처리 사례로는..." 같은 도입 문구로
 - **미활용 조건**: cases 배열이 비어있거나 similarity ≥ 0.5인 사례가 하나도 없으면 언급 생략
 - sub_queries가 여러 개면 각 서브의 cases를 개별적으로 활용
+
+## 서식 안내 (context.forms) ⭐
+context.forms(또는 sub_queries[N].forms)에 관련 민원 서식이 있으면 — 특히 사용자가 **서류 작성·신청·제출**을 원하거나 민원이 특정 신청서와 직결될 때 — 다음을 지키세요:
+- **우리가 직접 서식 작성을 도와줄 수 있음을 안내**하세요. 예: "'{name}' 작성을 도와드릴 수 있어요."
+- required_fields를 참고해 필요한 정보를 **간단히** 알려주세요. 예: "성함·주소·연락처 등만 알려주시면 됩니다."
+- **절대 "주민센터·읍면동에서 작성하세요"처럼 외부로 떠넘기지 마세요.** 서식 작성 지원은 우리 서비스의 핵심 기능입니다.
+- name은 forms[].name 문자열 그대로 사용 (창작 금지). 여러 개면 가장 관련 있는 1개만 안내.
+- **미활용 조건**: forms가 비어있거나, 사용자가 단순 정보 문의만 하고 서류 작성 의사가 전혀 없으면 억지로 권하지 마세요.
 
 ## 조건부
 - urgency.is_urgent=true 이면 답변 첫 줄에 "긴급한 상황이라면 즉시 119/112로 신고해주세요" 추가.
@@ -2627,6 +2728,7 @@ async def answer_chatbot(
                 'laws': [],
                 'cases': [],
                 'procedures': [],
+                'forms': [],
                 'departments': [],
                 'similar_depts': [],
             },
@@ -2647,13 +2749,23 @@ async def answer_chatbot(
     async def _process_sub_query(sub_text: str) -> dict:
         """서브 질문 하나에 대해 모든 도구 호출 병렬 실행 → 결과 dict 반환."""
         tool_q = _build_tool_query(sub_text, history)
+        # ─── 분류/긴급은 '현재 발언' 우선 (멀티턴에서 이전 민원 텍스트에 오염 방지) ───
+        # 현재 발언만으로 자신있게 분류되면(자립 민원) 그대로 사용.
+        # 애매하면(후속 질문 등) history 결합본(tool_q)으로 재분류해 컨텍스트 유지.
+        # 예: "쓰레기" 대화 뒤 "건물이 붕괴할거 같은데요" → 건축(자립)으로 정확히 분류.
+        cls_self = await asyncio.to_thread(classify_complaint, sub_text, 3)
+        if (cls_self.get('confidence') or 0) >= 0.6:
+            clf_q, cls_r = sub_text, cls_self
+        else:
+            clf_q = tool_q
+            cls_r = await asyncio.to_thread(classify_complaint, tool_q, 3)
         keywords_task = asyncio.create_task(extract_keywords(tool_q))
-        cls_r, urg_r, laws_r, cases_r, procs_r = await asyncio.gather(
-            asyncio.to_thread(classify_complaint, tool_q, 3),
-            asyncio.to_thread(check_urgency, tool_q),
+        urg_r, laws_r, cases_r, procs_r, forms_r = await asyncio.gather(
+            asyncio.to_thread(check_urgency, clf_q),
             asyncio.to_thread(search_laws, tool_q, None, 5),
             asyncio.to_thread(search_cases, tool_q, None, 5),
             asyncio.to_thread(search_procedures, tool_q, 5),
+            asyncio.to_thread(search_forms, tool_q, 3),
         )
         kw = await keywords_task
         # 클러스터는 create_cluster=True 일 때만 (예: 정식 민원 접수 시).
@@ -2683,6 +2795,7 @@ async def answer_chatbot(
             'laws': laws_r,
             'cases': cases_r,
             'procedures': procs_r,
+            'forms': forms_r,
             'departments': depts_r,
             'similar_depts': dept_search_r,
         }
@@ -2703,6 +2816,7 @@ async def answer_chatbot(
         'laws': first['laws'],
         'cases': first['cases'],
         'procedures': first['procedures'],
+        'forms': first['forms'],
         'departments': first['departments'],
         'similar_depts': first['similar_depts'],
     }

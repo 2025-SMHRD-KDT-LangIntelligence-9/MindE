@@ -51,6 +51,7 @@ async def build_complaint_out(db: AsyncSession, c: models.Complaint) -> dict:
         "urgency_score": float(c.urgency_score) if c.urgency_score is not None else 0.0,
         "category": category.name if category else None,
         "department": dept.name if dept else None,
+        "dept_phone": dept.contact_phone if dept else None,
         "citizen_name": user.name if user else None,
         "updated_at": c.updated_at,
         "memo": c.memo,
