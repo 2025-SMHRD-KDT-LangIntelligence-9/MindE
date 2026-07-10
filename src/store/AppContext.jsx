@@ -239,44 +239,23 @@ export function AppProvider({ children }) {
 
   // 새 민원 접수 (시민이 챗봇/OCR로 제출)
   const addComplaint = async ({ title, content, category, chatSessionId }) => {
-    try {
-      // chat_session_id: 챗봇 대화 → 접수일 때 원본 세션 연결 (없으면 null)
-      const result = await addComplaintApi({ title, content, category, chat_session_id: chatSessionId ?? null });
-      setComplaints((prev) => [result, ...prev]);
-      setNotifications((prev) => [
-        {
-          id: `N${Date.now()}`,
-          complaintId: result.id,
-          title: '접수 완료',
-          desc: `"${title}" 민원이 정상적으로 접수되었습니다.`,
-          icon: 'inbox',
-          color: 'text-primary',
-          tag: '접수',
-          time: '방금 전',
-          read: false,
-        },
-        ...prev,
-      ]);
-      return result.id;
-    } catch {
-      // 백엔드 연결 실패 시 로컬 폴백
-      const deptMap = { '도로/교통': '도로교통과', '시설/안전': '도시시설과', '환경/위생': '청소행정과', '시설/환경': '공원녹지과', '교통/주차': '교통지도과', '교통/안전': '교통행정과' };
-      const newId = `C-2025-${String(Date.now()).slice(-4)}`;
-      const newComplaint = {
-        id: newId, title, content,
-        category: category || '기타',
-        dept: deptMap[category] ?? '민원처리과',
-        citizen: currentUser.name || '익명',
-        citizenId: currentUser.id || 'citizen',
-        status: '접수', urgency: '보통',
-        receivedAt: new Date().toLocaleString('ko-KR'),
-        updatedAt: new Date().toLocaleString('ko-KR'),
-        memo: '', reply: null, replyDate: null, citizenFiles: [],
-      };
-      setComplaints((prev) => [newComplaint, ...prev]);
-      setNotifications((prev) => [{ id: `N${Date.now()}`, complaintId: newId, title: '접수 완료', desc: `"${title}" 민원이 정상적으로 접수되었습니다.`, icon: 'inbox', color: 'text-primary', tag: '접수', time: '방금 전', read: false }, ...prev]);
-      return newId;
-    }
+    const result = await addComplaintApi({ title, content, category, chat_session_id: chatSessionId ?? null });
+    setComplaints((prev) => [result, ...prev]);
+    setNotifications((prev) => [
+      {
+        id: `N${Date.now()}`,
+        complaintId: result.id,
+        title: '접수 완료',
+        desc: `"${title}" 민원이 정상적으로 접수되었습니다.`,
+        icon: 'inbox',
+        color: 'text-primary',
+        tag: '접수',
+        time: '방금 전',
+        read: false,
+      },
+      ...prev,
+    ]);
+    return result.id;
   };
 
   // 회원가입 (시민: 즉시 active / 담당자: pending 대기)

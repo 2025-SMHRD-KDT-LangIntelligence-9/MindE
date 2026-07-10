@@ -15,14 +15,9 @@ function iconForName(name) {
   return 'edit_document';
 }
 
-// 상담 분류 → 알맞은 서식 id (챗봇에서 넘어올 때)
+// 챗봇에서 formTemplateId를 못 받았을 때 폴백용
 function pickTemplateId(templates, category) {
-  const c = category || '';
-  const byKw = (re) => templates.find((t) => re.test(t.name || ''))?.form_template_id;
-  if (/소음/.test(c)) return byKw(/소음/) ?? templates[0]?.form_template_id;
-  if (/환경|위생|쓰레기|악취|하수/.test(c)) return byKw(/환경|위생/) ?? templates[0]?.form_template_id;
-  if (/도로|시설|교통|가로등|보수|파손|신호/.test(c)) return byKw(/도로|시설/) ?? templates[0]?.form_template_id;
-  return byKw(/일반/) ?? templates[0]?.form_template_id;
+  return templates[0]?.form_template_id ?? null;
 }
 
 function DocumentOCR() {
@@ -172,7 +167,7 @@ function DocumentOCR() {
       .then((list) => {
         const arr = Array.isArray(list) ? list : [];
         setTemplates(arr);
-        const initialId = navState ? pickTemplateId(arr, navState.category) : arr[0]?.form_template_id;
+        const initialId = navState?.formTemplateId ?? (navState ? pickTemplateId(arr, navState.category) : arr[0]?.form_template_id);
         if (initialId != null) selectTemplate(initialId, { boot: !!navState });
       })
       .catch(() => setTemplates([]))
@@ -435,22 +430,14 @@ function DocumentOCR() {
                   <button
                     onClick={handleDownload}
                     disabled={!template || downloading}
-                    className="flex-1 border border-primary/40 text-primary text-sm font-bold py-3 rounded-xl hover:bg-primary/5 transition-all flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="w-full border border-primary/40 text-primary text-sm font-bold py-3 rounded-xl hover:bg-primary/5 transition-all flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <span className={`material-symbols-outlined text-base ${downloading ? 'animate-spin' : ''}`}>{downloading ? 'progress_activity' : 'download'}</span>
                     {downloading ? '생성 중...' : '파일 다운로드'}
                   </button>
-                  <button
-                    onClick={handleSubmitToChat}
-                    disabled={!canSubmit}
-                    className="flex-1 bg-primary text-white text-sm font-bold py-3 rounded-xl hover:brightness-95 transition-all flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    <span className="material-symbols-outlined text-base">send</span>
-                    제출하기
-                  </button>
                 </div>
                 <p className="text-[11px] text-on-surface-variant text-center mt-1.5">
-                  {canSubmit ? '다운로드하거나 민원 상담으로 보내 접수할 수 있어요.' : '내용을 작성하면 제출·다운로드할 수 있어요.'}
+                  {'내용을 작성하면 다운로드할 수 있어요.'}
                 </p>
               </div>
             </div>

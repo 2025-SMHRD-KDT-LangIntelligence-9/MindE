@@ -446,11 +446,13 @@ function Chatbot() {
   const [imageNotes, setImageNotes]       = useState(restored?.imageNotes ?? []);
   const [liveSnapshot, setLiveSnapshot]   = useState(null);
   const [currentSessionId, setCurrentSessionId] = useState(restored?.currentSessionId ?? null);
+  const [recommendedFormId, setRecommendedFormId] = useState(restored?.recommendedFormId ?? null);
 
   /* ── 민원 접수 모달 ── */
   const [submitModal, setSubmitModal] = useState({ open: false, drafts: [], loading: false });
   const [submittingSet, setSubmittingSet] = useState(new Set());
   const [submitDone, setSubmitDone]   = useState(null); // { title, category, dept } | null
+  const [submitError, setSubmitError] = useState(null); // 접수 실패 시 에러 메시지
   const [showEndConfirm, setShowEndConfirm] = useState(false); // 상담 종료 확인 모달
   const [pendingFormSubmit, setPendingFormSubmit] = useState(null); // 서식 제출 → 접수 대기 { title, content, category, formName }
   const [viewingHistory, setViewingHistory] = useState(null);
@@ -791,6 +793,9 @@ function Chatbot() {
           urgency:   md.urgency?.probability_urgent >= 0.7 ? '긴급'
                    : md.urgency?.probability_urgent >= 0.4 ? '보통' : '낮음',
         });
+        if (md.forms?.[0]?.form_template_id) {
+          setRecommendedFormId(md.forms[0].form_template_id);
+        }
       }
       // 정부24 절차 안내: 유사도 0.5 미만(백엔드 신뢰 기준)은 잡음이라 제외
       if (Array.isArray(md?.procedures)) {
@@ -942,6 +947,7 @@ function Chatbot() {
     const draft = submitModal.drafts[idx];
     if (!draft?.title.trim() || draft.content.trim().length < MIN_COMPLAINT_LEN) return;
     setSubmittingSet((p) => new Set(p).add(idx));
+    setSubmitError(null);
     const cat  = draft.category?.name  ?? summary.category ?? '기타';
     const dept = draft.department?.name ?? summary.dept     ?? null;
     try {
@@ -969,6 +975,9 @@ function Chatbot() {
         try { await updateChatSessionApi(currentSessionId, { status: '민원 접수' }); } catch { /* ignore */ }
       }
       refreshChatSessions();
+    } catch (err) {
+      const msg = err?.response?.data?.detail ?? err?.message ?? '민원 접수 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
+      setSubmitError(msg);
     } finally {
       setSubmittingSet((p) => { const s = new Set(p); s.delete(idx); return s; });
     }
@@ -1442,7 +1451,7 @@ function Chatbot() {
                   const imgText  = imageNotes.join('\n').trim();
                   const aiText   = messages.filter((m) => m.role === 'ai' && m.text?.trim()).map((m) => m.text.trim()).join('\n');
                   const sourceText = [userText, imgText].filter(Boolean).join('\n') || aiText;
-                  navigate('/document', { state: { formTab: true, sessionId: currentSessionId, category: summary.category, sourceText } });
+                  navigate('/document', { state: { formTab: true, sessionId: currentSessionId, category: summary.category, sourceText, formTemplateId: recommendedFormId } });
                 }}
                 disabled={messages.filter(m => m.role === 'user').length === 0}
                 className="w-full border border-primary/40 text-primary text-sm font-bold py-3 rounded-xl hover:bg-primary/5 transition-all flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
@@ -1551,6 +1560,14 @@ function Chatbot() {
                             </div>
                       ))}
                     </div>
+                  )}
+
+                  {/* 접수 실패 오류 메시지 */}
+                  {submitError && (
+                    <p className="text-[12px] text-error flex items-start gap-1 bg-error/5 border border-error/20 rounded-lg px-3 py-2">
+                      <span className="material-symbols-outlined text-sm shrink-0 mt-0.5">error</span>
+                      {submitError}
+                    </p>
                   )}
 
                   {/* 접수 버튼 */}

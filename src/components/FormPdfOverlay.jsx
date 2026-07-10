@@ -62,9 +62,6 @@ function FieldOverlay({ pg, safePage, perPage, imgW, fields, onEditField, signat
           );
         }
 
-        // TODO: 체크박스·텍스트 입력 임시 비활성화
-        return null;
-
         if (isCheckboxField(f)) {
           const checked = !!(fields[name]);
           const boxSize = Math.max(fs * 1.1, 9);
@@ -76,14 +73,10 @@ function FieldOverlay({ pg, safePage, perPage, imgW, fields, onEditField, signat
               onClick={() => onEditField(name, checked ? '' : 'V')}
               title={name}
               style={{ position: 'absolute', left: cbLeft, top: cbTop - boxSize, width: boxSize, height: boxSize }}
-              className={`flex items-center justify-center bg-transparent border-2 rounded-[2px] transition-colors ${
-                checked ? 'border-primary text-primary bg-primary/10' : 'border-primary/40 hover:border-primary/70'
+              className={`border-2 rounded-[2px] transition-colors ${
+                checked ? 'border-primary/60 bg-primary/15' : 'border-primary/30 bg-transparent hover:border-primary/50'
               }`}
-            >
-              {checked && (
-                <span className="material-symbols-outlined text-primary" style={{ fontSize: Math.max(boxSize * 0.8, 8) }}>check</span>
-              )}
-            </button>
+            />
           );
         }
 
