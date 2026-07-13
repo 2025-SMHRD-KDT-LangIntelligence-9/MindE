@@ -1,46 +1,19 @@
-# 마음결 (maeumgyeol) - MindE
+# MindE (마음결) — AI 에이전트 기반 지능형 민원 상담 플랫폼
 
-AI 에이전트 기반 지능형 민원 상담 플랫폼
+공공 민원을 대화 한 번으로. AI 에이전트 병렬 처리로 민원을 자동 분류하고,
+담당 부서·법령·유사 사례를 찾아 안내하며, 음성·이미지 입력과 대화 기반
+서식 자동 작성까지 지원하는 플랫폼입니다.
 
-> 좌상단의 main 말고 본인의 작업 영역에 맞는 브랜치에서 작업 하시면 됩니다.
-> 이 README는 프로젝트 초기 스켈레톤 단계입니다. 각 기능은 이후 단계별로 구현됩니다.
+## 저장소 구조 (모노레포)
 
-## 폴더 구조
-
-- `frontend/` - React 기반 사용자 화면
-- `backend/` - FastAPI 기반 API 서버
-- `ai/` - KoBERT 분류기, RAG, 멀티 에이전트, 멀티모달(OCR/STT/TTS) 모듈
-- `database/` - DB 스키마 및 마이그레이션
-- `data/` - 민원/문서/임베딩/OCR/음성 데이터 저장소
-- `dashboards/` - 통계 및 분석 대시보드 스크립트
-- `docs/` - 아키텍처, API 명세, ERD, 프롬프트 가이드 문서
-- `tests/` - 백엔드/AI 테스트 코드
-- `docker/` - 서비스별 Dockerfile
-
-## 시작하기 (TODO)
-
-### Backend
-```bash
-cd backend
-pip install -r requirements.txt
-uvicorn app.main:app --reload
+```
+.
+└── backend/    FastAPI + AI (분류·긴급·RAG·클러스터·멀티모달·답변 LLM, 서식 자동작성)
 ```
 
-### Frontend
-```bash
-cd frontend
-npm install
-npm run dev
-```
+- **backend/** — Python 3.11, FastAPI, PostgreSQL + pgvector. 실행/구조는 `backend/README.md`·`backend/BACKEND_README.md` 참고.
+- **frontend/** — React + Vite. 현재는 `frontend` 브랜치에 있으며 추후 이 저장소로 통합 예정.
 
-### Docker로 전체 실행
-```bash
-docker-compose up --build
-```
-
-## TODO
-- [ ] 백엔드 라우터별 실제 로직 구현
-- [ ] AI 분류/RAG/에이전트 파이프라인 구현
-- [ ] 프론트엔드 페이지/컴포넌트 구현
-- [ ] DB 마이그레이션 및 시드 데이터 작성
-
+## 핵심 기능
+AI 자동 분류(11종) · RAG 근거 답변 · 멀티모달(음성·이미지) · 대화 기반 서식 자동 작성 ·
+긴급 민원 우선 대응 · AI 에이전트 병렬 처리
