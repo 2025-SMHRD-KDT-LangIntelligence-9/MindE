@@ -8,11 +8,12 @@
 
 ```
 .
-└── backend/    FastAPI + AI (분류·긴급·RAG·클러스터·멀티모달·답변 LLM, 서식 자동작성)
+├── backend/    FastAPI + AI (분류·긴급·RAG·클러스터·멀티모달·답변 LLM, 서식 자동작성)
+└── frontend/   React + Vite (사용자·담당자·관리자 화면)
 ```
 
 - **backend/** — Python 3.11, FastAPI, PostgreSQL + pgvector. 실행/구조는 `backend/README.md`·`backend/BACKEND_README.md` 참고.
-- **frontend/** — React + Vite. 현재는 `frontend` 브랜치에 있으며 추후 이 저장소로 통합 예정.
+- **frontend/** — React + Vite. 실행은 `frontend/README.md` 참고.
 
 ## 핵심 기능
 AI 자동 분류(11종) · RAG 근거 답변 · 멀티모달(음성·이미지) · 대화 기반 서식 자동 작성 ·
