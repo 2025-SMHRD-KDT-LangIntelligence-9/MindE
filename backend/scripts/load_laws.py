@@ -4,6 +4,7 @@
 출력: rag_documents 테이블 (title, content, category_id)
 embedding은 NULL로 두고 이후 별도 단계에서 채움
 """
+import os
 import json
 import re
 import sys
@@ -20,7 +21,7 @@ DB = dict(
     host='project-db-campus.smhrd.com',
     port=3310,
     user='mp_24k_li9_p3_3',
-    password='smhrd3',
+    password=os.getenv('PG_PASSWORD'),
     dbname='mp_24k_li9_p3_3',
 )
 

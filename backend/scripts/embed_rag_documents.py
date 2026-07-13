@@ -3,6 +3,7 @@
 batch 단위로 처리. GPU 사용 시 5,441 조항 → 약 2분.
 재실행 안전: embedding IS NULL인 행만 처리.
 """
+import os
 import sys
 import time
 import numpy as np
@@ -15,7 +16,7 @@ sys.stdout.reconfigure(encoding='utf-8')
 
 DB = dict(
     host='project-db-campus.smhrd.com', port=3310,
-    user='mp_24k_li9_p3_3', password='smhrd3', dbname='mp_24k_li9_p3_3',
+    user='mp_24k_li9_p3_3', password=os.getenv('PG_PASSWORD'), dbname='mp_24k_li9_p3_3',
     connect_timeout=15,
 )
 MODEL = 'BM-K/KoSimCSE-roberta'

@@ -5,6 +5,7 @@
   1. (venv 활성화된 상태에서) python scripts/make_admin.py 실행
   2. 출력된 INSERT SQL을 DBeaver에서 실행
 """
+import os
 from passlib.context import CryptContext
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -12,7 +13,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # ↓ 여기 세 가지 값을 본인 정보로 수정하세요
 ADMIN_NAME = "관리자"
 ADMIN_EMAIL = "admin@minde.go.kr"
-ADMIN_PASSWORD = "admin1234"   # ← 원하는 비밀번호로 바꾸세요
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "CHANGE_ME")   # 환경변수로 지정하거나 직접 수정
 
 password_hash = pwd_context.hash(ADMIN_PASSWORD)
 

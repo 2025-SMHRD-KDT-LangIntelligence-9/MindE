@@ -607,7 +607,7 @@ cd /tmp/MindE && git log --oneline origin/ai -5
 "C:/Users/smhrd/AppData/Local/Programs/Python/Python311/python.exe" -c "
 import psycopg2
 conn = psycopg2.connect(host='project-db-campus.smhrd.com', port=3310,
-  user='mp_24k_li9_p3_3', password='smhrd3', dbname='mp_24k_li9_p3_3')
+  user='mp_24k_li9_p3_3', password='<PG_PASSWORD>', dbname='mp_24k_li9_p3_3')
 cur = conn.cursor()
 cur.execute('SELECT COUNT(*) FROM complaint_clusters')
 print('clusters:', cur.fetchone()[0])
@@ -632,7 +632,7 @@ print('all routers OK')
 "C:/Users/smhrd/AppData/Local/Programs/Python/Python311/python.exe" -c "
 import psycopg2
 conn = psycopg2.connect(host='project-db-campus.smhrd.com', port=3310,
-  user='mp_24k_li9_p3_3', password='smhrd3', dbname='mp_24k_li9_p3_3')
+  user='mp_24k_li9_p3_3', password='<PG_PASSWORD>', dbname='mp_24k_li9_p3_3')
 cur = conn.cursor()
 cur.execute(\"SELECT column_name FROM information_schema.columns WHERE table_name='chat_sessions' ORDER BY ordinal_position\")
 print([r[0] for r in cur.fetchall()])
@@ -674,5 +674,5 @@ print(r['answer'])
 # DB 직접 연결
 import psycopg2
 conn = psycopg2.connect(host='project-db-campus.smhrd.com', port=3310,
-  user='mp_24k_li9_p3_3', password='smhrd3', dbname='mp_24k_li9_p3_3')
+  user='mp_24k_li9_p3_3', password='<PG_PASSWORD>', dbname='mp_24k_li9_p3_3')
 ```
