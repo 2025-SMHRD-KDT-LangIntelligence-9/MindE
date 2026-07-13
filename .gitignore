@@ -3,6 +3,10 @@
 .env.local
 .env.*.local
 *.bak
+# SSL 인증서·개인키 (특히 key.pem은 절대 커밋 금지)
+*.pem
+*.key
+*.crt
 
 # ===== Python =====
 __pycache__/
